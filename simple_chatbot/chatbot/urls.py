@@ -1,6 +1,8 @@
 from django.urls import path
-from . import views
+from .views import UploadView, IngestView, QueryView
 
 urlpatterns = [
-    path('get-answer/', views.get_answer, name='get_answer'),
+    path("upload/", UploadView.as_view(), name="upload"),
+    path("ingest/", IngestView.as_view(), name="ingest"),
+    path("query/", QueryView.as_view(), name="query"),
 ]
