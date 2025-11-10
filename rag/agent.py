@@ -139,8 +139,8 @@ query = "What is task decomposition?"
 #         print(f"content: {data['messages'][-1].content_blocks}")
 
 # 流式输出
-for token, metadata in agent.stream(  
-    {"messages": [{"role": "user", "content": query}]},
-    stream_mode="messages",
-):
-    print(token.content_blocks)
+# for token, metadata in agent.stream(  
+#     {"messages": [{"role": "user", "content": query}]},
+#     stream_mode="messages",
+# ):
+#     print(token.content_blocks)
