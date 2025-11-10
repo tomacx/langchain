@@ -1,4 +1,5 @@
 import os
+import pdfminer 
 from pdfminer.high_level import extract_text
 import fitz # pymupdf 判断是否为扫描的pdf
 from paddleocr import PaddleOCR

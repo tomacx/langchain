@@ -1,8 +1,9 @@
 import os
 import pickle
-from langchain.chains import RetrievalQA
-from langchain.vectorstores import InMemoryVectorStore
 
+from langchain_core.runnables import RunnableMap, RunnablePassthrough
+from langchain_community.vectorstores import FAISS
+from langchain_core.prompts import PromptTemplate
 from langchain.chat_models import init_chat_model
 
 def load_vectorstore_from_path(index_path):

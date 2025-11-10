@@ -3,9 +3,9 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from .serializers import FileUploadSerializer
-from .models import FileDocument, QAhistory
+from .models import FileDocument, QAHistory
 from .ingest import load_file_chunks, build_vectorstore
-from ..qa_service import answer_question
+from .qa_service import answer_question
 
 class UploadView(APIView):
     def post(self, request):
