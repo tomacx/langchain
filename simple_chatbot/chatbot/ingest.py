@@ -78,7 +78,7 @@ def build_vectorstore(chunks, index_path):
         metadatas = [c["metadata"] for c in chunks]
 
         # 1）Mistral Embedding
-        embedding = MistralAIEmbeddings(model_name="mistral-embed")
+        embedding = MistralAIEmbeddings(model="mistral-embed")
 
         # 2）FAISS 构建向量库
         vs = FAISS.from_texts(
@@ -88,8 +88,7 @@ def build_vectorstore(chunks, index_path):
         )
 
         # 3）持久化向量库
-        with open(index_path, "wb") as f:
-            pickle.dump(vs, f)
+        vs.save_local(index_path)
 
         print(f"[build_vectorstore] Saved FAISS index: {index_path}")
 
