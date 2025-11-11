@@ -16,6 +16,7 @@
 ### langchain工作流
 - Agent工作流示意
 <img width="300" height="400" alt="image" src="https://github.com/user-attachments/assets/c0a9b80b-bdf7-4b21-b899-1544d64238f1" />
+
 - 提示链
 - 并行化
 - 路由
