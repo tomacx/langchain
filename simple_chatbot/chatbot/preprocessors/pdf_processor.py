@@ -2,11 +2,12 @@ import os
 import pdfminer 
 from pdfminer.high_level import extract_text
 import fitz # pymupdf 判断是否为扫描的pdf
-from paddleocr import PaddleOCR
+# from paddleocr import PaddleOCR
+import pytesseract
 
 class PDFProcessor:
     def __init__(self):
-        self.ocr = PaddleOCR(use_angle_cls=True, lang="ch", rec=True)
+        self.ocr = pytesseract
     
     def is_scanned_pdf(self, file_path):
         doc = fitz.open(file_path)
@@ -32,7 +33,7 @@ class PDFProcessor:
             for page_num, page in enumerate(doc):
                 pix = page.get_pixmap()
                 img = pix.pil_tobytes()
-                ocr_res = self.ocr.ocr(img, cls=True)
+                ocr_res = self.ocr.image_to_string(img, lang='chi_sim+eng')
                 text = "\n".join([line[1][0] for line in ocr_res[0]])
                 results.append({
                     "content": text,
