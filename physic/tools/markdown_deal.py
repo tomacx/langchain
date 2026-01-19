@@ -1,13 +1,17 @@
 import os
 import json
 from typing import List, Optional
-from langchain_core.pydantic_v1 import BaseModel, Field
+from pydantic import BaseModel, Field
 from langchain.chat_models import init_chat_model
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_chroma import Chroma
 from langchain_mistralai import MistralAIEmbeddings
 from langchain_core.documents import Document
+from dotenv import load_dotenv
 
+load_dotenv(encoding='utf-8')
+
+os.getenv("DEEPSEEK_API_KEY")
 os.getenv("MISTRAL_API_KEY")
 
 SYSTEM_PROMPT = """
@@ -67,7 +71,7 @@ extractor_chain = prompt_template | structured_llm
 
 # Step3:遍历目录并处理
 # 目录
-ROOT_DIR = "D:/Codes/langchain/physic/docs/技术手册"
+ROOT_DIR = "/Users/cxh/Codes/langchain/physic/docs/技术手册"
 
 def process_technical_manuals(root_dir):
     knowledge_base = []   # 临时存储，后续存入向量库
@@ -144,3 +148,56 @@ def save_to_vectorstore(data_list):
     )
     print("知识库构建完成！")
     return vectorstore
+
+def main():
+    # ================= 配置区域 =================
+    # 1. 设置你的 API Key (如果在终端 export 过，这里可以注释掉)
+    # os.environ["DEEPSEEK_API_KEY"] = "你的sk-xxxxxxxx"
+
+    # 2. 设置要处理的目标根目录
+    # 注意：根据你的截图，脚本似乎在 tools 文件夹下，而技术手册在上一级或同级
+    # 建议填写绝对路径，或者根据相对位置调整，例如 "../技术手册"
+    target_dir = "/Users/cxh/Codes/langchain/physic/docs/技术手册" 
+    
+    # 3. 设置中间结果保存路径
+    output_json = "extracted_knowledge.json"
+    # ===========================================
+
+    # 检查目录是否存在
+    if not os.path.exists(target_dir):
+        print(f"❌ 错误: 找不到目录 {target_dir}")
+        print("💡 建议: 请使用绝对路径，或者检查文件夹名称是否正确")
+        return
+
+    print(f"🚀 启动 Agent ETL 流程，目标目录: {target_dir}")
+    print("⏳ 正在遍历并提取，这可能需要一些时间...")
+
+    # --- 执行提取核心逻辑 ---
+    # 调用你之前定义的 process_technical_manuals 函数
+    knowledge_base = process_technical_manuals(target_dir)
+
+    # --- 结果处理 ---
+    if knowledge_base:
+        count = len(knowledge_base)
+        print(f"\n✅ 提取完成！共获取 {count} 个知识条目。")
+
+        # 步骤 A: 保存为 JSON (中间态备份，非常重要！)
+        try:
+            with open(output_json, 'w', encoding='utf-8') as f:
+                json.dump(knowledge_base, f, ensure_ascii=False, indent=2)
+            print(f"💾 中间数据已保存至: {os.path.abspath(output_json)}")
+        except Exception as e:
+            print(f"⚠️ 保存 JSON 失败: {e}")
+
+        # 步骤 B: 存入向量库 (如果你已经准备好这一步)
+        # print("📥 正在存入 ChromaDB 向量库...")
+        # save_to_vectorstore(knowledge_base)
+        # print("🎉 全部流程结束！")
+        
+    else:
+        print("⚠️ 警告: 未提取到任何数据。请检查：")
+        print("1. 目录下是否有 .md 文件")
+        print("2. Agent 是否报错 (查看上方日志)")
+
+if __name__ == "__main__":
+    main()
