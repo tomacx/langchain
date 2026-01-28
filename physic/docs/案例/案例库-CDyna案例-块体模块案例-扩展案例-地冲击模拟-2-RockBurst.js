@@ -1,0 +1,161 @@
+//设置当前工作路径为JavaScript脚本文件所在路径
+setCurDir(getSrcDir());
+
+
+//打开力学计算开关
+dyna.Set("Mechanic_Cal 1");
+
+//设置三个方向的重力加速度均为0
+dyna.Set("Gravity 0.0 0.0 0.0");
+
+//打开大变形计算开关
+dyna.Set("Large_Displace 1");
+
+//设置计算结果的输出间隔为500步
+dyna.Set("Output_Interval 500");
+
+//设置监测信息输出时步为10步
+dyna.Set("Monitor_Iter 10");
+
+//关闭虚质量计算开关
+dyna.Set("If_Virtural_Mass 1");
+
+//打开接触更新开关
+dyna.Set("If_Renew_Contact 1");
+
+//设置接触容差为0
+dyna.Set("Contact_Detect_Tol 0.0");
+
+blkdyn.ImportGrid("gmsh", "CDEM.msh");
+
+//对两侧单元均为组1的公共面进行切割，设置为接触面
+blkdyn.CrtIFace();
+
+//设置接触后，更新网格信息
+blkdyn.UpdateIFaceMesh();
+
+//指定组1的单元本构为线弹性本构
+blkdyn.SetModel("linear");
+
+//指定材料参数
+blkdyn.SetMat(2300, 1e10, 0.25, 5e6, 5e6, 35.0, 15.0);
+blkdyn.SetMat(2300, 5e10, 0.25, 30e6, 15e6, 35.0, 15.0 ,2);
+
+
+//将接触面模型设定为线弹性模型
+blkdyn.SetIModel("linear");
+
+//虚拟接触面刚度及强度从单元中自动获取
+blkdyn.SetIStiffByElem(1);
+blkdyn.SetIStrengthByElem();
+
+
+//设置初始应力场
+//定义三个方向基础值，该这三个值可以改变初始应力场
+var values = new Array(-5e6, -10e6, -5e6); 
+//定义变化梯度 
+var gradient = new Array(0, 0, 0, 0, 0, 0, 0, 0, 0); 
+//将控制范围内的位移清零 
+blkdyn.InitConditionByCoord("stress", values, gradient, -1e5, 1e5, -1e5, 1e5, -1e5, 1e5); 
+
+
+//固体四周法向位移
+blkdyn.FixV("x", 0.0, "x", -1e-3, 1e-3);
+blkdyn.FixV("x", 0.0, "x", 19.999, 21);
+blkdyn.FixV("y", 0.0, "y", -1e-3, 1e-3);
+blkdyn.FixV("y", 0.0, "y", 19.999, 21);
+
+
+//将局部阻尼设置为0.8
+blkdyn.SetLocalDamp(0.8);
+
+
+//设置监测点
+dyna.Monitor("gvalue","gv_spring_crack_ratio");
+
+
+//设置接触面的拉伸断裂应变及剪切断裂应变
+dyna.Set("Interface_Soften_Value 1e-3 5e-3");
+
+//将接触面模型设定为应变软化的mc模型
+blkdyn.SetIModel("SSMC");
+
+
+//求解至稳定
+dyna.Solve();
+dyna.Save("stage1.sav");
+// dyna.Restore("stage1.sav");
+
+//设置接触面的拉伸断裂应变及剪切断裂应变
+dyna.Set("Interface_Soften_Value 5e-4 1e-3");
+blkdyn.SetMat(2300, 1e10, 0.25, 5e6, 5e6, 35.0, 15.0);
+blkdyn.SetMat(2300, 5e10, 0.25, 10e6, 8e6, 35.0, 15.0 ,2);
+blkdyn.SetIStrengthByElem();
+
+//定义三个方向基础值 
+var values = new Array(0, 0, 0); 
+//定义变化梯度 
+var gradient = new Array(0, 0, 0, 0, 0, 0, 0, 0, 0); 
+//将控制范围内的位移清零 
+blkdyn.InitConditionByCoord("displace", values, gradient, -1e5, 1e5, -1e5, 1e5, -1e5, 1e5); 
+
+
+
+//解除四周法向位移
+blkdyn.FreeV("x", "x", -1e-3, 1e-3);
+blkdyn.FreeV("x", "x", 19.999, 21);
+blkdyn.FreeV("y", "y", -1e-3, 1e-3);
+blkdyn.FreeV("y", "y", 19.999, 21);
+
+
+//设置静态无反射边界条件
+blkdyn.SetQuietBoundByCoord(-1e-3, 1e-3, -1e5, 1e5, -1e5, 1e5);
+blkdyn.SetQuietBoundByCoord(19.999, 21, -1e5, 1e5, -1e5, 1e5);
+
+blkdyn.SetQuietBoundByCoord(-1e5, 1e5, -1e-3, 1e-3, -1e5, 1e5);
+blkdyn.SetQuietBoundByCoord(-1e5, 1e5, 19.999, 21, -1e5, 1e5);
+
+
+//*****************施加动态边界条件，面力边界
+var coeff=new Array(0, -60e6, 0)
+//x方向下限及上限
+var x= new Array(-1, 21)
+//y方向下限及上限
+var y= new Array(19.99, 21)
+//z方向下限及上限
+var z= new Array(-1.0,1.0)
+//设定动态速度边界
+blkdyn.ApplyDynaSinVarByCoord ("face_force",false,coeff, 0.0, 1.0, 0.01 ,0,0,0.005, x, y, z);
+
+
+
+//关闭虚拟质量开关
+dyna.Set("If_Virtural_Mass 0");
+
+//设置当前时间为0
+dyna.Set("Time_Now 0");
+
+
+//设置计算时步为3e-6，小时间步，为了看清楚应力的传播
+dyna.Set("Time_Step 3e-6");
+
+//设置局部阻尼为0.0
+blkdyn.SetLocalDamp(0.0);
+
+
+//打开瑞利阻尼计算开关
+dyna.Set("If_Cal_Rayleigh 1");
+blkdyn.SetRayleighDamp(2e-7, 0.0);
+
+
+//动力计算20ms
+dyna.DynaCycle(2e-2);
+
+//设置大时间步，观察破裂演化
+dyna.Set("Time_Step 1e-6");
+
+//计算0.2s
+dyna.DynaCycle(2e-1);
+
+//求解结束
+print("Solution Finished");

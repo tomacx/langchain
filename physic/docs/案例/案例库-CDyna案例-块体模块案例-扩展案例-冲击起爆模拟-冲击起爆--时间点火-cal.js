@@ -1,0 +1,80 @@
+setCurDir(getSrcDir());
+
+igeo.clear();
+imeshing.clear();
+dyna.Clear();
+doc.clearResult();
+
+//打开力学计算开关
+dyna.Set("Mechanic_Cal 1");
+
+//设置三个方向的重力加速度均为0
+dyna.Set("Gravity 0.0 0.0 0.0");
+
+//打开大变形计算开关
+dyna.Set("Large_Displace 1");
+
+//设置计算结果的输出间隔为500步
+dyna.Set("Output_Interval 100");
+
+//设置监测信息输出时步为10步
+dyna.Set("Monitor_Iter 10");
+
+//关闭虚质量计算开关
+dyna.Set("If_Virtural_Mass 0");
+
+//打开接触更新开关
+dyna.Set("If_Renew_Contact 1");
+
+//设置接触容差为0
+dyna.Set("Contact_Detect_Tol 0.001");
+
+
+blkdyn.ImportGrid("gmsh", "GDEM.msh");
+
+blkdyn.CrtIFace(1);
+blkdyn.CrtIFace(-1, -1);
+blkdyn.UpdateIFaceMesh();
+
+blkdyn.SetModel("linear");
+blkdyn.SetModel("LeeTarver", 2);
+// blkdyn.SetModel("JWL", 2);
+
+//岩体参数
+blkdyn.SetMat(2009, 8e9, 0.307, 10e7, 6e7, 35, 15);
+
+//炸药参数
+blkdyn.SetMat(1680, 8e9, 0.307, 3e6, 1e6, 35, 15, 2);
+
+//序号、装药密度、初始比内能、fA、fB、fR1、fA、fA、fA、爆速、点火坐标、点火时间、持续时间
+//冲击起爆下(LeeTarver模型) 点火时间和点火坐标不起作用
+blkdyn.SetJWLSource(1, 1680, 7.0e9, 371.2e9, 3.2e9, 4.2, 0.95, 0.30, 21e9, 7830, [5,5,0], 0, 15e-3);
+blkdyn.BindJWLSource(1,2,2);
+
+//blkdyn.SetLeeTarverSource(iNumber, fI, fa, fb, fc, fd, fe, fg, 
+//fx, fy, fz, fG1, fG2, fLamda_igmax, fLamda_G1max, fLamda_G2min[, iFireMode]);\n")
+blkdyn.SetLeeTarverSource(1, 7.43e11, 0.05, 0.667, 0.667, 0.111, 0.333, 1.0, 20.0, 1.0, 2.0, 3.1, 400, 0.3, 0.50, 0.0, 2);
+blkdyn.BindLeeTarverSource(1,2,2);
+
+
+blkdyn.SetIModel("brittleMC");
+
+blkdyn.SetIStrengthByElem();
+blkdyn.SetIMat(0, 0, 0, 0, 0, -1, -1);
+blkdyn.SetIStiffByElem(10);
+
+//设置静态无反射边界条件
+blkdyn.SetQuietBoundByCoord(-1e-3, 1e-3, -1e5, 1e5, -1e5, 1e5);
+blkdyn.SetQuietBoundByCoord(9.999, 11, -1e5, 1e5, -1e5, 1e5);
+blkdyn.SetQuietBoundByCoord(-1e5, 1e5, -1e-3, 1e-3, -1e5, 1e5);
+
+blkdyn.SetLocalDamp(0.0);
+
+dyna.Set("Time_Step 1.0e-6");
+
+dyna.Set("If_Cal_Rayleigh 1");
+blkdyn.SetRayleighDamp(1e-5, 0);
+
+dyna.Monitor("block", "syy", 5, 5+0.5, 0);
+
+dyna.Solve(2000);

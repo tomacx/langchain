@@ -1,0 +1,162 @@
+setCurDir(getSrcDir());
+
+igeo.clear();
+imeshing.clear();
+dyna.Clear();
+doc.clearResult();
+
+var CaveL = 4.0;
+var CaveH = 3.0;
+var ModelL = 30.0;
+var ModelH = 40.0;
+var BaseH = 8.0;
+var Size1 = 0.2;
+var Size2 = 1.0;
+//巷道正上方炮孔长度
+var TopH = 20.0;
+//扇形顶部斜角
+var SemiAngleT = 20.0;
+//扇形底部斜角
+var SemiAngleB = 60.0;
+//但侧炮孔数量，中间单独有一个炮孔
+
+var StemingL = 1;
+
+var nSemiMo = 5;
+
+var BlastTopC = [0, BaseH + CaveH + TopH, 0 ];
+
+//炮孔间距
+var HoleDist = 2.0;
+
+//超过长度，自动提醒
+if(BlastTopC[1] > ModelH )
+{
+alert("blast coord exceed.");
+}
+
+var iloop1 = igeo.genRect(-ModelL * 0.5, 0, 0, ModelL * 0.5, ModelH, 0, Size2);
+var iloop2 = igeo.genRect(-CaveL * 0.5, BaseH, 0, CaveL * 0.5, BaseH + CaveH, 0, Size1);
+
+igeo.genSurface([iloop1, iloop2], 1);
+
+imeshing.genMeshByGmsh(2);
+
+dyna.Set("Output_Interval 500");
+dyna.Set("If_Renew_Contact 1");
+dyna.Set("Large_Displace 1");
+dyna.Set("If_Cal_Bar 0");
+dyna.Set("UnBalance_Ratio 5e-4");
+blkdyn.GetMesh(imeshing);
+
+blkdyn.CrtIFace();
+blkdyn.UpdateIFaceMesh();
+
+blkdyn.SetModel("linear");
+blkdyn.SetMat(3200, 6e10, 0.22, 20e6, 10e6, 39, 15);
+
+blkdyn.SetIModel("linear");
+blkdyn.SetIStiffByElem(1.0);
+blkdyn.SetIStrengthByElem();
+
+blkdyn.SetIFracEnergyByGroupInterface(70, 700, 1,1);
+
+////顶部30MPa压力
+blkdyn.ApplyConditionByCoord("face_force", [0, -20e6, 0], [0,0,0,0,0,0,0,0,0], -1e5, 1e5, ModelH -1e-3, ModelH + 1e-3, -1e5, 1e5, false );
+
+blkdyn.FixV("x", 0.0, "x", -ModelL * 0.5-1e-3, -ModelL * 0.5 + 1e-3);
+blkdyn.FixV("x", 0.0, "x", ModelL * 0.5-1e-3, ModelL * 0.5 + 1e-3);
+blkdyn.FixV("y", 0.0, "y", -1e-3,  1e-3);
+
+
+///////////////////////////////////////////////////////////////////////////////
+/////创建炮孔
+bar.CreateByCoord("BlastHole1", 0, BaseH + CaveH + StemingL, 0, BlastTopC[0], BlastTopC[1], BlastTopC[2] , 20);
+var Pos1 = [0, BaseH + CaveH + StemingL, 0];
+blkdyn.SetLandauSource(1, 1150 / HoleDist, 5600 / HoleDist, 3.4e6 / HoleDist, 3, 1.3333, 2.95e10, Pos1, 0, 1.0e-2);
+var Blastno = 1;
+for(var i = 1; i <= nSemiMo; i++)
+{
+   var DeltA = (90.0 - SemiAngleB) / nSemiMo;
+   var DeltL  = CaveL * 0.5 / nSemiMo;
+   var AngleBNow = 90.0 -  i * DeltA ;
+   var HuduBNow = AngleBNow / 180.0 * Math.PI;
+   var HuduTNow  = (90.0 + SemiAngleT) / 180.0 * Math.PI;
+   var LenNow = DeltL * i;
+   //底部节点
+   var CoordBot = new Array(3);
+   CoordBot[0] = LenNow;
+   CoordBot[1] =  BaseH + CaveH;
+   CoordBot[2] = 0.0;
+   
+  //长度 LengthB
+  var ctanTop = Math.cos(HuduTNow) / Math.sin(HuduTNow);
+  var formularT = BlastTopC[0] + CoordBot[1] * ctanTop - BlastTopC[1] * ctanTop - CoordBot[0];
+  var formularB = Math.cos(HuduBNow) - Math.sin(HuduBNow) * ctanTop;
+  var LengthB = formularT / formularB;
+
+  var CoordTop = new Array(3);
+  CoordTop[0] = CoordBot[0] + LengthB * Math.cos(HuduBNow);
+  CoordTop[1] = CoordBot[1]+ LengthB * Math.sin(HuduBNow);
+  CoordTop[2] = CoordBot[2];
+   
+   //除去Stem
+   CoordBot[0] =  CoordTop[0] - (LengthB - StemingL) * Math.cos(HuduBNow);
+   CoordBot[1] =  CoordTop[1] - (LengthB - StemingL) * Math.sin(HuduBNow);
+   CoordBot[2] =  CoordTop[2];
+
+  //右侧杆件
+  bar.CreateByCoord("BlastHole1", CoordBot[0] , CoordBot[1] ,CoordBot[2] , CoordTop[0] , CoordTop[1] ,CoordTop[2]  , 20);
+  
+  var Pos1 = [CoordBot[0], CoordBot[1], CoordBot[2]];
+  Blastno++;
+  blkdyn.SetLandauSource( Blastno, 1150 / HoleDist, 5600 / HoleDist, 3.4e6 / HoleDist, 3, 1.3333, 2.95e10, Pos1, i * 1e-2, 1.0e-2);
+  
+  //左侧杆件
+  bar.CreateByCoord("BlastHole1", -CoordBot[0] , CoordBot[1] ,CoordBot[2] , -CoordTop[0] , CoordTop[1] ,CoordTop[2]  , 20);
+
+  var Pos1 = [-CoordBot[0], CoordBot[1], CoordBot[2]];
+  Blastno++;
+  blkdyn.SetLandauSource(Blastno, 1150 / HoleDist, 5600 / HoleDist, 3.4e6 / HoleDist, 3, 1.3333, 2.95e10, Pos1, i * 1e-2, 1.0e-2);
+}
+
+var value1 = [0.1, 1150, 1.0e10, 0.3, 235e1, 235e1, 3e6, 35, 1e9, 0.8, 0];
+bar.SetPropByID(value1, 1, 20000, 1, 150);
+
+for(var i = 1; i <= 2 * nSemiMo + 1 ; i++)
+{
+bar.BindLandauSource(i, i, i);
+}
+
+
+
+//弹性计算稳定
+dyna.Solve();
+blkdyn.SetModelByCoord("MC",  -ModelL * 0.5 + 2.0, ModelL * 0.5 - 2.0, 2.0,  ModelH - 2.0, -1e5, 1e5);
+blkdyn.SetIModelByCoord("FracE",  -ModelL * 0.5 + 2.0, ModelL * 0.5 - 2.0, 2.0,  ModelH - 2.0, -1e5, 1e5);
+//破裂计算稳定
+dyna.Solve();
+//保存初始文件
+dyna.Save("Init.sav");
+
+////开始爆破计算
+dyna.Set("If_Virtural_Mass 0");
+dyna.Set("Time_Now 0");
+blkdyn.SetLocalDamp(0.01);
+dyna.TimeStepCorrect(0.2);
+
+//blkdyn.FreeV("x", "x", -ModelL * 0.5-1e-3, -ModelL * 0.5 + 1e-3);
+blkdyn.FreeV("x",  "x", ModelL * 0.5-1e-3, ModelL * 0.5 + 1e-3);
+blkdyn.FreeV("y","y", -1e-3,  1e-3);
+
+blkdyn. SetQuietBoundByCoord (-ModelL * 0.5-1e-3, -ModelL * 0.5 + 1e-3, -1e5, 1e5, -1e5, 1e5);
+blkdyn. SetQuietBoundByCoord (ModelL * 0.5-1e-3, ModelL * 0.5 + 1e-3, -1e5, 1e5, -1e5, 1e5);
+blkdyn. SetQuietBoundByCoord (-1e5, 1e5, -1e-3, 1e-3, -1e5, 1e5);
+blkdyn. SetQuietBoundByCoord (-1e5, 1e5, ModelH - 0.05, ModelH + 0.05, -1e5, 1e5);
+
+
+dyna.Set("If_Cal_Bar 1");
+bar.SetModelByID("linear", 1, 21);
+
+dyna.DynaCycle(1);
+ 

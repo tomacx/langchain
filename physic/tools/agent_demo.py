@@ -13,8 +13,16 @@ from langchain_core.tools import create_retriever_tool
 from langchain.agents import create_agent
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 
+# LangGraph 组件
+from langgraph.graph import StateGraph, END
+from langgraph.prebuilt import ToolNode
+
+# 引入必要消息组件
+from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, SystemMessage
+
 import os
-from typing import List
+import operator
+from typing import Annotated, List, TypedDict, Sequence, Union
 
 # 导入 LangSmith 查看过程
 from dotenv import load_dotenv
@@ -55,7 +63,7 @@ class VectorStoreManager:
 # 工具构建
 class ToolFactory:
     @staticmethod
-    def create_physics_lookup_tool(vectorstore, k: int = 5):
+    def create_physics_lookup_tool(vectorstore, k: int = 3):
         """
         构建知识库检索工具
         使用 LangChain v1.0+ 的 create_retriever_tool 方法
@@ -86,18 +94,137 @@ class ToolFactory:
             )
         )
 
+# 定义状态
+# 智能体之间传递信息
+
+class AgentState(TypedDict):
+    messages: Annotated[Sequence[BaseMessage], operator.add]
+    sender: str
+    iterations: int # 记录重试次数
+
+# 定义两个智能体之间的节点
+
+# 节点 A: 生成者(Generator)
+def generator_node(state: AgentState, agent_executor):
+    print("\n[Generator] 正在思考/修改代码...")
+
+    # 获取完整的历史消息
+    messages = state["messages"]
+
+    # 调用 AgentExecutor 生成结果
+    # 只关心最后的文末输出
+    result = agent_executor.invoke({"messages": messages})
+
+    last_message = result["messages"][-1]
+
+    # 将生成的结果包装为 AIMessage 返回
+    return {
+        "messages": [last_message],
+        "sender": "generator",
+        "iterations": state.get("iterations", 0) + 1
+    }
+
+# 节点 B: 评估者(Evaluator)
+def evaluator_node(state: AgentState, llm):
+    print("\n[Evaluator] 正在审查代码")
+
+    messages = state["messages"]
+    last_message = messages[-1]
+    last_code = last_message.content
+    
+    # 评估者的 Prompt
+    eval_prompt = """
+    你是一位严格的 CDEM 代码审查员。请检查上面的 JavaScript 代码。
+    
+    ### 必查项:
+    1. **起手式**: 脚本第一行必须包含 `setCurDir(getSrcDir());`。
+    2. **全局对象**: 必须使用 `igeo` (几何), `imeshing` (网格), `blkdyn` (计算) 等对象。
+    3. **坐标格式**: 坐标必须是 `[[x,y,z,prop],...]` 格式。严禁使用 `new Point()` 或简单的 `[x,y,z]`。
+    4. **API真实性**: 看起来是否像是捏造的函数？
+    
+    ### 输出格式:
+    - 如果代码完全正确，仅输出: "PASS"
+    - 如果有错误，请输出: 
+      "FAIL: [1. 错误点...; 2. 错误点...]"
+      (请给出具体的修改建议，例如“请在坐标中添加prop属性”)
+    """
+    
+    response = llm.invoke([
+        SystemMessage(content=eval_prompt),
+        HumanMessage(content=f"待审查代码:\n{last_code}")
+    ])
+    
+    content = response.content.strip()
+    print(f"   >>> 审查意见: {content[:100]}...")
+    
+    # 返回 HumanMessage
+    # Generator 把它当成是用户的强指令，从而被迫进行修改
+    return {
+        "messages": [HumanMessage(content=f"Reviewer Feedback:\n{content}", name="evaluator")],
+        "sender": "evaluator"
+    }
+
+# 构建工作流图(Graph)
+
+def build_graph(generator_executor, evaluator_llm):
+    workflow = StateGraph(AgentState)
+
+    # 1. 添加节点
+    # 使用 functools.partial 或 lambda 将外部依赖注入到节点函数中
+    workflow.add_node("generator", lambda state: generator_node(state, generator_executor))
+    workflow.add_node("evaluator", lambda state: evaluator_node(state, evaluator_llm))
+
+    # 2. 设置入口
+    workflow.set_entry_point("generator")
+
+    # 3. 添加条件边 (Conditional Edges)
+    # 逻辑：生成者 -> 评估者 -> (判断) -> 结束 或 回到生成者
+    
+    def should_continue(state: AgentState):
+        messages = state["messages"]
+        last_message = messages[-1]
+        # content = last_message.content
+        content = last_message
+        print("[Continue] Content:", content)
+        iterations = state["iterations"]
+        
+        # 如果评估通过
+        if "PASS" in content:
+            print("\n✅ 代码审查通过！")
+            return END
+        
+        # 如果重试次数超过限制 (防止死循环)
+        if iterations >= 5:
+            print("\n⚠️ 达到最大重试次数，强制结束。")
+            return END
+            
+        # 否则，把评估意见传回生成者，让它重写
+        print("\n🔄 代码未通过，返回生成者重写...")
+        return "generator"
+
+    workflow.add_edge("generator", "evaluator")
+    workflow.add_conditional_edges(
+        "evaluator",
+        should_continue,
+        {
+            "generator": "generator",
+            END: END
+        }
+    )
+
+    return workflow.compile()
 
 # 构建智能体
 class AgentBuilder:
     def __init__(self, model_name: str = "llama3.1:latest"):
         self.llm = ChatOllama(
             model=model_name,
-            temperature=0.1
+            # temperature=0.1
         )
 
     def _get_script_writer_prompt(self) -> ChatPromptTemplate:
         """
-        定义专用的脚本作家 Prompt
+        定义专用的脚本 Prompt
         使用 ChatPromptTemplate 替代旧的 PromptTemplate
         """
         system_prompt = """你是一位精通 CDEM 仿真软件的 JavaScript 脚本编写专家。
@@ -117,7 +244,6 @@ class AgentBuilder:
 - 输出完整的 JavaScript 代码块。
 - 代码中必须包含注释。
 """
-
         return system_prompt
 
     def build_executor(self, tools: List):
@@ -156,32 +282,54 @@ def main():
 
         # 3. 构建 Agent
         builder = AgentBuilder(model_name="llama3.1:latest")
-        agent_executor = builder.build_executor(tools_list)
+        generator_agent = builder.build_executor(tools_list)
+
+        # 评估智能体
+        evaluator_llm = ChatOllama(model="llama3.1:latest", temperature=0.0)
+
+        app = build_graph(generator_agent, evaluator_llm)
 
         # 4. 执行任务
         query = "请为我写一个SuperCDEM中的爆破应力波传播的脚本"
         print(f"\n🚀 任务开始：{query}\n")
         print("=" * 60)
 
-        # 使用 invoke 方法执行
-        result = agent_executor.invoke({
-            "messages": [{"role": "user", "content": query}]
-        })
+        # # 使用 invoke 方法执行 LangChain
+        # result = agent_executor.invoke({
+        #     "messages": [{"role": "user", "content": query}]
+        # })
 
-        # 5. 输出结果
-        print("\n" + "=" * 60)
-        print("📝 最终脚本产出：")
-        print("=" * 60)
-        if "messages" in result:
-            last_message = result["messages"][-1]
-            if hasattr(last_message, "content"):
-                print(last_message.content)
-            else:
-                print(last_message)
-        else:
-            print(result)
+        ## LangGraph 迭代部分 ======
 
-        print("=" * 60)
+        inputs = {
+            "messages": [HumanMessage(content=query)],
+            "iterations": 0
+        }
+    
+        # 运行流
+        for output in app.stream(inputs):
+            # 这里的 output 包含每一步的状态更新
+            pass
+
+        print("\n" + "="*50)
+        print("📝 最终结果已生成")
+
+        # =========================
+
+        # # 5. 输出结果
+        # print("\n" + "=" * 60)
+        # print("📝 最终脚本产出：")
+        # print("=" * 60)
+        # if "messages" in result:
+        #     last_message = result["messages"][-1]
+        #     if hasattr(last_message, "content"):
+        #         print(last_message.content)
+        #     else:
+        #         print(last_message)
+        # else:
+        #     print(result)
+
+        # print("=" * 60)
 
     except Exception as e:
         print(f"\n❌ 程序运行出错: {e}")

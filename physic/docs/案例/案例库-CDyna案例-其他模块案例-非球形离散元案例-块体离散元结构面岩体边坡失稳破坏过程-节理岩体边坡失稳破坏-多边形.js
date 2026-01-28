@@ -1,0 +1,59 @@
+//设置当前路径为JavaScript脚本所在的路径
+setCurDir(getSrcDir());
+
+//设置输出的间隔为500步
+dyna.Set("Output_Interval 2000");
+
+//关闭虚质量计算开关
+dyna.Set("If_Virtural_Mass 1");
+
+//设置虚拟时步
+dyna.Set("Virtural_Step 0.4");
+
+//设置不平衡率
+dyna.Set("UnBalance_Ratio 5e-4");
+
+//设置三个方向的重力加速度
+dyna.Set("Gravity 0.0   -9.8 0.0");
+
+//设置接触容差为0.005m
+dyna.Set("Contact_Detect_Tol 0.005");
+
+//设置颗粒超出范围后清除颗粒
+//dyna.Set("Particle_Out_Kill 1 0 1870 0 2000 2000 4000 0");
+
+//导入gid格式的刚性面边界
+rdface.Import(2,"bound.msh");
+
+//导入genvi格式的多边形数据
+pdyna.ImportPartGenvi("body-block.gvx");
+
+
+
+//设置颗粒模型为线弹性模型
+pdyna.SetModel("linear");
+
+//设置颗粒的材料参数，依次为密度、弹性模量、泊松比、抗拉强度、粘聚力、内摩擦角、局部阻尼、粘性阻尼系数（临界阻尼比）
+pdyna.SetPartMat(2500, 1e7, 0.25, 0.0, 0.0, 10, 0.8, 0.8, 0.0);
+
+//设置计算时步
+dyna.Set("Time_Step 5e-3");
+
+//自动优化计算时间步长
+dyna.TimeStepCorrect(0.5);
+
+//关闭虚质量计算开关
+dyna.Set("If_Virtural_Mass 0");
+
+//求解至稳定
+dyna.Solve();
+
+//设置颗粒模型为脆性断裂模型
+pdyna.SetModel("brittleMC");
+
+
+//设置颗粒的材料参数，依次为密度、弹性模量、泊松比、抗拉强度、粘聚力、内摩擦角、局部阻尼、粘性阻尼系数（临界阻尼比）
+pdyna.SetPartMat(2500, 1e7, 0.25, 0.0, 0.0, 10, 0.0, 0.0, 0.1);
+
+//迭代1万步
+dyna.Solve(200000);
