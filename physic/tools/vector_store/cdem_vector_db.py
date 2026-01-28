@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 CDEM案例库及手册向量数据库构建器
-专门处理 /Users/cxh/Codes/langchain/physic/docs/CDEM案例库及手册 目录
+专门处理 D:\Codes\langchain\physic\docs\CDEM案例库及手册 目录
 """
 
 import os
