@@ -20,5 +20,5 @@ gflow.exportGrid();
 gflow.solve();
 
 
-//打印提示信息
+//鎵撳嵃鎻愮ず淇℃伅
 print("Solution is OK!")

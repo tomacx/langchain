@@ -1,0 +1,17 @@
+{
+  "train": {
+    "CDyna案例": 252,
+    "GFlow案例": 7,
+    "MudSim案例": 3,
+    "SuperCDEM案例": 19,
+    "建模及网格案例": 52
+  },
+  "val": {},
+  "test": {
+    "CDyna案例": 64,
+    "GFlow案例": 2,
+    "MudSim案例": 1,
+    "SuperCDEM案例": 5,
+    "建模及网格案例": 14
+  }
+}

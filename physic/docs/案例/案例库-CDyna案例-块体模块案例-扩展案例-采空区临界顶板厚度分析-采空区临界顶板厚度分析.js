@@ -31,7 +31,7 @@ var exititer = dyna.GetValue("Iter_Now");
 if(exititer >= 30000)
 {
 var linjieH =  30 - (i - 1);
-print("该采空区的临界厚度为    " +  linjieH + " m");
+print("璇ラ噰绌哄尯鐨勪复鐣屽帤搴︿负    " +  linjieH + " m");
 break;
 }
 }

@@ -1,0 +1,1385 @@
+{
+  "metadata": {
+    "total_test_cases": 86,
+    "evaluation_date": null,
+    "evaluator": null
+  },
+  "test_cases": [
+    {
+      "test_id": "T001",
+      "filename": "案例库-CDyna案例-其他模块案例-刚体动力学案例-立方体part与块体单元的接触碰撞-立方体part与块体单元的接触碰撞.js",
+      "category": "CDyna案例",
+      "test_queries": [
+        "基于案例库-CDyna案例-其他模块案例-刚体动力学案例-立方体part与块体单元的接触碰撞-立方体part与块体单元的接触碰撞的功能需求",
+        "【请根据实际功能补充查询语句】"
+      ],
+      "evaluation_metrics": {
+        "functionality_score": null,
+        "code_quality_score": null,
+        "execution_score": null,
+        "similarity_score": null
+      },
+      "notes": ""
+    },
+    {
+      "test_id": "T002",
+      "filename": "案例库-CDyna案例-其他模块案例-非球形离散元案例-三角形颗粒掉落-三角形颗粒掉落.js",
+      "category": "CDyna案例",
+      "test_queries": [
+        "基于案例库-CDyna案例-其他模块案例-非球形离散元案例-三角形颗粒掉落-三角形颗粒掉落的功能需求",
+        "【请根据实际功能补充查询语句】"
+      ],
+      "evaluation_metrics": {
+        "functionality_score": null,
+        "code_quality_score": null,
+        "execution_score": null,
+        "similarity_score": null
+      },
+      "notes": ""
+    },
+    {
+      "test_id": "T003",
+      "filename": "案例库-CDyna案例-其他模块案例-非球形离散元案例-块体间接触参数随机设置-块体离散元接触参数随机.js",
+      "category": "CDyna案例",
+      "test_queries": [
+        "基于案例库-CDyna案例-其他模块案例-非球形离散元案例-块体间接触参数随机设置-块体离散元接触参数随机的功能需求",
+        "【请根据实际功能补充查询语句】"
+      ],
+      "evaluation_metrics": {
+        "functionality_score": null,
+        "code_quality_score": null,
+        "execution_score": null,
+        "similarity_score": null
+      },
+      "notes": ""
+    },
+    {
+      "test_id": "T004",
+      "filename": "案例库-CDyna案例-其他模块案例-非球形离散元案例-椭球颗粒创建及掉落-椭球颗粒创建及掉落.js",
+      "category": "CDyna案例",
+      "test_queries": [
+        "基于案例库-CDyna案例-其他模块案例-非球形离散元案例-椭球颗粒创建及掉落-椭球颗粒创建及掉落的功能需求",
+        "【请根据实际功能补充查询语句】"
+      ],
+      "evaluation_metrics": {
+        "functionality_score": null,
+        "code_quality_score": null,
+        "execution_score": null,
+        "similarity_score": null
+      },
+      "notes": ""
+    },
+    {
+      "test_id": "T005",
+      "filename": "案例库-CDyna案例-冲击波模块案例-流固简单耦合-流固简单耦合.js",
+      "category": "CDyna案例",
+      "test_queries": [
+        "基于案例库-CDyna案例-冲击波模块案例-流固简单耦合-流固简单耦合的功能需求",
+        "【请根据实际功能补充查询语句】"
+      ],
+      "evaluation_metrics": {
+        "functionality_score": null,
+        "code_quality_score": null,
+        "execution_score": null,
+        "similarity_score": null
+      },
+      "notes": ""
+    },
+    {
+      "test_id": "T006",
+      "filename": "案例库-CDyna案例-冲击波模块案例-透射及固壁边界条件-二维边界条件测试.js",
+      "category": "CDyna案例",
+      "test_queries": [
+        "基于案例库-CDyna案例-冲击波模块案例-透射及固壁边界条件-二维边界条件测试的功能需求",
+        "【请根据实际功能补充查询语句】"
+      ],
+      "evaluation_metrics": {
+        "functionality_score": null,
+        "code_quality_score": null,
+        "execution_score": null,
+        "similarity_score": null
+      },
+      "notes": ""
+    },
+    {
+      "test_id": "T007",
+      "filename": "案例库-CDyna案例-冲击波模块案例-高压气仓阀门突然打开-高压气仓阀门突然打开.js",
+      "category": "CDyna案例",
+      "test_queries": [
+        "基于案例库-CDyna案例-冲击波模块案例-高压气仓阀门突然打开-高压气仓阀门突然打开的功能需求",
+        "【请根据实际功能补充查询语句】"
+      ],
+      "evaluation_metrics": {
+        "functionality_score": null,
+        "code_quality_score": null,
+        "execution_score": null,
+        "similarity_score": null
+      },
+      "notes": ""
+    },
+    {
+      "test_id": "T008",
+      "filename": "案例库-CDyna案例-块体模块案例-基本案例-BlockFall-BlockFall.js",
+      "category": "CDyna案例",
+      "test_queries": [
+        "基于案例库-CDyna案例-块体模块案例-基本案例-BlockFall-BlockFall的功能需求",
+        "【请根据实际功能补充查询语句】"
+      ],
+      "evaluation_metrics": {
+        "functionality_score": null,
+        "code_quality_score": null,
+        "execution_score": null,
+        "similarity_score": null
+      },
+      "notes": ""
+    },
+    {
+      "test_id": "T009",
+      "filename": "案例库-CDyna案例-块体模块案例-基本案例-FracSeepage-FracSeepage.js",
+      "category": "CDyna案例",
+      "test_queries": [
+        "基于案例库-CDyna案例-块体模块案例-基本案例-FracSeepage-FracSeepage的功能需求",
+        "【请根据实际功能补充查询语句】"
+      ],
+      "evaluation_metrics": {
+        "functionality_score": null,
+        "code_quality_score": null,
+        "execution_score": null,
+        "similarity_score": null
+      },
+      "notes": ""
+    },
+    {
+      "test_id": "T010",
+      "filename": "案例库-CDyna案例-块体模块案例-基本案例-HeatSolidFrac-HeatSolidFrac.js",
+      "category": "CDyna案例",
+      "test_queries": [
+        "基于案例库-CDyna案例-块体模块案例-基本案例-HeatSolidFrac-HeatSolidFrac的功能需求",
+        "【请根据实际功能补充查询语句】"
+      ],
+      "evaluation_metrics": {
+        "functionality_score": null,
+        "code_quality_score": null,
+        "execution_score": null,
+        "similarity_score": null
+      },
+      "notes": ""
+    },
+    {
+      "test_id": "T011",
+      "filename": "案例库-CDyna案例-块体模块案例-基本案例-SlopeQuake-SlopeQuake.js",
+      "category": "CDyna案例",
+      "test_queries": [
+        "基于案例库-CDyna案例-块体模块案例-基本案例-SlopeQuake-SlopeQuake的功能需求",
+        "【请根据实际功能补充查询语句】"
+      ],
+      "evaluation_metrics": {
+        "functionality_score": null,
+        "code_quality_score": null,
+        "execution_score": null,
+        "similarity_score": null
+      },
+      "notes": ""
+    },
+    {
+      "test_id": "T012",
+      "filename": "案例库-CDyna案例-块体模块案例-基本案例-TunnelExcavation-Tunnel3D.js",
+      "category": "CDyna案例",
+      "test_queries": [
+        "基于案例库-CDyna案例-块体模块案例-基本案例-TunnelExcavation-Tunnel3D的功能需求",
+        "【请根据实际功能补充查询语句】"
+      ],
+      "evaluation_metrics": {
+        "functionality_score": null,
+        "code_quality_score": null,
+        "execution_score": null,
+        "similarity_score": null
+      },
+      "notes": ""
+    },
+    {
+      "test_id": "T013",
+      "filename": "案例库-CDyna案例-块体模块案例-扩展案例-CustomModel-用户自定义求解-Command1.js",
+      "category": "CDyna案例",
+      "test_queries": [
+        "基于案例库-CDyna案例-块体模块案例-扩展案例-CustomModel-用户自定义求解-Command1的功能需求",
+        "【请根据实际功能补充查询语句】"
+      ],
+      "evaluation_metrics": {
+        "functionality_score": null,
+        "code_quality_score": null,
+        "execution_score": null,
+        "similarity_score": null
+      },
+      "notes": ""
+    },
+    {
+      "test_id": "T014",
+      "filename": "案例库-CDyna案例-块体模块案例-扩展案例-CustomModel-用户自定义求解-Command2.js",
+      "category": "CDyna案例",
+      "test_queries": [
+        "基于案例库-CDyna案例-块体模块案例-扩展案例-CustomModel-用户自定义求解-Command2的功能需求",
+        "【请根据实际功能补充查询语句】"
+      ],
+      "evaluation_metrics": {
+        "functionality_score": null,
+        "code_quality_score": null,
+        "execution_score": null,
+        "similarity_score": null
+      },
+      "notes": ""
+    },
+    {
+      "test_id": "T015",
+      "filename": "案例库-CDyna案例-块体模块案例-扩展案例-Davidenkov土动力学模型-Davidenkov-Model.js",
+      "category": "CDyna案例",
+      "test_queries": [
+        "基于案例库-CDyna案例-块体模块案例-扩展案例-Davidenkov土动力学模型-Davidenkov-Model的功能需求",
+        "【请根据实际功能补充查询语句】"
+      ],
+      "evaluation_metrics": {
+        "functionality_score": null,
+        "code_quality_score": null,
+        "execution_score": null,
+        "similarity_score": null
+      },
+      "notes": ""
+    },
+    {
+      "test_id": "T016",
+      "filename": "案例库-CDyna案例-块体模块案例-扩展案例-Davidenkov土动力学模型-Mohr-Coulomb-Model.js",
+      "category": "CDyna案例",
+      "test_queries": [
+        "基于案例库-CDyna案例-块体模块案例-扩展案例-Davidenkov土动力学模型-Mohr-Coulomb-Model的功能需求",
+        "【请根据实际功能补充查询语句】"
+      ],
+      "evaluation_metrics": {
+        "functionality_score": null,
+        "code_quality_score": null,
+        "execution_score": null,
+        "similarity_score": null
+      },
+      "notes": ""
+    },
+    {
+      "test_id": "T017",
+      "filename": "案例库-CDyna案例-块体模块案例-扩展案例-FEP模型-钨球冲击铝板-BallImpact.js",
+      "category": "CDyna案例",
+      "test_queries": [
+        "基于案例库-CDyna案例-块体模块案例-扩展案例-FEP模型-钨球冲击铝板-BallImpact的功能需求",
+        "【请根据实际功能补充查询语句】"
+      ],
+      "evaluation_metrics": {
+        "functionality_score": null,
+        "code_quality_score": null,
+        "execution_score": null,
+        "similarity_score": null
+      },
+      "notes": ""
+    },
+    {
+      "test_id": "T018",
+      "filename": "案例库-CDyna案例-块体模块案例-扩展案例-GDEM-Env相关-SetBkColor.js",
+      "category": "CDyna案例",
+      "test_queries": [
+        "基于案例库-CDyna案例-块体模块案例-扩展案例-GDEM-Env相关-SetBkColor的功能需求",
+        "【请根据实际功能补充查询语句】"
+      ],
+      "evaluation_metrics": {
+        "functionality_score": null,
+        "code_quality_score": null,
+        "execution_score": null,
+        "similarity_score": null
+      },
+      "notes": ""
+    },
+    {
+      "test_id": "T019",
+      "filename": "案例库-CDyna案例-块体模块案例-扩展案例-三维露天矿爆破对边坡稳定性的影响-3DSlopePileBlast.js",
+      "category": "CDyna案例",
+      "test_queries": [
+        "基于案例库-CDyna案例-块体模块案例-扩展案例-三维露天矿爆破对边坡稳定性的影响-3DSlopePileBlast的功能需求",
+        "【请根据实际功能补充查询语句】"
+      ],
+      "evaluation_metrics": {
+        "functionality_score": null,
+        "code_quality_score": null,
+        "execution_score": null,
+        "similarity_score": null
+      },
+      "notes": ""
+    },
+    {
+      "test_id": "T020",
+      "filename": "案例库-CDyna案例-块体模块案例-扩展案例-刚性面施加地震波-RdFace-Block.js",
+      "category": "CDyna案例",
+      "test_queries": [
+        "基于案例库-CDyna案例-块体模块案例-扩展案例-刚性面施加地震波-RdFace-Block的功能需求",
+        "【请根据实际功能补充查询语句】"
+      ],
+      "evaluation_metrics": {
+        "functionality_score": null,
+        "code_quality_score": null,
+        "execution_score": null,
+        "similarity_score": null
+      },
+      "notes": ""
+    },
+    {
+      "test_id": "T021",
+      "filename": "案例库-CDyna案例-块体模块案例-扩展案例-单元细观节理模型-单元节理模型单轴拉伸-双节理.js",
+      "category": "CDyna案例",
+      "test_queries": [
+        "基于案例库-CDyna案例-块体模块案例-扩展案例-单元细观节理模型-单元节理模型单轴拉伸-双节理的功能需求",
+        "【请根据实际功能补充查询语句】"
+      ],
+      "evaluation_metrics": {
+        "functionality_score": null,
+        "code_quality_score": null,
+        "execution_score": null,
+        "similarity_score": null
+      },
+      "notes": ""
+    },
+    {
+      "test_id": "T022",
+      "filename": "案例库-CDyna案例-块体模块案例-扩展案例-单轴压缩破裂-UCStest.js",
+      "category": "CDyna案例",
+      "test_queries": [
+        "基于案例库-CDyna案例-块体模块案例-扩展案例-单轴压缩破裂-UCStest的功能需求",
+        "【请根据实际功能补充查询语句】"
+      ],
+      "evaluation_metrics": {
+        "functionality_score": null,
+        "code_quality_score": null,
+        "execution_score": null,
+        "similarity_score": null
+      },
+      "notes": ""
+    },
+    {
+      "test_id": "T023",
+      "filename": "案例库-CDyna案例-块体模块案例-扩展案例-压水灌浆过程模拟-压水过程模拟-压水试验运行脚本.js",
+      "category": "CDyna案例",
+      "test_queries": [
+        "基于案例库-CDyna案例-块体模块案例-扩展案例-压水灌浆过程模拟-压水过程模拟-压水试验运行脚本的功能需求",
+        "【请根据实际功能补充查询语句】"
+      ],
+      "evaluation_metrics": {
+        "functionality_score": null,
+        "code_quality_score": null,
+        "execution_score": null,
+        "similarity_score": null
+      },
+      "notes": ""
+    },
+    {
+      "test_id": "T024",
+      "filename": "案例库-CDyna案例-块体模块案例-扩展案例-含圆孔试样冲击生热及热传导-SampleImpact-不考虑热传导.js",
+      "category": "CDyna案例",
+      "test_queries": [
+        "基于案例库-CDyna案例-块体模块案例-扩展案例-含圆孔试样冲击生热及热传导-SampleImpact-不考虑热传导的功能需求",
+        "【请根据实际功能补充查询语句】"
+      ],
+      "evaluation_metrics": {
+        "functionality_score": null,
+        "code_quality_score": null,
+        "execution_score": null,
+        "similarity_score": null
+      },
+      "notes": ""
+    },
+    {
+      "test_id": "T025",
+      "filename": "案例库-CDyna案例-块体模块案例-扩展案例-含圆孔试样冲击生热及热传导-SampleImpact-考虑热传导.js",
+      "category": "CDyna案例",
+      "test_queries": [
+        "基于案例库-CDyna案例-块体模块案例-扩展案例-含圆孔试样冲击生热及热传导-SampleImpact-考虑热传导的功能需求",
+        "【请根据实际功能补充查询语句】"
+      ],
+      "evaluation_metrics": {
+        "functionality_score": null,
+        "code_quality_score": null,
+        "execution_score": null,
+        "similarity_score": null
+      },
+      "notes": ""
+    },
+    {
+      "test_id": "T026",
+      "filename": "案例库-CDyna案例-块体模块案例-扩展案例-围压作用下爆炸诱发裂缝的扩展过程模拟-BlastCrack.js",
+      "category": "CDyna案例",
+      "test_queries": [
+        "基于案例库-CDyna案例-块体模块案例-扩展案例-围压作用下爆炸诱发裂缝的扩展过程模拟-BlastCrack的功能需求",
+        "【请根据实际功能补充查询语句】"
+      ],
+      "evaluation_metrics": {
+        "functionality_score": null,
+        "code_quality_score": null,
+        "execution_score": null,
+        "similarity_score": null
+      },
+      "notes": ""
+    },
+    {
+      "test_id": "T027",
+      "filename": "案例库-CDyna案例-块体模块案例-扩展案例-地冲击模拟-2-RockBurst.js",
+      "category": "CDyna案例",
+      "test_queries": [
+        "基于案例库-CDyna案例-块体模块案例-扩展案例-地冲击模拟-2-RockBurst的功能需求",
+        "【请根据实际功能补充查询语句】"
+      ],
+      "evaluation_metrics": {
+        "functionality_score": null,
+        "code_quality_score": null,
+        "execution_score": null,
+        "similarity_score": null
+      },
+      "notes": ""
+    },
+    {
+      "test_id": "T028",
+      "filename": "案例库-CDyna案例-块体模块案例-扩展案例-块体与Link单元耦合-TwoElemLink.js",
+      "category": "CDyna案例",
+      "test_queries": [
+        "基于案例库-CDyna案例-块体模块案例-扩展案例-块体与Link单元耦合-TwoElemLink的功能需求",
+        "【请根据实际功能补充查询语句】"
+      ],
+      "evaluation_metrics": {
+        "functionality_score": null,
+        "code_quality_score": null,
+        "execution_score": null,
+        "similarity_score": null
+      },
+      "notes": ""
+    },
+    {
+      "test_id": "T029",
+      "filename": "案例库-CDyna案例-块体模块案例-扩展案例-块体单元与网的碰撞-ParsBarsC.js",
+      "category": "CDyna案例",
+      "test_queries": [
+        "基于案例库-CDyna案例-块体模块案例-扩展案例-块体单元与网的碰撞-ParsBarsC的功能需求",
+        "【请根据实际功能补充查询语句】"
+      ],
+      "evaluation_metrics": {
+        "functionality_score": null,
+        "code_quality_score": null,
+        "execution_score": null,
+        "similarity_score": null
+      },
+      "notes": ""
+    },
+    {
+      "test_id": "T030",
+      "filename": "案例库-CDyna案例-块体模块案例-扩展案例-塑性区半径理论解对比-塑性区半径理论解对比.js",
+      "category": "CDyna案例",
+      "test_queries": [
+        "基于案例库-CDyna案例-块体模块案例-扩展案例-塑性区半径理论解对比-塑性区半径理论解对比的功能需求",
+        "【请根据实际功能补充查询语句】"
+      ],
+      "evaluation_metrics": {
+        "functionality_score": null,
+        "code_quality_score": null,
+        "execution_score": null,
+        "similarity_score": null
+      },
+      "notes": ""
+    },
+    {
+      "test_id": "T031",
+      "filename": "案例库-CDyna案例-块体模块案例-扩展案例-多点起爆过程模拟-多点起爆过程模拟.js",
+      "category": "CDyna案例",
+      "test_queries": [
+        "基于案例库-CDyna案例-块体模块案例-扩展案例-多点起爆过程模拟-多点起爆过程模拟的功能需求",
+        "【请根据实际功能补充查询语句】"
+      ],
+      "evaluation_metrics": {
+        "functionality_score": null,
+        "code_quality_score": null,
+        "execution_score": null,
+        "similarity_score": null
+      },
+      "notes": ""
+    },
+    {
+      "test_id": "T032",
+      "filename": "案例库-CDyna案例-块体模块案例-扩展案例-子弹侵彻爆炸连续过程模拟-command.js",
+      "category": "CDyna案例",
+      "test_queries": [
+        "基于案例库-CDyna案例-块体模块案例-扩展案例-子弹侵彻爆炸连续过程模拟-command的功能需求",
+        "【请根据实际功能补充查询语句】"
+      ],
+      "evaluation_metrics": {
+        "functionality_score": null,
+        "code_quality_score": null,
+        "execution_score": null,
+        "similarity_score": null
+      },
+      "notes": ""
+    },
+    {
+      "test_id": "T033",
+      "filename": "案例库-CDyna案例-块体模块案例-扩展案例-孔隙渗流与应力耦合的Mandel-Cryer问题-PoreSeepageSolidConsolidation.js",
+      "category": "CDyna案例",
+      "test_queries": [
+        "基于案例库-CDyna案例-块体模块案例-扩展案例-孔隙渗流与应力耦合的Mandel-Cryer问题-PoreSeepageSolidConsolidation的功能需求",
+        "【请根据实际功能补充查询语句】"
+      ],
+      "evaluation_metrics": {
+        "functionality_score": null,
+        "code_quality_score": null,
+        "execution_score": null,
+        "similarity_score": null
+      },
+      "notes": ""
+    },
+    {
+      "test_id": "T034",
+      "filename": "案例库-CDyna案例-块体模块案例-扩展案例-岩石卸荷弹射过程模拟-RockBurst.js",
+      "category": "CDyna案例",
+      "test_queries": [
+        "基于案例库-CDyna案例-块体模块案例-扩展案例-岩石卸荷弹射过程模拟-RockBurst的功能需求",
+        "【请根据实际功能补充查询语句】"
+      ],
+      "evaluation_metrics": {
+        "functionality_score": null,
+        "code_quality_score": null,
+        "execution_score": null,
+        "similarity_score": null
+      },
+      "notes": ""
+    },
+    {
+      "test_id": "T035",
+      "filename": "案例库-CDyna案例-块体模块案例-扩展案例-指定部件旋转条件施加(液压支架尾梁开门及关门模拟)-模拟案例-按照转动速度进行逐渐旋转.js",
+      "category": "CDyna案例",
+      "test_queries": [
+        "基于案例库-CDyna案例-块体模块案例-扩展案例-指定部件旋转条件施加(液压支架尾梁开门及关门模拟)-模拟案例-按照转动速度进行逐渐旋转的功能需求",
+        "【请根据实际功能补充查询语句】"
+      ],
+      "evaluation_metrics": {
+        "functionality_score": null,
+        "code_quality_score": null,
+        "execution_score": null,
+        "similarity_score": null
+      },
+      "notes": ""
+    },
+    {
+      "test_id": "T036",
+      "filename": "案例库-CDyna案例-块体模块案例-扩展案例-材料冷却引起的裂纹扩展过程模拟-材料冷却引起的裂纹扩展.js",
+      "category": "CDyna案例",
+      "test_queries": [
+        "基于案例库-CDyna案例-块体模块案例-扩展案例-材料冷却引起的裂纹扩展过程模拟-材料冷却引起的裂纹扩展的功能需求",
+        "【请根据实际功能补充查询语句】"
+      ],
+      "evaluation_metrics": {
+        "functionality_score": null,
+        "code_quality_score": null,
+        "execution_score": null,
+        "similarity_score": null
+      },
+      "notes": ""
+    },
+    {
+      "test_id": "T037",
+      "filename": "案例库-CDyna案例-块体模块案例-扩展案例-横观各向同性模型-爆炸波作用下横观各向同性模型中波的传播.js",
+      "category": "CDyna案例",
+      "test_queries": [
+        "基于案例库-CDyna案例-块体模块案例-扩展案例-横观各向同性模型-爆炸波作用下横观各向同性模型中波的传播的功能需求",
+        "【请根据实际功能补充查询语句】"
+      ],
+      "evaluation_metrics": {
+        "functionality_score": null,
+        "code_quality_score": null,
+        "execution_score": null,
+        "similarity_score": null
+      },
+      "notes": ""
+    },
+    {
+      "test_id": "T038",
+      "filename": "案例库-CDyna案例-块体模块案例-扩展案例-混凝土块嵌入钢筋后压缩破裂-ConcreteBarCrack.js",
+      "category": "CDyna案例",
+      "test_queries": [
+        "基于案例库-CDyna案例-块体模块案例-扩展案例-混凝土块嵌入钢筋后压缩破裂-ConcreteBarCrack的功能需求",
+        "【请根据实际功能补充查询语句】"
+      ],
+      "evaluation_metrics": {
+        "functionality_score": null,
+        "code_quality_score": null,
+        "execution_score": null,
+        "similarity_score": null
+      },
+      "notes": ""
+    },
+    {
+      "test_id": "T039",
+      "filename": "案例库-CDyna案例-块体模块案例-扩展案例-混凝土微观破裂模拟-ConcreteTest(混凝土).js",
+      "category": "CDyna案例",
+      "test_queries": [
+        "基于案例库-CDyna案例-块体模块案例-扩展案例-混凝土微观破裂模拟-ConcreteTest(混凝土)的功能需求",
+        "【请根据实际功能补充查询语句】"
+      ],
+      "evaluation_metrics": {
+        "functionality_score": null,
+        "code_quality_score": null,
+        "execution_score": null,
+        "similarity_score": null
+      },
+      "notes": ""
+    },
+    {
+      "test_id": "T040",
+      "filename": "案例库-CDyna案例-块体模块案例-扩展案例-煤层开挖对区段煤柱的影响-煤层开挖对区段煤柱的影响.js",
+      "category": "CDyna案例",
+      "test_queries": [
+        "基于案例库-CDyna案例-块体模块案例-扩展案例-煤层开挖对区段煤柱的影响-煤层开挖对区段煤柱的影响的功能需求",
+        "【请根据实际功能补充查询语句】"
+      ],
+      "evaluation_metrics": {
+        "functionality_score": null,
+        "code_quality_score": null,
+        "execution_score": null,
+        "similarity_score": null
+      },
+      "notes": ""
+    },
+    {
+      "test_id": "T041",
+      "filename": "案例库-CDyna案例-块体模块案例-扩展案例-煤层开挖模拟-Case1-开挖稳定性分析-1-煤层开挖.js",
+      "category": "CDyna案例",
+      "test_queries": [
+        "基于案例库-CDyna案例-块体模块案例-扩展案例-煤层开挖模拟-Case1-开挖稳定性分析-1-煤层开挖的功能需求",
+        "【请根据实际功能补充查询语句】"
+      ],
+      "evaluation_metrics": {
+        "functionality_score": null,
+        "code_quality_score": null,
+        "execution_score": null,
+        "similarity_score": null
+      },
+      "notes": ""
+    },
+    {
+      "test_id": "T042",
+      "filename": "案例库-CDyna案例-块体模块案例-扩展案例-煤层开采引起地下水渗流-MineExca_-_OK.js",
+      "category": "CDyna案例",
+      "test_queries": [
+        "基于案例库-CDyna案例-块体模块案例-扩展案例-煤层开采引起地下水渗流-MineExca_-_OK的功能需求",
+        "【请根据实际功能补充查询语句】"
+      ],
+      "evaluation_metrics": {
+        "functionality_score": null,
+        "code_quality_score": null,
+        "execution_score": null,
+        "similarity_score": null
+      },
+      "notes": ""
+    },
+    {
+      "test_id": "T043",
+      "filename": "案例库-CDyna案例-块体模块案例-扩展案例-简单水力压裂-破裂加压-HydroFracture.js",
+      "category": "CDyna案例",
+      "test_queries": [
+        "基于案例库-CDyna案例-块体模块案例-扩展案例-简单水力压裂-破裂加压-HydroFracture的功能需求",
+        "【请根据实际功能补充查询语句】"
+      ],
+      "evaluation_metrics": {
+        "functionality_score": null,
+        "code_quality_score": null,
+        "execution_score": null,
+        "similarity_score": null
+      },
+      "notes": ""
+    },
+    {
+      "test_id": "T044",
+      "filename": "案例库-CDyna案例-块体模块案例-扩展案例-蠕变算例-单轴压缩破裂-CreepUCS.js",
+      "category": "CDyna案例",
+      "test_queries": [
+        "基于案例库-CDyna案例-块体模块案例-扩展案例-蠕变算例-单轴压缩破裂-CreepUCS的功能需求",
+        "【请根据实际功能补充查询语句】"
+      ],
+      "evaluation_metrics": {
+        "functionality_score": null,
+        "code_quality_score": null,
+        "execution_score": null,
+        "similarity_score": null
+      },
+      "notes": ""
+    },
+    {
+      "test_id": "T045",
+      "filename": "案例库-CDyna案例-块体模块案例-扩展案例-裂隙中的气体渗流-Frac-Gas-Seepage.js",
+      "category": "CDyna案例",
+      "test_queries": [
+        "基于案例库-CDyna案例-块体模块案例-扩展案例-裂隙中的气体渗流-Frac-Gas-Seepage的功能需求",
+        "【请根据实际功能补充查询语句】"
+      ],
+      "evaluation_metrics": {
+        "functionality_score": null,
+        "code_quality_score": null,
+        "execution_score": null,
+        "similarity_score": null
+      },
+      "notes": ""
+    },
+    {
+      "test_id": "T046",
+      "filename": "案例库-CDyna案例-块体模块案例-扩展案例-裂隙渗流及孔隙渗流动态边界条件的施加-裂隙渗流-多种方式加动态边界条件-DynaFracSeepage.js",
+      "category": "CDyna案例",
+      "test_queries": [
+        "基于案例库-CDyna案例-块体模块案例-扩展案例-裂隙渗流及孔隙渗流动态边界条件的施加-裂隙渗流-多种方式加动态边界条件-DynaFracSeepage的功能需求",
+        "【请根据实际功能补充查询语句】"
+      ],
+      "evaluation_metrics": {
+        "functionality_score": null,
+        "code_quality_score": null,
+        "execution_score": null,
+        "similarity_score": null
+      },
+      "notes": ""
+    },
+    {
+      "test_id": "T047",
+      "filename": "案例库-CDyna案例-块体模块案例-扩展案例-通过间断边界在模型中施加断层错动载荷-断层错动载荷施加.js",
+      "category": "CDyna案例",
+      "test_queries": [
+        "基于案例库-CDyna案例-块体模块案例-扩展案例-通过间断边界在模型中施加断层错动载荷-断层错动载荷施加的功能需求",
+        "【请根据实际功能补充查询语句】"
+      ],
+      "evaluation_metrics": {
+        "functionality_score": null,
+        "code_quality_score": null,
+        "execution_score": null,
+        "similarity_score": null
+      },
+      "notes": ""
+    },
+    {
+      "test_id": "T048",
+      "filename": "案例库-CDyna案例-块体模块案例-扩展案例-遍布节理模型-遍布节理模型单轴拉伸.js",
+      "category": "CDyna案例",
+      "test_queries": [
+        "基于案例库-CDyna案例-块体模块案例-扩展案例-遍布节理模型-遍布节理模型单轴拉伸的功能需求",
+        "【请根据实际功能补充查询语句】"
+      ],
+      "evaluation_metrics": {
+        "functionality_score": null,
+        "code_quality_score": null,
+        "execution_score": null,
+        "similarity_score": null
+      },
+      "notes": ""
+    },
+    {
+      "test_id": "T049",
+      "filename": "案例库-CDyna案例-块体模块案例-扩展案例-重启动分析-重启动分析-调入save文件.js",
+      "category": "CDyna案例",
+      "test_queries": [
+        "基于案例库-CDyna案例-块体模块案例-扩展案例-重启动分析-重启动分析-调入save文件的功能需求",
+        "【请根据实际功能补充查询语句】"
+      ],
+      "evaluation_metrics": {
+        "functionality_score": null,
+        "code_quality_score": null,
+        "execution_score": null,
+        "similarity_score": null
+      },
+      "notes": ""
+    },
+    {
+      "test_id": "T050",
+      "filename": "案例库-CDyna案例-块体模块案例-扩展案例-钢筋混凝土三点弯曲梁破坏-reinforcedconcretethreepointcom.js",
+      "category": "CDyna案例",
+      "test_queries": [
+        "基于案例库-CDyna案例-块体模块案例-扩展案例-钢筋混凝土三点弯曲梁破坏-reinforcedconcretethreepointcom的功能需求",
+        "【请根据实际功能补充查询语句】"
+      ],
+      "evaluation_metrics": {
+        "functionality_score": null,
+        "code_quality_score": null,
+        "execution_score": null,
+        "similarity_score": null
+      },
+      "notes": ""
+    },
+    {
+      "test_id": "T051",
+      "filename": "案例库-CDyna案例-块体模块案例-扩展案例-霍普金森杆撞击诱发岩体层裂破坏-杆件撞击破坏.js",
+      "category": "CDyna案例",
+      "test_queries": [
+        "基于案例库-CDyna案例-块体模块案例-扩展案例-霍普金森杆撞击诱发岩体层裂破坏-杆件撞击破坏的功能需求",
+        "【请根据实际功能补充查询语句】"
+      ],
+      "evaluation_metrics": {
+        "functionality_score": null,
+        "code_quality_score": null,
+        "execution_score": null,
+        "similarity_score": null
+      },
+      "notes": ""
+    },
+    {
+      "test_id": "T052",
+      "filename": "案例库-CDyna案例-块体模块案例-扩展案例-露天矿二维平面爆破-SurfaceBlast.js",
+      "category": "CDyna案例",
+      "test_queries": [
+        "基于案例库-CDyna案例-块体模块案例-扩展案例-露天矿二维平面爆破-SurfaceBlast的功能需求",
+        "【请根据实际功能补充查询语句】"
+      ],
+      "evaluation_metrics": {
+        "functionality_score": null,
+        "code_quality_score": null,
+        "execution_score": null,
+        "similarity_score": null
+      },
+      "notes": ""
+    },
+    {
+      "test_id": "T053",
+      "filename": "案例库-CDyna案例-块体模块案例-扩展案例-预应力施加及锁定-计算方案3-实体杆件预应力.js",
+      "category": "CDyna案例",
+      "test_queries": [
+        "基于案例库-CDyna案例-块体模块案例-扩展案例-预应力施加及锁定-计算方案3-实体杆件预应力的功能需求",
+        "【请根据实际功能补充查询语句】"
+      ],
+      "evaluation_metrics": {
+        "functionality_score": null,
+        "code_quality_score": null,
+        "execution_score": null,
+        "similarity_score": null
+      },
+      "notes": ""
+    },
+    {
+      "test_id": "T054",
+      "filename": "案例库-CDyna案例-块体模块案例-扩展案例-高压气体致裂固体材料模拟-HighPressFrac.js",
+      "category": "CDyna案例",
+      "test_queries": [
+        "基于案例库-CDyna案例-块体模块案例-扩展案例-高压气体致裂固体材料模拟-HighPressFrac的功能需求",
+        "【请根据实际功能补充查询语句】"
+      ],
+      "evaluation_metrics": {
+        "functionality_score": null,
+        "code_quality_score": null,
+        "execution_score": null,
+        "similarity_score": null
+      },
+      "notes": ""
+    },
+    {
+      "test_id": "T055",
+      "filename": "案例库-CDyna案例-块体模块案例-脚本功能库-锚杆轴力绘制.js",
+      "category": "CDyna案例",
+      "test_queries": [
+        "基于案例库-CDyna案例-块体模块案例-脚本功能库-锚杆轴力绘制的功能需求",
+        "【请根据实际功能补充查询语句】"
+      ],
+      "evaluation_metrics": {
+        "functionality_score": null,
+        "code_quality_score": null,
+        "execution_score": null,
+        "similarity_score": null
+      },
+      "notes": ""
+    },
+    {
+      "test_id": "T056",
+      "filename": "案例库-CDyna案例-粒子模块案例-基本案例-BrazilianTest-BrazilianTest.js",
+      "category": "CDyna案例",
+      "test_queries": [
+        "基于案例库-CDyna案例-粒子模块案例-基本案例-BrazilianTest-BrazilianTest的功能需求",
+        "【请根据实际功能补充查询语句】"
+      ],
+      "evaluation_metrics": {
+        "functionality_score": null,
+        "code_quality_score": null,
+        "execution_score": null,
+        "similarity_score": null
+      },
+      "notes": ""
+    },
+    {
+      "test_id": "T057",
+      "filename": "案例库-CDyna案例-粒子模块案例-基本案例-ParConstLawShear-ParConstLawShear.js",
+      "category": "CDyna案例",
+      "test_queries": [
+        "基于案例库-CDyna案例-粒子模块案例-基本案例-ParConstLawShear-ParConstLawShear的功能需求",
+        "【请根据实际功能补充查询语句】"
+      ],
+      "evaluation_metrics": {
+        "functionality_score": null,
+        "code_quality_score": null,
+        "execution_score": null,
+        "similarity_score": null
+      },
+      "notes": ""
+    },
+    {
+      "test_id": "T058",
+      "filename": "案例库-CDyna案例-粒子模块案例-基本案例-UCStest-UCStest.js",
+      "category": "CDyna案例",
+      "test_queries": [
+        "基于案例库-CDyna案例-粒子模块案例-基本案例-UCStest-UCStest的功能需求",
+        "【请根据实际功能补充查询语句】"
+      ],
+      "evaluation_metrics": {
+        "functionality_score": null,
+        "code_quality_score": null,
+        "execution_score": null,
+        "similarity_score": null
+      },
+      "notes": ""
+    },
+    {
+      "test_id": "T059",
+      "filename": "案例库-CDyna案例-粒子模块案例-扩展案例-MPM-单轴压缩模拟-MPM-单轴压缩过程模拟.js",
+      "category": "CDyna案例",
+      "test_queries": [
+        "基于案例库-CDyna案例-粒子模块案例-扩展案例-MPM-单轴压缩模拟-MPM-单轴压缩过程模拟的功能需求",
+        "【请根据实际功能补充查询语句】"
+      ],
+      "evaluation_metrics": {
+        "functionality_score": null,
+        "code_quality_score": null,
+        "execution_score": null,
+        "similarity_score": null
+      },
+      "notes": ""
+    },
+    {
+      "test_id": "T060",
+      "filename": "案例库-CDyna案例-粒子模块案例-扩展案例-MPM-方形土体失稳破坏过程模拟-方形土体失稳破坏过程模拟.js",
+      "category": "CDyna案例",
+      "test_queries": [
+        "基于案例库-CDyna案例-粒子模块案例-扩展案例-MPM-方形土体失稳破坏过程模拟-方形土体失稳破坏过程模拟的功能需求",
+        "【请根据实际功能补充查询语句】"
+      ],
+      "evaluation_metrics": {
+        "functionality_score": null,
+        "code_quality_score": null,
+        "execution_score": null,
+        "similarity_score": null
+      },
+      "notes": ""
+    },
+    {
+      "test_id": "T061",
+      "filename": "案例库-CDyna案例-粒子模块案例-扩展案例-刚体颗粒耦合模拟-刚体玉颗粒耦合.js",
+      "category": "CDyna案例",
+      "test_queries": [
+        "基于案例库-CDyna案例-粒子模块案例-扩展案例-刚体颗粒耦合模拟-刚体玉颗粒耦合的功能需求",
+        "【请根据实际功能补充查询语句】"
+      ],
+      "evaluation_metrics": {
+        "functionality_score": null,
+        "code_quality_score": null,
+        "execution_score": null,
+        "similarity_score": null
+      },
+      "notes": ""
+    },
+    {
+      "test_id": "T062",
+      "filename": "案例库-CDyna案例-粒子模块案例-扩展案例-渗流诱发散粒体失稳流动-颗粒与孔隙渗流耦合(拖曳力).js",
+      "category": "CDyna案例",
+      "test_queries": [
+        "基于案例库-CDyna案例-粒子模块案例-扩展案例-渗流诱发散粒体失稳流动-颗粒与孔隙渗流耦合(拖曳力)的功能需求",
+        "【请根据实际功能补充查询语句】"
+      ],
+      "evaluation_metrics": {
+        "functionality_score": null,
+        "code_quality_score": null,
+        "execution_score": null,
+        "similarity_score": null
+      },
+      "notes": ""
+    },
+    {
+      "test_id": "T063",
+      "filename": "案例库-CDyna案例-粒子模块案例-扩展案例-破片飞散碰到飞机-颗粒飞散击中目标.js",
+      "category": "CDyna案例",
+      "test_queries": [
+        "基于案例库-CDyna案例-粒子模块案例-扩展案例-破片飞散碰到飞机-颗粒飞散击中目标的功能需求",
+        "【请根据实际功能补充查询语句】"
+      ],
+      "evaluation_metrics": {
+        "functionality_score": null,
+        "code_quality_score": null,
+        "execution_score": null,
+        "similarity_score": null
+      },
+      "notes": ""
+    },
+    {
+      "test_id": "T064",
+      "filename": "案例库-CDyna案例-粒子模块案例-扩展案例-颗粒掉落过程模拟-ParticleFall.js",
+      "category": "CDyna案例",
+      "test_queries": [
+        "基于案例库-CDyna案例-粒子模块案例-扩展案例-颗粒掉落过程模拟-ParticleFall的功能需求",
+        "【请根据实际功能补充查询语句】"
+      ],
+      "evaluation_metrics": {
+        "functionality_score": null,
+        "code_quality_score": null,
+        "execution_score": null,
+        "similarity_score": null
+      },
+      "notes": ""
+    },
+    {
+      "test_id": "T065",
+      "filename": "案例库-GFlow案例-制定多边形滑体及椭球体滑床-制定多边形滑体及椭球体滑床.js",
+      "category": "GFlow案例",
+      "test_queries": [
+        "基于案例库-GFlow案例-制定多边形滑体及椭球体滑床-制定多边形滑体及椭球体滑床的功能需求",
+        "【请根据实际功能补充查询语句】"
+      ],
+      "evaluation_metrics": {
+        "functionality_score": null,
+        "code_quality_score": null,
+        "execution_score": null,
+        "similarity_score": null
+      },
+      "notes": ""
+    },
+    {
+      "test_id": "T066",
+      "filename": "案例库-GFlow案例-指定滑体及滑床-制定滑体及滑床.js",
+      "category": "GFlow案例",
+      "test_queries": [
+        "基于案例库-GFlow案例-指定滑体及滑床-制定滑体及滑床的功能需求",
+        "【请根据实际功能补充查询语句】"
+      ],
+      "evaluation_metrics": {
+        "functionality_score": null,
+        "code_quality_score": null,
+        "execution_score": null,
+        "similarity_score": null
+      },
+      "notes": ""
+    },
+    {
+      "test_id": "T067",
+      "filename": "案例库-MudSim案例-某沟道泥石流模拟1-泥石流计算脚本.js",
+      "category": "MudSim案例",
+      "test_queries": [
+        "基于案例库-MudSim案例-某沟道泥石流模拟1-泥石流计算脚本的功能需求",
+        "【请根据实际功能补充查询语句】"
+      ],
+      "evaluation_metrics": {
+        "functionality_score": null,
+        "code_quality_score": null,
+        "execution_score": null,
+        "similarity_score": null
+      },
+      "notes": ""
+    },
+    {
+      "test_id": "T068",
+      "filename": "案例库-SuperCDEM案例-StressWave-StressWave.js",
+      "category": "SuperCDEM案例",
+      "test_queries": [
+        "基于案例库-SuperCDEM案例-StressWave-StressWave的功能需求",
+        "【请根据实际功能补充查询语句】"
+      ],
+      "evaluation_metrics": {
+        "functionality_score": null,
+        "code_quality_score": null,
+        "execution_score": null,
+        "similarity_score": null
+      },
+      "notes": ""
+    },
+    {
+      "test_id": "T069",
+      "filename": "案例库-SuperCDEM案例-UCTest-UCT2D.js",
+      "category": "SuperCDEM案例",
+      "test_queries": [
+        "基于案例库-SuperCDEM案例-UCTest-UCT2D的功能需求",
+        "【请根据实际功能补充查询语句】"
+      ],
+      "evaluation_metrics": {
+        "functionality_score": null,
+        "code_quality_score": null,
+        "execution_score": null,
+        "similarity_score": null
+      },
+      "notes": ""
+    },
+    {
+      "test_id": "T070",
+      "filename": "案例库-SuperCDEM案例-固体-爆源-裂隙流耦合案例-考虑爆生气体的单孔爆破-CylinderBlast.js",
+      "category": "SuperCDEM案例",
+      "test_queries": [
+        "基于案例库-SuperCDEM案例-固体-爆源-裂隙流耦合案例-考虑爆生气体的单孔爆破-CylinderBlast的功能需求",
+        "【请根据实际功能补充查询语句】"
+      ],
+      "evaluation_metrics": {
+        "functionality_score": null,
+        "code_quality_score": null,
+        "execution_score": null,
+        "similarity_score": null
+      },
+      "notes": ""
+    },
+    {
+      "test_id": "T071",
+      "filename": "案例库-SuperCDEM案例-裂隙流-固体耦合案例-高压气体致裂-高压气体致裂-圆盘(湍流模型)-高压气体流固耦合-圆盘.js",
+      "category": "SuperCDEM案例",
+      "test_queries": [
+        "基于案例库-SuperCDEM案例-裂隙流-固体耦合案例-高压气体致裂-高压气体致裂-圆盘(湍流模型)-高压气体流固耦合-圆盘的功能需求",
+        "【请根据实际功能补充查询语句】"
+      ],
+      "evaluation_metrics": {
+        "functionality_score": null,
+        "code_quality_score": null,
+        "execution_score": null,
+        "similarity_score": null
+      },
+      "notes": ""
+    },
+    {
+      "test_id": "T072",
+      "filename": "案例库-SuperCDEM案例-裂隙流案例-交叉裂隙面液体流动-FracS-water.js",
+      "category": "SuperCDEM案例",
+      "test_queries": [
+        "基于案例库-SuperCDEM案例-裂隙流案例-交叉裂隙面液体流动-FracS-water的功能需求",
+        "【请根据实际功能补充查询语句】"
+      ],
+      "evaluation_metrics": {
+        "functionality_score": null,
+        "code_quality_score": null,
+        "execution_score": null,
+        "similarity_score": null
+      },
+      "notes": ""
+    },
+    {
+      "test_id": "T073",
+      "filename": "案例库-建模及网格案例-参数化几何及网格创建案例-参数化几何创建及网格剖分-Copy-Volume.js",
+      "category": "建模及网格案例",
+      "test_queries": [
+        "基于案例库-建模及网格案例-参数化几何及网格创建案例-参数化几何创建及网格剖分-Copy-Volume的功能需求",
+        "【请根据实际功能补充查询语句】"
+      ],
+      "evaluation_metrics": {
+        "functionality_score": null,
+        "code_quality_score": null,
+        "execution_score": null,
+        "similarity_score": null
+      },
+      "notes": ""
+    },
+    {
+      "test_id": "T074",
+      "filename": "案例库-建模及网格案例-参数化几何及网格创建案例-参数化几何创建及网格剖分-Rotate-LineLoop.js",
+      "category": "建模及网格案例",
+      "test_queries": [
+        "基于案例库-建模及网格案例-参数化几何及网格创建案例-参数化几何创建及网格剖分-Rotate-LineLoop的功能需求",
+        "【请根据实际功能补充查询语句】"
+      ],
+      "evaluation_metrics": {
+        "functionality_score": null,
+        "code_quality_score": null,
+        "execution_score": null,
+        "similarity_score": null
+      },
+      "notes": ""
+    },
+    {
+      "test_id": "T075",
+      "filename": "案例库-建模及网格案例-参数化几何及网格创建案例-参数化几何创建及网格剖分-Rotate-Surface.js",
+      "category": "建模及网格案例",
+      "test_queries": [
+        "基于案例库-建模及网格案例-参数化几何及网格创建案例-参数化几何创建及网格剖分-Rotate-Surface的功能需求",
+        "【请根据实际功能补充查询语句】"
+      ],
+      "evaluation_metrics": {
+        "functionality_score": null,
+        "code_quality_score": null,
+        "execution_score": null,
+        "similarity_score": null
+      },
+      "notes": ""
+    },
+    {
+      "test_id": "T076",
+      "filename": "案例库-建模及网格案例-参数化几何及网格创建案例-参数化几何创建及网格剖分-RotateMove-Volume.js",
+      "category": "建模及网格案例",
+      "test_queries": [
+        "基于案例库-建模及网格案例-参数化几何及网格创建案例-参数化几何创建及网格剖分-RotateMove-Volume的功能需求",
+        "【请根据实际功能补充查询语句】"
+      ],
+      "evaluation_metrics": {
+        "functionality_score": null,
+        "code_quality_score": null,
+        "execution_score": null,
+        "similarity_score": null
+      },
+      "notes": ""
+    },
+    {
+      "test_id": "T077",
+      "filename": "案例库-建模及网格案例-参数化几何及网格创建案例-参数化几何创建及网格剖分-二维边坡模型建立.js",
+      "category": "建模及网格案例",
+      "test_queries": [
+        "基于案例库-建模及网格案例-参数化几何及网格创建案例-参数化几何创建及网格剖分-二维边坡模型建立的功能需求",
+        "【请根据实际功能补充查询语句】"
+      ],
+      "evaluation_metrics": {
+        "functionality_score": null,
+        "code_quality_score": null,
+        "execution_score": null,
+        "similarity_score": null
+      },
+      "notes": ""
+    },
+    {
+      "test_id": "T078",
+      "filename": "案例库-建模及网格案例-参数化几何及网格创建案例-参数化几何创建及网格剖分-二维隧道模型.js",
+      "category": "建模及网格案例",
+      "test_queries": [
+        "基于案例库-建模及网格案例-参数化几何及网格创建案例-参数化几何创建及网格剖分-二维隧道模型的功能需求",
+        "【请根据实际功能补充查询语句】"
+      ],
+      "evaluation_metrics": {
+        "functionality_score": null,
+        "code_quality_score": null,
+        "execution_score": null,
+        "similarity_score": null
+      },
+      "notes": ""
+    },
+    {
+      "test_id": "T079",
+      "filename": "案例库-建模及网格案例-参数化几何及网格创建案例-参数化几何创建及网格剖分-产生曲面.js",
+      "category": "建模及网格案例",
+      "test_queries": [
+        "基于案例库-建模及网格案例-参数化几何及网格创建案例-参数化几何创建及网格剖分-产生曲面的功能需求",
+        "【请根据实际功能补充查询语句】"
+      ],
+      "evaluation_metrics": {
+        "functionality_score": null,
+        "code_quality_score": null,
+        "execution_score": null,
+        "similarity_score": null
+      },
+      "notes": ""
+    },
+    {
+      "test_id": "T080",
+      "filename": "案例库-建模及网格案例-参数化几何及网格创建案例-参数化几何创建及网格剖分-体的镜像复制.js",
+      "category": "建模及网格案例",
+      "test_queries": [
+        "基于案例库-建模及网格案例-参数化几何及网格创建案例-参数化几何创建及网格剖分-体的镜像复制的功能需求",
+        "【请根据实际功能补充查询语句】"
+      ],
+      "evaluation_metrics": {
+        "functionality_score": null,
+        "code_quality_score": null,
+        "execution_score": null,
+        "similarity_score": null
+      },
+      "notes": ""
+    },
+    {
+      "test_id": "T081",
+      "filename": "案例库-建模及网格案例-参数化几何及网格创建案例-参数化几何创建及网格剖分-在立方体中设置硬面用于模拟裂隙.js",
+      "category": "建模及网格案例",
+      "test_queries": [
+        "基于案例库-建模及网格案例-参数化几何及网格创建案例-参数化几何创建及网格剖分-在立方体中设置硬面用于模拟裂隙的功能需求",
+        "【请根据实际功能补充查询语句】"
+      ],
+      "evaluation_metrics": {
+        "functionality_score": null,
+        "code_quality_score": null,
+        "execution_score": null,
+        "similarity_score": null
+      },
+      "notes": ""
+    },
+    {
+      "test_id": "T082",
+      "filename": "案例库-建模及网格案例-参数化几何及网格创建案例-参数化几何创建及网格剖分-硬线设置.js",
+      "category": "建模及网格案例",
+      "test_queries": [
+        "基于案例库-建模及网格案例-参数化几何及网格创建案例-参数化几何创建及网格剖分-硬线设置的功能需求",
+        "【请根据实际功能补充查询语句】"
+      ],
+      "evaluation_metrics": {
+        "functionality_score": null,
+        "code_quality_score": null,
+        "execution_score": null,
+        "similarity_score": null
+      },
+      "notes": ""
+    },
+    {
+      "test_id": "T083",
+      "filename": "案例库-建模及网格案例-参数化几何及网格创建案例-参数化网格调整-参数化创建空心圆柱.js",
+      "category": "建模及网格案例",
+      "test_queries": [
+        "基于案例库-建模及网格案例-参数化几何及网格创建案例-参数化网格调整-参数化创建空心圆柱的功能需求",
+        "【请根据实际功能补充查询语句】"
+      ],
+      "evaluation_metrics": {
+        "functionality_score": null,
+        "code_quality_score": null,
+        "execution_score": null,
+        "similarity_score": null
+      },
+      "notes": ""
+    },
+    {
+      "test_id": "T084",
+      "filename": "案例库-建模及网格案例-复杂几何边界球形粒子快速填充案例-机箱案例-机箱.js",
+      "category": "建模及网格案例",
+      "test_queries": [
+        "基于案例库-建模及网格案例-复杂几何边界球形粒子快速填充案例-机箱案例-机箱的功能需求",
+        "【请根据实际功能补充查询语句】"
+      ],
+      "evaluation_metrics": {
+        "functionality_score": null,
+        "code_quality_score": null,
+        "execution_score": null,
+        "similarity_score": null
+      },
+      "notes": ""
+    },
+    {
+      "test_id": "T085",
+      "filename": "案例库-建模及网格案例-复杂几何边界球形粒子快速填充案例-球体案例-Test.js",
+      "category": "建模及网格案例",
+      "test_queries": [
+        "基于案例库-建模及网格案例-复杂几何边界球形粒子快速填充案例-球体案例-Test的功能需求",
+        "【请根据实际功能补充查询语句】"
+      ],
+      "evaluation_metrics": {
+        "functionality_score": null,
+        "code_quality_score": null,
+        "execution_score": null,
+        "similarity_score": null
+      },
+      "notes": ""
+    },
+    {
+      "test_id": "T086",
+      "filename": "案例库-建模及网格案例-网格导入导出案例-网格合并-assemble.js",
+      "category": "建模及网格案例",
+      "test_queries": [
+        "基于案例库-建模及网格案例-网格导入导出案例-网格合并-assemble的功能需求",
+        "【请根据实际功能补充查询语句】"
+      ],
+      "evaluation_metrics": {
+        "functionality_score": null,
+        "code_quality_score": null,
+        "execution_score": null,
+        "similarity_score": null
+      },
+      "notes": ""
+    }
+  ]
+}

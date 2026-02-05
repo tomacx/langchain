@@ -1,0 +1,186 @@
+# Failure Analysis: 案例库-CDyna案例-块体模块案例-扩展案例-围压作用下爆炸诱发裂缝的扩展过程模拟-BlastCrack.js
+
+## Query
+请生成一个CDyna案例的脚本，功能是块体模块案例-扩展案例-围压作用下爆炸诱发裂缝的扩展过程模拟-BlastCrack
+
+## Generated Code
+```javascript
+// 脚本名称：BlastCrack.js
+// 类别：CDyna案例(训练集)
+// 关键词：块体模块案例 扩展案例 围压作用下爆炸诱发裂缝的扩展过程模拟 BlastCrack
+
+// 创建杆件
+bar.CreateByCoord("BlastHole1", 14.5, 5, 15, 14.5, 13.5, 15, 30);
+bar.CreateByCoord("BlastHole1", 14.5, 5, 21.5, 14.5, 13.5, 21.5, 30);
+bar.CreateByCoord("BlastHole1", 14.5, 5, 28, 14.5, 13.5, 28, 30);
+bar.CreateByCoord("BlastHole1", 14.5, 5, 34.5, 14.5, 13.5, 34.5, 30);
+bar.CreateByCoord("BlastHole1", 14.5, 5, 41, 14.5, 13.5, 41, 30);
+bar.CreateByCoord("BlastHole1", 14.5, 5, 47.5, 14.5, 13.5, 47.5, 30);
+bar.CreateByCoord("BlastHole1", 14.5, 5, 54, 14.5, 13.5, 54, 30);
+
+// 设置爆炸压力衰减指数
+SFracsp.setProp([0, 1e7, 12e-13, 0]);
+
+// 模型顶部为大气压边界条件
+SFracsp.applyConditionByCoord("pp", 0, 0, 0, 0, -100, 100, -100, 100, 2.499, 2.51);
+
+scdem.monitor("elem", "sxx", 2.5, 2.5, 2.0);
+scdem.monitor("fracsp", "outMass");
+scdem.monitor("fracsp", "exGasDens");
+scdem.monitor("spring", "crackRatio", 2, 2);
+
+scdem.timeStep = 5e-8;
+scdem.dynaSolveGpu(1e-2);
+
+print("finish!");
+```
+
+## Ground Truth
+```javascript
+setCurDir(getSrcDir());
+
+igeo.clear();
+imeshing.clear();
+dyna.Clear();
+doc.clearResult();
+
+var length = 0.315;
+var height = 0.285;
+var radius = 0.003;
+var id1 = igeo.genRect(0,0,0, length, height, 0, 0.005);
+
+var id2 = igeo.genCircle(length * 0.5, height * 0.5, 0, 0.003, 0.001);
+
+var loop1 = [id1, id2];
+
+igeo.genSurface(loop1, 1);
+
+var loop2 = [id2];
+
+igeo.genSurface(loop2, 2);
+
+imeshing.genMeshByGmsh(2);
+
+
+
+//打开力学计算开关
+dyna.Set("Mechanic_Cal 1");
+
+//设置三个方向的重力加速度均为0
+dyna.Set("Gravity 0.0 0.0 0.0");
+
+//打开大变形计算开关
+dyna.Set("Large_Displace 1");
+
+dyna.Set("If_Renew_Contact 1");
+
+dyna.Set("Contact_Detect_Tol 0");
+
+//设置计算结果的输出间隔为100步
+dyna.Set("Output_Interval 1000");
+
+//设置监测信息输出时步为10步
+dyna.Set("Moniter_Iter 10");
+
+//关闭虚质量计算开关
+dyna.Set("If_Virtural_Mass 0");
+
+//打开瑞利阻尼计算开关
+dyna.Set("If_Cal_Rayleigh 1")
+
+//从当前文件夹导入Gmsh格式的网格
+blkdyn.GetMesh(imeshing);
+
+//对两侧单元均为组1的公共面进行切割，设置为接触面
+blkdyn.CrtIFace(1, 1);
+
+//对一侧单元是组1、另一侧单元是组2的公共面进行切割，设置为接触面
+blkdyn.CrtIFace(1, 2);
+
+//设置接触后，更新网格信息
+blkdyn.UpdateIFaceMesh();
+
+//指定组1的单元本构为线弹性本构
+blkdyn.SetModel("linear", 1);
+
+//指定组2的单元本构为JWL爆源模型本构
+blkdyn.SetModel("landau", 2);
+
+//指定组1-2的材料参数
+blkdyn.SetMatByGroupRange(1466, 6.1e9, 0.31, 3e6, 1e6, 40.0, 10.0, 1, 2);
+
+//将接触面模型设定为断裂能模型
+blkdyn.SetIModel("brittleMC");
+
+//指定所有接触面的基础材料参数
+blkdyn.SetIMat(5e14, 5e14, 40.0, 20000e6, 10e6);
+
+//指定组1与组2交界面的材料参数，摩擦角、粘聚力及抗拉强度均为0.0
+blkdyn.SetIMatByGroupInterface(5e15, 5e15, 0.0, 0.0, 0.0, 1, 2);
+
+//指定组1与组2交界面上的断裂能，均为0
+blkdyn.SetIFracEnergyByGroupInterface(0.0, 0.0, 1, 2);
+
+//指定组1内部交界面的断裂能，拉伸断裂能100Pa.m，剪切断裂能1000Pa.m
+blkdyn.SetIFracEnergyByGroupInterface(10, 1000, 1, 1);
+
+//设置全局的朗道材料参数
+var apos = [length * 0.5, height * 0.5, 0.0];
+
+//blkdyn.SetJWLSource(1, 1630, 7e9, 371.2e9, 3.2e9, 4.2, 0.95, 0.3, 21e9, 6930.0, apos, 0.0, 1000);
+
+blkdyn.SetLandauSource(1, 50, 5000, 3.1e6, 3.0, 1.3333, 7e9, apos, 0.0, 1000);
+
+//将1号JWL炸药参数的序号与组2的单元关联
+blkdyn.BindLandauSource(1, 2, 2);
+
+//设置典型的测点
+dyna.Monitor("block", "sxx", length * 0.5, height * 0.5, 0);
+dyna.Monitor("block", "sxx", length * 0.6, height * 0.5, 0);
+dyna.Monitor("block", "sxx", length * 0.7, height * 0.5, 0);
+dyna.Monitor("block", "sxx", length * 0.8, height * 0.5, 0);
+dyna.Monitor("block", "sxx", length * 0.9, height * 0.5, 0);
+dyna.Monitor("block", "sxx", length * 1.0, height * 0.5, 0);
+
+
+dyna.Monitor("block", "syy", length * 0.5, height * 0.5, 0);
+dyna.Monitor("block", "syy", length * 0.5, height * 0.6, 0);
+dyna.Monitor("block", "syy", length * 0.5, height * 0.7, 0);
+dyna.Monitor("block", "syy", length * 0.5, height * 0.8, 0);
+dyna.Monitor("block", "syy", length * 0.5, height * 0.9, 0);
+dyna.Monitor("block", "syy", length * 0.5, height * 1.0, 0);
+
+
+//blkdyn.FixV("x",0,"x",-1e-6, 1e-6);
+blkdyn.FixV("y",0,"y",-1e-6, 1e-6);
+//blkdyn.FixV("x",0,"x",length -1e-6, 100);
+blkdyn.FixV("y",0,"y",height -1e-6, 100);
+
+
+//定义三个方向基础值
+var values = new Array(0.0,-8e6, 0);
+//定义变化梯度
+var gradient = new Array(0, 0, 0, 0, 0, 0, 0, 0, 0);
+//将组号1到3范围内的节点速度初始化为设定值
+blkdyn.InitConditionByGroup("stress", values, gradient, 1, 3);
+
+
+
+
+//将局部阻尼设置为0.0
+blkdyn.SetLocalDamp(0.0);
+
+//将刚度阻尼系数设置为5e-7，质量阻尼系数设置为0.0
+blkdyn.SetRayleighDamp(5e-7, 0.0);
+
+//设置全局计算时步
+//dyna.Set("Time_Step 2e-8");
+
+dyna.TimeStepCorrect(0.5);
+
+//动力计算0.14ms
+dyna.DynaCycle(1.4e-4);
+
+//打印提示信息
+print("Solution Finished");
+```

@@ -3,7 +3,7 @@ setCurDir(getSrcDir());
 
 //////////////////////////////////////////////
 gflow.clear();
-////求解时间20s
+////姹傝В鏃堕棿20s
 gflow.setValue("CourantCoeff", 0.2) ;
 gflow.setValue("OutputInterval", 100) ;
 gflow.setValue("ParaNum", 32) ;
@@ -28,5 +28,5 @@ gflow.exportGrid();
 gflow.solve(50);
 
 
-//打印提示信息
+//鎵撳嵃鎻愮ず淇℃伅
 print("Solution is OK!")

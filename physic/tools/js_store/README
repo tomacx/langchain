@@ -1,0 +1,323 @@
+# 测试数据集划分工具 - 使用指南
+
+## 📋 概述
+
+本工具用于将419个物理仿真JavaScript脚本划分为训练集、验证集和测试集，采用**分层抽样**策略确保每个类别都有代表性样本。
+
+## 🗂️ 数据集类别
+
+从您提供的文件列表中，识别出以下6大类别：
+
+1. **建模及网格案例** - 几何建模和网格生成
+2. **CDyna案例** - 冲击波/爆炸动力学模拟
+3. **GFlow案例** - 滑坡地质分析
+4. **MudSim案例** - 泥石流模拟
+5. **SuperCDEM案例** - 离散元爆破模拟
+6. **其他案例** - 其他未分类脚本
+
+## 📊 推荐划分方案
+
+### 方案A：80-10-10（推荐）
+
+| 数据集 | 比例 | 预估数量 | 用途 |
+|--------|------|----------|------|
+| **训练集（向量库）** | 80% | ~335个 | 构建向量数据库，用于检索 |
+| **验证集** | 10% | ~42个 | 调优参数、选择策略 |
+| **测试集** | 10% | ~42个 | 最终性能评估 |
+
+### 方案B：90-10（简化版）
+
+| 数据集 | 比例 | 预估数量 | 用途 |
+|--------|------|----------|------|
+| **训练集（向量库）** | 90% | ~377个 | 构建向量数据库 |
+| **测试集** | 10% | ~42个 | 最终评估 |
+
+## 🚀 快速开始
+
+### 步骤1：准备环境
+
+```bash
+# 确保Python环境已安装（Python 3.7+）
+python3 --version
+
+# 安装必要的库（如果需要）
+# pip install --break-system-packages pathlib
+```
+
+### 步骤2：配置参数
+
+编辑 `test_dataset_splitter.py` 中的配置：
+
+```python
+# 在 main() 函数中修改这些参数
+
+SOURCE_DIR = "/path/to/your/419/scripts"  # 您的419个脚本所在目录
+OUTPUT_DIR = "/path/to/output"            # 输出目录
+
+# 划分比例（确保三者之和为1.0）
+TRAIN_RATIO = 0.80  # 训练集比例
+VAL_RATIO = 0.10    # 验证集比例
+TEST_RATIO = 0.10   # 测试集比例
+```
+
+### 步骤3：运行脚本
+
+```bash
+cd /home/claude
+python3 test_dataset_splitter.py
+```
+
+### 步骤4：查看结果
+
+运行后会在输出目录生成以下文件：
+
+```
+dataset_split_results/
+├── dataset_split.json           # 数据集划分结果（核心文件）
+├── category_statistics.json     # 各类别在每个数据集中的分布统计
+├── dataset_split_report.md      # 详细的划分报告（推荐查看）
+└── evaluation_template.json     # 测试集评估模板
+```
+
+## 📄 输出文件说明
+
+### 1. dataset_split.json
+
+包含三个列表：`train`、`val`、`test`，分别存储各数据集的文件名。
+
+```json
+{
+  "train": [
+    "案例库-建模及网格案例-复...填充案例-汽车案例-汽车.js",
+    "..."
+  ],
+  "val": ["..."],
+  "test": ["..."]
+}
+```
+
+**用途**：
+- 构建向量库时，只加载 `train` 列表中的文件
+- 进行评估时，使用 `test` 列表中的文件
+
+### 2. category_statistics.json
+
+统计每个类别在各数据集中的分布。
+
+```json
+{
+  "train": {
+    "建模及网格案例": 50,
+    "CDyna案例": 80,
+    "..."
+  },
+  "val": {"..."},
+  "test": {"..."}
+}
+```
+
+**用途**：验证划分是否均衡，每个类别都有代表性样本。
+
+### 3. dataset_split_report.md
+
+人类可读的详细报告，包含：
+- 总体统计
+- 各类别分布表格
+- 每个数据集的完整文件列表（按类别组织）
+
+**用途**：直接查看和分享划分结果。
+
+### 4. evaluation_template.json
+
+为测试集中的每个文件生成评估模板。
+
+```json
+{
+  "metadata": {
+    "total_test_cases": 42,
+    "evaluation_date": null,
+    "evaluator": null
+  },
+  "test_cases": [
+    {
+      "test_id": "T001",
+      "filename": "某个测试文件.js",
+      "category": "CDyna案例",
+      "test_queries": [
+        "基于文件功能的查询语句"
+      ],
+      "evaluation_metrics": {
+        "functionality_score": null,
+        "code_quality_score": null,
+        "execution_score": null,
+        "similarity_score": null
+      },
+      "notes": ""
+    }
+  ]
+}
+```
+
+**用途**：
+- 为每个测试文件提供评估框架
+- 记录评估指标和结果
+- 生成测试报告
+
+## 🎯 评估指标说明
+
+### 建议的评估维度
+
+| 指标 | 说明 | 评分范围 | 权重 |
+|------|------|----------|------|
+| **功能正确性** | 生成的代码是否实现了预期功能 | 0-10分 | 40% |
+| **代码质量** | 代码结构、可读性、注释完整性 | 0-10分 | 20% |
+| **可执行性** | 代码无语法错误，可以运行 | 0-10分 | 20% |
+| **相似度** | 与标准答案的相似程度 | 0-1 (0-100%) | 20% |
+
+### 综合评分计算
+
+```
+总分 = (功能正确性 × 0.4) + (代码质量 × 0.2) + (可执行性 × 0.2) + (相似度×10 × 0.2)
+```
+
+## 🔄 工作流程
+
+```mermaid
+graph TD
+    A[419个原始脚本] --> B[运行划分脚本]
+    B --> C[训练集 335个]
+    B --> D[验证集 42个]
+    B --> E[测试集 42个]
+    
+    C --> F[构建向量数据库]
+    F --> G[RAG系统]
+    
+    D --> H[调优和验证]
+    H --> I[优化检索策略]
+    
+    E --> J[最终评估]
+    J --> K[生成评估报告]
+    
+    style C fill:#90EE90
+    style D fill:#FFD700
+    style E fill:#FF6347
+```
+
+## 📝 评估流程示例
+
+### 1. 准备测试环境
+
+```python
+import json
+
+# 加载测试集列表
+with open('dataset_split.json', 'r') as f:
+    split_data = json.load(f)
+    test_files = split_data['test']
+
+# 加载评估模板
+with open('evaluation_template.json', 'r') as f:
+    eval_template = json.load(f)
+```
+
+### 2. 对每个测试文件进行评估
+
+```python
+for test_case in eval_template['test_cases']:
+    filename = test_case['filename']
+    
+    # 1. 生成查询（基于文件功能）
+    query = generate_query_from_filename(filename)
+    
+    # 2. 使用RAG系统生成代码
+    generated_code = rag_system.generate(query)
+    
+    # 3. 与标准答案对比
+    standard_code = load_file(filename)
+    
+    # 4. 计算评分
+    scores = evaluate(generated_code, standard_code)
+    
+    # 5. 记录结果
+    test_case['evaluation_metrics'] = scores
+```
+
+### 3. 生成评估报告
+
+```python
+# 计算平均分数
+avg_scores = calculate_average_scores(eval_template)
+
+# 生成报告
+generate_evaluation_report(eval_template, avg_scores)
+```
+
+## 🛠️ 自定义配置
+
+### 修改划分比例
+
+如果你想使用不同的划分比例（例如90-10）：
+
+```python
+# 在脚本中修改
+TRAIN_RATIO = 0.90
+VAL_RATIO = 0.00   # 不使用验证集
+TEST_RATIO = 0.10
+```
+
+### 调整分类规则
+
+如果需要添加新的类别或修改分类逻辑：
+
+```python
+# 在 categorize_files() 方法中修改
+category_rules = {
+    "建模及网格案例": ["建模及网格案例"],
+    "CDyna案例": ["CDyna案例"],
+    "新类别": ["关键词1", "关键词2"],  # 添加新类别
+    # ...
+}
+```
+
+### 确保最小测试样本数
+
+```python
+# 在 split_dataset() 方法中
+# 每个类别至少保证有N个测试样本
+MIN_TEST_SAMPLES_PER_CATEGORY = 2
+```
+
+## 📊 预期结果示例
+
+基于419个文件，预期的划分结果（80-10-10）：
+
+| 类别 | 总数（估算） | 训练集 | 验证集 | 测试集 |
+|------|--------------|--------|--------|--------|
+| 建模及网格案例 | ~80 | 64 | 8 | 8 |
+| CDyna案例 | ~100 | 80 | 10 | 10 |
+| GFlow案例 | ~80 | 64 | 8 | 8 |
+| MudSim案例 | ~50 | 40 | 5 | 5 |
+| SuperCDEM案例 | ~90 | 72 | 9 | 9 |
+| 其他案例 | ~19 | 15 | 2 | 2 |
+| **总计** | **419** | **335** | **42** | **42** |
+
+## ⚠️ 注意事项
+
+1. **随机种子固定**：脚本使用 `random.seed(42)` 确保每次运行结果一致
+2. **分层抽样**：确保每个类别在各数据集中都有代表性
+3. **最小样本保证**：即使某个类别文件很少，也会至少分配1个到测试集
+4. **文件完整性**：所有419个文件都会被分配，不会遗漏
+
+## 🤝 后续步骤
+
+1. ✅ 运行划分脚本
+2. 📖 查看 `dataset_split_report.md`
+3. 🔨 使用训练集构建向量数据库
+4. 🧪 使用验证集调优系统参数
+5. 📊 使用测试集进行最终评估
+6. 📝 填写 `evaluation_template.json`
+7. 📈 生成完整的评估报告
+
+## 📞 问题反馈
+
+如有任何问题或需要调整，请随时告知！

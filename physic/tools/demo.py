@@ -117,7 +117,7 @@ class AgentBuilder:
 def main():
     # === 配置区域 ===
     # 这里的路径需要指向上一段代码生成的目录
-    DB_PATH = "D:/Codes/langchain/physic/tools/chroma_db/chroma_db_cdem"  
+    DB_PATH = "D:/Codes/langchain/physic/tools/chroma_db/chroma_db_cdem"  # 在不同环境下更换目录
     COLLECTION_NAME = "cdem_knowledge" # 必须与构建时一致
     
     # 检查数据库目录

@@ -14,25 +14,25 @@ mflow.setValue("cohesion", 800);
 mflow.setValue("friction", 15);
 mflow.setValue("MaxTimeStep", 10);
 
-//ÉèÖÃ¼à²âµã1
+//è®¾ç½®ç›‘æµ‹ç‚¹1
 mflow.hist("height", 401458, 4.48574e6);
 mflow.hist("magvel", 401458, 4.48574e6);
 mflow.hist("c", 401458, 4.48574e6);
 mflow.hist("dh", 401458, 4.48574e6);
 
-//ÉèÖÃ¼à²âµã2
+//è®¾ç½®ç›‘æµ‹ç‚¹2
 mflow.hist("height", 401850, 4.48558e6);
 mflow.hist("magvel", 401850, 4.48558e6);
 mflow.hist("c", 401850, 4.48558e6);
 mflow.hist("dh", 401850, 4.48558e6);
 
-//ÉèÖÃ¼à²âµã3
+//è®¾ç½®ç›‘æµ‹ç‚¹3
 mflow.hist("height", 401643, 4.48508e6);
 mflow.hist("magvel", 401643, 4.48508e6);
 mflow.hist("c", 401643, 4.48508e6);
 mflow.hist("dh", 401643, 4.48508e6);
 
-//ÉèÖÃ¼à²âµã4
+//è®¾ç½®ç›‘æµ‹ç‚¹4
 mflow.hist("height", 401528, 4.48485e6);
 mflow.hist("magvel", 401528, 4.48485e6);
 mflow.hist("c", 401528, 4.48485e6);
