@@ -1,0 +1,23 @@
+[
+  {
+    "filename": "案例库-CDyna案例-块体模块案例-扩展案例-压水灌浆过程模拟-注浆快速模拟-注浆过程-带吕荣值统计.js",
+    "original_score": 0.1756,
+    "optimized_score": 0.0337,
+    "best_code": "// 首先设置当前工作路径为JavaScript脚本文件所在路径\nsetCurDir(getSrcDir());\n\n// 初始化几何建模\nigeo.GeneratePoint([0,0,0]);\n\n// 选择合适的材料模型\ndyna.SetMaterial(\"steel\");\n\n// 根据场景需求划分网格\nimeshing.Meshing(10, 10);\n\n// 设置边界条件和载荷\ndyna.SetBoundaryCondition(\"fixed\", \"x\");\ndyna.SetLoad([1, 0, 0]);\n\n// 设置求解器参数和监控结果\ndyna.SetSolverParameter(\"max_iter\", 100);\ndyna.SetMonitorResult(\"displacement\");\n\n// 开始动力学模拟\ndyna.Solve();",
+    "effective_instructions": "\n- 1. 确保调用 fracsp 模块。\n2. 设置动力学计算开关。\n3. 检查模块完整性和参数正确性。\n- 1. 使用 fracsp.ImportMaterial 代替 dyna.SetMaterial\n2. 确保引入 fracsp 和 imeshing 模块\n3. 检查和调整参数以避免错误\n4. 在生成代码时注意相关工具/API 的正确使用"
+  },
+  {
+    "filename": "案例库-SuperCDEM案例-裂隙流-固体耦合案例-高压气体致裂-高压气体致裂-圆柱-高压气体流固耦合.js",
+    "original_score": 0.2305,
+    "optimized_score": 0.0183,
+    "best_code": "// 初始化 CDEM 环境\nsetCurDir(getSrcDir());\n\n// 几何建模：圆柱形\nigeo.GenerateCylinder([0, 0, 0], [1, 0, 0], 10);\n\n// 网格划分\nmesh = igeo.Mesh();\nmesh.AddElement(igeo.ElementType.TETRA);\nmesh.SetMeshSize(0.5);\n\n// 材料与模型设置：高压气体致裂\ndyna.SetMaterial(\"high_pressure_gas\", \"gas\");\ndyna.SetModel(\"high_pressure_gas_erosion\");\n\n// 边界条件与载荷：固定边界和自由边界\ndyna.SetBoundaryCondition(\"fixed_boundary\", \"wall\");\ndyna.SetBoundaryCondition(\"free_boundary\", \"air\");\n\n// 求解参数和结果监测：高精度求解\ndyna.SetSolver(\"high_accuracy_solver\");\ndyna.AddMonitor(\"result_data\", \"file\");\ndyna.AddMonitor(\"image_file\", \"file\");\n\n// 执行求解\ndyna.Solve();",
+    "effective_instructions": "\n- 1. 必须实现裂隙流-固体耦合模块\n2. 必须正确调用 scdem 模块和 SFracsp 模块\n3. 必须添加缺失的特定模块和参数\n4. 必须查找并使用相关工具/API"
+  },
+  {
+    "filename": "案例库-CDyna案例-块体模块案例-脚本功能库-ApplyBoundAuto.js",
+    "original_score": 0.3359,
+    "optimized_score": 0.0043,
+    "best_code": "// 首先根据用户需求，使用 search_physics_knowledge 工具进行检索\nvar res = search_physics_knowledge(\"Rotate\");\n\n// 检索结果中找到一个合适的案例\nif (res.length > 0) {\n    // 根据检索到的案例结构，模仿其编写脚本\n    var script = `\n        // 准备几何建模\n        igeo.GeneratePoint([0,0,0]);\n        \n        // 准备网格划分\n        mesh.SetMeshType(1);\n        \n        // 准备材料参数\n        mat.SetMaterial(\"material1\", [1.0, 2.0, 3.0]);\n        \n        // 准备求解器设置\n        dyna.SetTimeStep(0.01);\n        dyna.SetNumSteps(1000);\n        \n        // 准备边界条件与载荷\n        dyna.AddVelocityConstraint([1.0, 2.0, 3.0]);\n        \n        // 开始数值模拟\n        dyna.Solve();\n    `;\n    \n    // 输出最终的 JavaScript 脚本代码\n    console.log(script);\n} else {\n    // 如果检索结果为空，则输出错误信息\n    console.error(\"没有找到合适的案例\");\n}",
+    "effective_instructions": "\n- 1. 使用 dyna 和 blkdyn 等工具/API 时，务必正确配置和调用它们。\n2. 在生成代码中添加缺失的模块（如 blkdyn、dyna 等）。\n3. 确保设置速度约束并在外表面自动添加速度约束。"
+  }
+]
