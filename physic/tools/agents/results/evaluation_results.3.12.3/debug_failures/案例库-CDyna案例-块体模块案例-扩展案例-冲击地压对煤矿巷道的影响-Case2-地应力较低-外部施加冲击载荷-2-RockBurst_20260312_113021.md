@@ -1,0 +1,254 @@
+# Failure Analysis: 案例库-CDyna案例-块体模块案例-扩展案例-冲击地压对煤矿巷道的影响-Case2-地应力较低-外部施加冲击载荷-2-RockBurst.js
+
+## Query
+请复现一个CDyna案例的 JavaScript 案例脚本，案例文件名为「案例库-CDyna案例-块体模块案例-扩展案例-冲击地压对煤矿巷道的影响-Case2-地应力较低-外部施加冲击载荷-2-RockBurst.js」，场景/主题为：块体模块案例 - 扩展案例 - 冲击地压对煤矿巷道的影响 - Case2 - 地应力较低 - 外部施加冲击载荷 - 2 - RockBurst。请严格依据 CDEM 技术手册/API（优先）来选择与确认接口与参数含义。必须使用到这些模块：blkdyn、dyna、igeo、imeshing。请按“几何建模→网格划分→材料/模型→边界/载荷→求解参数→结果输出/监测”的顺序组织脚本，并确保脚本以 setCurDir(getSrcDir()); 开头。脚本注释/意图线索：设置当前工作路径为JavaScript脚本文件所在路径；清除Mesh模块几何数据；清除Mesh模块网格数据；清除BlockDyna模型数据；清除Genvi平台数据；打开力学计算开关；设置三个方向的重力加速度均为0；打开大变形计算开关；设置计算结果的输出间隔为500步；设置监测信息输出时步为10步；关闭虚质量计算开关；打开接触更新开关；设置接触容差为0；////////////////////////////////////////////////////////////////几何建模及网格划分；创建矩形环1；创建矩形环2；创建外边界的面（含矩形空洞）；。几何/网格相关接口关键词：clear，genMeshByGmsh。API 调用关键词（用于检索技术手册）：dyna.Set，blkdyn.FixV，blkdyn.FreeV，blkdyn.SetQuietBoundByCoord，blkdyn.InitConditionByCoord，blkdyn.SetIModel，blkdyn.SetLocalDamp，blkdyn.SetModel。
+
+## Generated Code
+```javascript
+setCurDir(getSrcDir());
+
+//清除Mesh模块几何数据
+igeo.clear();
+
+//清除Mesh模块网格数据
+imeshing.clear();
+
+//清除BlockDyna模型数据
+dyna.Clear();
+
+//清除Genvi平台数据
+doc.clearResult();
+
+//打开力学计算开关
+dyna.Set("Mechanic_Cal 1");
+
+//设置三个方向的重力加速度均为0
+dyna.Set("Gravity 0.0 0.0 0.0");
+
+//打开大变形计算开关
+dyna.Set("Large_Displace 1");
+
+//设置计算结果的输出间隔为500步
+dyna.Set("Output_Interval 500");
+
+//设置监测信息输出时步为10步
+dyna.Set("Monitor_Iter 10");
+
+//关闭虚质量计算开关
+dyna.Set("If_Virtural_Mass 1");
+
+//打开接触更新开关
+dyna.Set("If_Renew_Contact 1");
+
+//设置接触容差为0
+dyna.Set("Contact_Detect_Tol 0.0");
+
+//////////////////////////////////////////////////////////////////几何建模及网格划分
+
+//创建矩形环1
+var loopid1= igeo.genRect(0,0,0, 20, 20, 0, 1.0);
+
+//创建矩形环2
+var loopid2 = igeo.genRect(8,8.5,0, 12, 11.5, 0, 0.2);
+
+//创建外边界的面（含矩形空洞）
+var loopid3 = igeo.genRect(0,0,0, 20, 20, 0, 1.0);
+```
+
+## Ground Truth
+```javascript
+//设置当前工作路径为JavaScript脚本文件所在路径
+setCurDir(getSrcDir());
+
+//清除Mesh模块几何数据
+igeo.clear();
+
+//清除Mesh模块网格数据
+imeshing.clear();
+
+//清除BlockDyna模型数据
+dyna.Clear();
+
+//清除Genvi平台数据
+doc.clearResult();
+
+//打开力学计算开关
+dyna.Set("Mechanic_Cal 1");
+
+//设置三个方向的重力加速度均为0
+dyna.Set("Gravity 0.0 0.0 0.0");
+
+//打开大变形计算开关
+dyna.Set("Large_Displace 1");
+
+//设置计算结果的输出间隔为500步
+dyna.Set("Output_Interval 500");
+
+//设置监测信息输出时步为10步
+dyna.Set("Monitor_Iter 10");
+
+//关闭虚质量计算开关
+dyna.Set("If_Virtural_Mass 1");
+
+//打开接触更新开关
+dyna.Set("If_Renew_Contact 1");
+
+//设置接触容差为0
+dyna.Set("Contact_Detect_Tol 0.0");
+
+//////////////////////////////////////////////////////////////////几何建模及网格划分
+
+//创建矩形环1
+var loopid1= igeo.genRect(0,0,0, 20, 20, 0, 1.0);
+//创建矩形环2
+var loopid2 = igeo.genRect(8,8.5,0, 12, 11.5, 0, 0.2);
+
+//创建外边界的面（含矩形空洞）
+igeo.genSurface([loopid1, loopid2], 1);
+//创建矩形巷道，填实
+igeo.genSurface([ loopid2], 2);
+
+//产生二维网格
+imeshing.genMeshByGmsh(2);
+
+//////////////////////////////////////////////////////////////////几何建模及网格划分
+
+
+//BlockDyna从平台下载网格
+blkdyn.GetMesh(imeshing);
+
+//对两侧单元均为组1的公共面进行切割，设置为接触面
+blkdyn.CrtIFace();
+
+//设置接触后，更新网格信息
+blkdyn.UpdateIFaceMesh();
+
+//指定组1的单元本构为线弹性本构
+blkdyn.SetModel("linear");
+
+//指定材料参数
+blkdyn.SetMat(2300, 1e10, 0.25, 5e6, 5e6, 35.0, 15.0);
+
+
+//将接触面模型设定为线弹性模型
+blkdyn.SetIModel("linear");
+
+//虚拟接触面刚度及强度从单元中自动获取
+blkdyn.SetIStiffByElem(1);
+blkdyn.SetIStrengthByElem();
+
+
+//设置初始应力场
+//定义三个方向基础值，该这三个值可以改变初始应力场
+var values = new Array(-5e6, -10e6, -5e6); 
+//定义变化梯度 
+var gradient = new Array(0, 0, 0, 0, 0, 0, 0, 0, 0); 
+//将控制范围内的位移清零 
+blkdyn.InitConditionByCoord("stress", values, gradient, -1e5, 1e5, -1e5, 1e5, -1e5, 1e5); 
+
+
+//固体四周法向位移
+blkdyn.FixV("x", 0.0, "x", -1e-3, 1e-3);
+blkdyn.FixV("x", 0.0, "x", 19.999, 21);
+blkdyn.FixV("y", 0.0, "y", -1e-3, 1e-3);
+blkdyn.FixV("y", 0.0, "y", 19.999, 21);
+
+
+//将局部阻尼设置为0.8
+blkdyn.SetLocalDamp(0.8);
+
+
+//设置监测点
+dyna.Monitor("gvalue","gv_spring_crack_ratio");
+
+
+//求解至稳定
+dyna.Solve();
+
+
+//设置接触面的拉伸断裂应变及剪切断裂应变
+dyna.Set("Interface_Soften_Value 1e-3 5e-3");
+
+//将接触面模型设定为应变软化的mc模型
+blkdyn.SetIModel("SSMC");
+
+
+//开挖组2，矩形巷道，计算稳定
+blkdyn.SetModel("none",2);
+
+
+//求解至稳定
+dyna.Solve();
+
+
+//初始化位移场
+
+//定义三个方向基础值 
+var values = new Array(0, 0, 0); 
+//定义变化梯度 
+var gradient = new Array(0, 0, 0, 0, 0, 0, 0, 0, 0); 
+//将控制范围内的位移清零 
+blkdyn.InitConditionByCoord("displace", values, gradient, -1e5, 1e5, -1e5, 1e5, -1e5, 1e5); 
+
+
+
+//解除四周法向位移
+blkdyn.FreeV("x", "x", -1e-3, 1e-3);
+blkdyn.FreeV("x", "x", 19.999, 21);
+blkdyn.FreeV("y", "y", -1e-3, 1e-3);
+blkdyn.FreeV("y", "y", 19.999, 21);
+
+
+//设置静态无反射边界条件
+blkdyn.SetQuietBoundByCoord(-1e-3, 1e-3, -1e5, 1e5, -1e5, 1e5);
+blkdyn.SetQuietBoundByCoord(19.999, 21, -1e5, 1e5, -1e5, 1e5);
+
+blkdyn.SetQuietBoundByCoord(-1e5, 1e5, -1e-3, 1e-3, -1e5, 1e5);
+blkdyn.SetQuietBoundByCoord(-1e5, 1e5, 19.999, 21, -1e5, 1e5);
+
+
+//*****************施加动态边界条件，面力边界
+var coeff=new Array(10e6, -60e6, 0)
+//x方向下限及上限
+var x= new Array(-1, 21)
+//y方向下限及上限
+var y= new Array(19.99, 21)
+//z方向下限及上限
+var z= new Array(-1.0,1.0)
+//设定动态速度边界
+blkdyn.ApplyDynaSinVarByCoord ("face_force",false,coeff, 0.0, 1.0, 0.01 ,0,0,0.005, x, y, z);
+
+
+
+//关闭虚拟质量开关
+dyna.Set("If_Virtural_Mass 0");
+
+//设置当前时间为0
+dyna.Set("Time_Now 0");
+
+
+//设置计算时步为3e-6，小时间步，为了看清楚应力的传播
+dyna.Set("Time_Step 3e-6");
+
+//设置局部阻尼为0.0
+blkdyn.SetLocalDamp(0.0);
+
+
+//打开瑞利阻尼计算开关
+dyna.Set("If_Cal_Rayleigh 1");
+blkdyn.SetRayleighDamp(2e-7, 0.0);
+
+
+//动力计算20ms
+dyna.DynaCycle(2e-2);
+
+//设置大时间步，观察破裂演化
+dyna.Set("Time_Step 2e-5");
+
+//计算0.2s
+dyna.DynaCycle(2e-1);
+
+//求解结束
+print("Solution Finished");
+
+```
