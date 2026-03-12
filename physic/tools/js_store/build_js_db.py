@@ -25,6 +25,7 @@ from bs4 import BeautifulSoup
 
 # JavaScript parsing
 import esprima
+import fitz  # PyMuPDF
 
 @dataclass
 class CDEMDocument:
@@ -258,8 +259,56 @@ class CDEMKnowledgeBuilder:
         print(f"❌ 无法识别文件编码: {file_path.name}")
         return None
 
+    def parse_cdem_manual_pdf(self, file_path: Path) -> List[CDEMDocument]:
+        """
+        解析 PDF 技术手册
+        使用 PyMuPDF 提取文本，并尝试保留结构
+        """
+        documents = []
+        try:
+            doc = fitz.open(file_path)
+            content = ""
+            for page in doc:
+                content += page.get_text() + "\n\n"
+            doc.close()
+        except Exception as e:
+            print(f"❌ 解析 PDF 失败 {file_path.name}: {e}")
+            return documents
+
+        if not content.strip():
+            return documents
+
+        metadata = self._extract_common_metadata(file_path)
+        
+        # 1. 整体文档
+        doc_id = f"manual_pdf_{file_path.stem}"
+        doc = CDEMDocument(
+            doc_id=doc_id,
+            source_type="manual_pdf",
+            content=content,
+            metadata=metadata,
+            file_path=str(file_path),
+            category=metadata.get('category', '技术手册'),
+            tags=['manual', 'pdf', metadata.get('module', 'general')]
+        )
+        documents.append(doc)
+        
+        # 2. 尝试简单的 API 提取 (基于 PDF 文本特征)
+        # PDF 提取的文本通常没有 Markdown 那样的明确锚点，
+        # 这里使用简单的关键词匹配来尝试提取可能的 API 章节
+        # 例如查找类似 "Function:", "接口:", "说明:" 等模式
+        
+        # 简单的基于段落的分割，尝试找到函数定义
+        # 假设函数定义通常独立成段，且包含 "function" 或 "接口" 字样
+        # 这是一个简化的启发式策略
+        
+        return documents
+
     def parse_cdem_manual(self, file_path: Path) -> List[CDEMDocument]:
-        """解析技术手册 - 原有逻辑保持不变"""
+        """
+        解析技术手册，提取 API 接口信息
+        优化点：从技术手册中提取结构化的 API 描述
+        """
         documents = []
         content = self._read_file_content(file_path)
         if not content:
@@ -267,24 +316,68 @@ class CDEMKnowledgeBuilder:
 
         metadata = self._extract_common_metadata(file_path)
         
-        # 将Markdown转换为HTML以便分割
-        html_content = markdown.markdown(content, extensions=['tables', 'fenced_code'])
-        soup = BeautifulSoup(html_content, 'html.parser')
-        
-        # 简单按标题分割，如果太短则合并
-        # 这里简化处理，直接按文本长度分割，保留完整上下文
+        # 1. 保留原始手册文档（作为整体参考）
         doc_id = f"manual_{file_path.stem}"
-        
         doc = CDEMDocument(
             doc_id=doc_id,
             source_type="manual",
-            content=content, # 保留Markdown原始内容
+            content=content,
             metadata=metadata,
             file_path=str(file_path),
             category=metadata.get('category', '技术手册'),
             tags=['manual', metadata.get('module', 'general')]
         )
         documents.append(doc)
+        
+        # 2. 提取 API 条目（增强索引）
+        # 利用 <!--HJS_...--> 锚点分割 API
+        api_sections = re.split(r'<!--HJS_', content)
+        
+        for section in api_sections[1:]: # 跳过第一个（通常是文件头）
+            # 恢复 HJS_ 前缀以便后续可能需要
+            section_content = "<!--HJS_" + section
+            
+            # 提取 API 名称
+            # 通常在 ### Header 中
+            header_match = re.search(r'###\s+(.+?)(?:\n|\r)', section)
+            if header_match:
+                api_name = header_match.group(1).strip()
+                # 进一步清洗名称，去除 "方法"、"接口" 等后缀
+                clean_api_name = re.sub(r'(方法|接口|函数|变量)$', '', api_name)
+                
+                # 提取简要说明
+                desc_match = re.search(r'####\s+说明\s+(.+?)(?:\n####|\r####)', section, re.DOTALL)
+                description = desc_match.group(1).strip() if desc_match else ""
+                
+                # 提取参数列表（简单提取）
+                params_match = re.search(r'####\s+参数\s+(.+?)(?:\n####|\r####)', section, re.DOTALL)
+                params = params_match.group(1).strip() if params_match else ""
+                
+                # 构建 API 专用文档块
+                # 这个文档块专门用于回答 "如何使用 xxx 函数"
+                api_doc_content = (
+                    f"API名称: {clean_api_name}\n"
+                    f"所属模块: {metadata.get('module', 'General')}\n"
+                    f"功能说明: {description}\n"
+                    f"参数详情: {params}\n"
+                    f"完整文档:\n{section}"
+                )
+                
+                api_doc = CDEMDocument(
+                    doc_id=f"api_{clean_api_name}_{file_path.stem}",
+                    source_type="api_reference",
+                    content=api_doc_content,
+                    metadata={
+                        **metadata,
+                        'api_name': clean_api_name,
+                        'type': 'api_doc'
+                    },
+                    file_path=str(file_path),
+                    category="API参考",
+                    tags=['api', clean_api_name, metadata.get('module', 'general')]
+                )
+                documents.append(api_doc)
+                
         return documents
 
     def parse_cdem_case(self, file_path: Path, case_type: str) -> List[CDEMDocument]:
@@ -365,7 +458,10 @@ class CDEMKnowledgeBuilder:
         for doc in self.documents:
             # 1. 切分文本
             # 根据源类型选择不同的分割器
-            if doc.source_type in ["case", "training_case"]:
+            if doc.source_type == "api_reference":
+                # API文档通常不需要再次切分，因为它们已经是按条目提取的
+                chunks = [doc.content]
+            elif doc.source_type in ["case", "training_case"]:
                 # 脚本文件使用大块分割，尽可能保留完整代码
                 chunks = self.script_splitter.split_text(doc.content)
             else:
@@ -376,12 +472,20 @@ class CDEMKnowledgeBuilder:
             # Windows路径分隔符如果是反斜杠，显示时可能不美观，可转为 / 
             display_path = Path(doc.file_path).name # 只保留文件名，或者相对路径
             
-            semantic_header = (
-                f"文件名: {doc.metadata['file_name']}\n"
-                f"类别: {doc.category}\n"
-                f"关键词: {' '.join(doc.metadata['keywords'])}\n"
-                f"内容:\n"
-            )
+            if doc.source_type == "api_reference":
+                semantic_header = (
+                    f"【API参考】\n"
+                    f"API名称: {doc.metadata.get('api_name')}\n"
+                    f"所属模块: {doc.metadata.get('module')}\n"
+                    f"内容:\n"
+                )
+            else:
+                semantic_header = (
+                    f"文件名: {doc.metadata['file_name']}\n"
+                    f"类别: {doc.category}\n"
+                    f"关键词: {' '.join(doc.metadata['keywords'])}\n"
+                    f"内容:\n"
+                )
             
             for i, chunk in enumerate(chunks):
                 # 拼接头部信息
@@ -448,6 +552,10 @@ class CDEMKnowledgeBuilder:
         # 手册
         for p in file_cats['manuals']:
             self.documents.extend(self.parse_cdem_manual(p))
+            
+        # PDF 手册
+        for p in file_cats['pdf_files']:
+            self.documents.extend(self.parse_cdem_manual_pdf(p))
         
         # 原有案例
         case_map = [
@@ -541,12 +649,17 @@ async def main():
     
     # 4. Embedding模型配置
     config = {
-        "embedding_model": "bge-m3:latest",  # 请确保您的 Ollama 中有此模型
+        # 推荐使用 bge-m3:latest，它支持长文本(8k)且对中文和代码理解能力强
+        "embedding_model": "bge-m3:latest",
         "ollama_base_url": "http://localhost:11434",
         "persist_directory": CHROMA_DB_DIR,
         "collection_name": "cdem_knowledge",
-        "chunk_size": 800,
-        "chunk_overlap": 150
+        # bge-m3 支持长文本，但为了检索精度，建议适度切分
+        "chunk_size": 1000, 
+        "chunk_overlap": 200,
+        # 脚本文件保持较大切片以保留上下文
+        "script_chunk_size": 8000,
+        "script_chunk_overlap": 0
     }
     
     # =====================================================================

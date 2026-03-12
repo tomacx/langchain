@@ -642,14 +642,17 @@ class AgentConstructionModule:
 
 你的任务是：
 1. **分析需求**：仔细阅读用户的详细需求规范，特别是推荐的搜索关键词。
-2. **检索知识**：必须调用 `search_physics_knowledge` 工具。请尝试使用推荐的关键词进行搜索。如果第一次搜索结果不佳，请尝试换一个关键词再次搜索。
-3. **生成脚本**：基于检索到的案例和API文档，编写准确的JavaScript脚本。
+2. **检索知识**：必须调用 `search_physics_knowledge` 工具。请尝试使用推荐的关键词进行搜索。
+   - 优先查找具体的 API 接口说明（如 `API参考` 类型的文档）。
+   - 其次查找类似的完整脚本案例。
+3. **生成脚本**：基于检索到的 API 文档和案例，编写准确的 JavaScript 脚本。
 
 重要规则：
+- **API 优先**：如果检索到了具体的 API 文档（如 `API名称: Set`），请严格按照文档中的参数说明和示例来编写代码，不要臆造 API。
 - **强制检索**：在编写任何代码前，必须先调用检索工具。
-- **模仿案例**：参考检索到的案例代码结构和API用法。
+- **模仿案例**：参考检索到的案例代码结构。
 - **代码规范**：保持代码风格一致，添加必要的注释。
-- **自我修正**：如果发现检索结果中没有直接相关的案例，请根据已有知识尽力推断，并在注释中说明。
+- **自我修正**：如果发现检索结果中没有直接相关的案例，请根据检索到的 API 文档进行逻辑组合，并在注释中说明推导过程。
 
 输出格式：
 只输出JavaScript代码，不要添加任何解释性文字。代码应该可以直接执行。
@@ -1206,19 +1209,20 @@ def main():
     # =====================================================================
     
     # 1. 向量数据库配置（使用增强版）
-    # VECTOR_DB_PATH = r"D:/Codes/langchain/physic/chroma_db_cdem_enhanced"  # Windows
-    VECTOR_DB_PATH = "/Users/cxh/Codes/langchain/physic/tools/js_store/chroma_db_cdem_v2"  # macOS
+    VECTOR_DB_PATH = r"D:/Codes/langchain/physic/tools/js_store/chroma_db_cdem_v2"  # Windows
+    # VECTOR_DB_PATH = "/Users/cxh/Codes/langchain/physic/tools/js_store/chroma_db_cdem_v2"  # macOS
     
     # 2. 数据集配置
-    # DATASET_SPLIT_JSON = r"D:/Codes/langchain/physic/dataset_split.json"  # Windows
-    DATASET_SPLIT_JSON = "/Users/cxh/Codes/langchain/physic/dataset_split_results/dataset_split.json"  # macOS
-    QUERY_DATASET_JSON = "/Users/cxh/Codes/langchain/physic/dataset_split_results/case_queries_content.json"
+    DATASET_SPLIT_JSON = r"D:/Codes/langchain/physic/dataset_split_results/dataset_split.json"  # Windows
+    QUERY_DATASET_JSON = r"D:/Codes/langchain/physic/dataset_split_results/case_queries_content.json"
+    # DATASET_SPLIT_JSON = "/Users/cxh/Codes/langchain/physic/dataset_split_results/dataset_split.json"  # macOS
+    # QUERY_DATASET_JSON = "/Users/cxh/Codes/langchain/physic/dataset_split_results/case_queries_content.json"
     
-    # TEST_DATA_DIR = r"D:/Codes/langchain/physic/docs/案例"  # 419个脚本所在目录
-    TEST_DATA_DIR = "/Users/cxh/Codes/langchain/physic/docs/案例"  # macOS
+    TEST_DATA_DIR = r"D:/Codes/langchain/physic/docs/案例"  # 419个脚本所在目录
+    # TEST_DATA_DIR = "/Users/cxh/Codes/langchain/physic/docs/案例"  # macOS
     
     # 3. 输出目录
-    OUTPUT_DIR = "./evaluation_results.3.9.1"
+    OUTPUT_DIR = "./evaluation_results.3.9.2"
     
     # 4. LLM模型
     MODEL_NAME = "llama3.1:latest"
