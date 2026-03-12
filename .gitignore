@@ -28,5 +28,4 @@ pnpm-debug.log*
 .DS_Store.env
 
 # Chroma vector store (generated, too large for git)
-physic/tools/js_store/chroma_db_cdem/
-physic/tools/js_store/chroma_db_cdem_v2/
+
