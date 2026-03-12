@@ -1,5 +1,6 @@
 import os
 import operator
+from pathlib import Path
 from typing import Annotated, List, TypedDict, Union
 
 # 导入向量数据库
@@ -117,7 +118,9 @@ class AgentBuilder:
 def main():
     # === 配置区域 ===
     # 这里的路径需要指向上一段代码生成的目录
-    DB_PATH = "D:/Codes/langchain/physic/tools/chroma_db/chroma_db_cdem"  # 在不同环境下更换目录
+    tools_root = Path(__file__).resolve().parent
+    default_db_path = tools_root / "chroma_db" / "chroma_db_cdem"
+    DB_PATH = os.environ.get("CDEM_DEMO_DB_PATH", str(default_db_path))
     COLLECTION_NAME = "cdem_knowledge" # 必须与构建时一致
     
     # 检查数据库目录

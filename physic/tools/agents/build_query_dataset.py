@@ -7,9 +7,14 @@ from datetime import datetime
 from typing import List, Dict
 
 
-CASES_ROOT = "/Users/cxh/Codes/langchain/physic/docs/案例"
-OUTPUT_JSON = "/Users/cxh/Codes/langchain/physic/dataset_split_results/case_queries_content.json"
-OUTPUT_CSV = "/Users/cxh/Codes/langchain/physic/dataset_split_results/case_queries_content.csv"
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+DEFAULT_CASES_ROOT = PROJECT_ROOT / "docs" / "案例"
+DEFAULT_OUTPUT_JSON = PROJECT_ROOT / "dataset_split_results" / "case_queries_content.json"
+DEFAULT_OUTPUT_CSV = PROJECT_ROOT / "dataset_split_results" / "case_queries_content.csv"
+
+CASES_ROOT = os.environ.get("CDEM_CASES_ROOT", str(DEFAULT_CASES_ROOT))
+OUTPUT_JSON = os.environ.get("CDEM_QUERY_DATASET_JSON", str(DEFAULT_OUTPUT_JSON))
+OUTPUT_CSV = os.environ.get("CDEM_QUERY_DATASET_CSV", str(DEFAULT_OUTPUT_CSV))
 
 
 def determine_category(filename: str) -> str:
@@ -27,7 +32,7 @@ def determine_category(filename: str) -> str:
 
 
 def extract_modules(code: str) -> List[str]:
-    pattern = r"\b(dyna|blkdyn|rdface|scdem|bcdem|poresp|pdyna|imeshing|igeo)\s*\."
+    pattern = r"\b(dyna|blkdyn|rdface|scdem|bcdem|poresp|pdyna|imeshing|igeo|imesh|gFun|imath|pargen)\s*\."
     modules = sorted(set(re.findall(pattern, code)))
     return modules
 
@@ -45,6 +50,61 @@ def extract_leading_comments(code: str, max_lines: int = 20) -> str:
             break
     return " ".join(comments)
 
+def extract_comment_snippets(code: str, max_chars: int = 280) -> str:
+    parts: List[str] = []
+    for m in re.finditer(r"//\s*(.+)", code):
+        s = m.group(1).strip()
+        if s and len(s) >= 4:
+            parts.append(s)
+        if sum(len(x) for x in parts) >= max_chars:
+            break
+    if sum(len(x) for x in parts) < max_chars:
+        for m in re.finditer(r"/\*([\s\S]*?)\*/", code):
+            s = re.sub(r"\s+", " ", m.group(1)).strip()
+            if s and len(s) >= 8:
+                parts.append(s)
+            if sum(len(x) for x in parts) >= max_chars:
+                break
+    text = "；".join(parts)
+    return text[:max_chars]
+
+def extract_top_api_calls(code: str, max_items: int = 10) -> List[str]:
+    calls = re.findall(r"\b([a-zA-Z_][a-zA-Z0-9_]*)\.([A-Za-z_][A-Za-z0-9_]*)\s*\(", code)
+    filtered: List[str] = []
+    for mod, fn in calls:
+        if mod in {"console", "Math"}:
+            continue
+        filtered.append(f"{mod}.{fn}")
+    freq: Dict[str, int] = {}
+    for c in filtered:
+        freq[c] = freq.get(c, 0) + 1
+    ranked = sorted(freq.items(), key=lambda x: (-x[1], x[0]))
+    return [x[0] for x in ranked[:max_items]]
+
+def extract_geometry_keywords(code: str) -> List[str]:
+    keys = []
+    patterns = [
+        (r"\bigeo\.(Generate[A-Za-z0-9_]+)\b", 6),
+        (r"\bigeo\.(Create[A-Za-z0-9_]+)\b", 6),
+        (r"\bimeshing\.(\w+)\b", 6),
+    ]
+    for pat, limit in patterns:
+        found = re.findall(pat, code)
+        for f in found[:limit]:
+            keys.append(f)
+    uniq = []
+    for k in keys:
+        if k not in uniq:
+            uniq.append(k)
+    return uniq[:10]
+
+def scenario_from_filename(filename: str) -> str:
+    name = filename.replace("案例库-", "").replace(".js", "")
+    parts = [p for p in name.split("-") if p]
+    if len(parts) >= 2:
+        return " - ".join(parts[1:])[:80]
+    return name[:80]
+
 
 def generate_default_query_from_filename(filename: str) -> str:
     name = filename.replace("案例库-", "").replace(".js", "")
@@ -60,9 +120,29 @@ def build_query_for_case(filename: str, code: str) -> Dict:
     category = determine_category(filename)
     modules = extract_modules(code)
     comment_hint = extract_leading_comments(code)
+    comment_snippets = extract_comment_snippets(code)
     default_query = generate_default_query_from_filename(filename)
 
     modules_str = "、".join(modules) if modules else "相关物理模块"
+    api_calls = extract_top_api_calls(code)
+    api_calls_str = "，".join(api_calls[:8])
+    geom_keys = extract_geometry_keywords(code)
+    geom_str = "，".join(geom_keys[:6])
+    scene = scenario_from_filename(filename)
+
+    precise_query = (
+        f"请复现一个{category}的 JavaScript 案例脚本，案例文件名为「{filename}」，场景/主题为：{scene}。"
+        f"请严格依据 CDEM 技术手册/API（优先）来选择与确认接口与参数含义。"
+        f"必须使用到这些模块：{modules_str}。"
+        f"请按“几何建模→网格划分→材料/模型→边界/载荷→求解参数→结果输出/监测”的顺序组织脚本，"
+        f"并确保脚本以 setCurDir(getSrcDir()); 开头。"
+    )
+    if comment_snippets:
+        precise_query += f"脚本注释/意图线索：{comment_snippets}。"
+    if geom_str:
+        precise_query += f"几何/网格相关接口关键词：{geom_str}。"
+    if api_calls_str:
+        precise_query += f"API 调用关键词（用于检索技术手册）：{api_calls_str}。"
 
     if comment_hint:
         strong_query = (
@@ -96,6 +176,9 @@ def build_query_for_case(filename: str, code: str) -> Dict:
         "category": category,
         "modules": modules,
         "comment_hint": comment_hint,
+        "comment_snippets": comment_snippets,
+        "api_calls": api_calls,
+        "precise_query": precise_query,
         "default_query": default_query,
         "strong_query": strong_query,
         "user_query": user_query,
@@ -143,7 +226,7 @@ def build_query_dataset(
                 "modules": c["modules"],
                 "comment_hint": c["comment_hint"],
                 "default_query": c["default_query"],
-                "test_queries": [c["user_query"], c["strong_query"], c["default_query"]],
+                "test_queries": [c["precise_query"], c["user_query"], c["strong_query"], c["default_query"]],
             }
             for c in cases
         ],
@@ -167,6 +250,9 @@ def build_query_dataset(
                 "category",
                 "modules",
                 "comment_hint",
+                "comment_snippets",
+                "api_calls",
+                "precise_query",
                 "default_query",
                 "user_query",
                 "strong_query",
@@ -181,6 +267,9 @@ def build_query_dataset(
                     c["category"],
                     " ".join(c["modules"]),
                     c["comment_hint"],
+                    c["comment_snippets"],
+                    " ".join(c["api_calls"]),
+                    c["precise_query"],
                     c["default_query"],
                     c["user_query"],
                     c["strong_query"],

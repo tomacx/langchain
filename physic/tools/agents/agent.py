@@ -6,7 +6,7 @@ import re
 import importlib.util
 from pathlib import Path
 from typing import List, Dict, Any, Optional
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, field
 from datetime import datetime
 
 # LangChain imports
@@ -70,6 +70,13 @@ class EvaluationResult:
     error_message: str = ""
     notes: str = ""
     evaluation_time: str = ""
+    token_estimate: int = 0
+    simplicity_score: float = 0.0
+    physics_consistency_score: float = 0.0
+    reward_total: float = 0.0
+    reward_breakdown: Dict[str, float] = field(default_factory=dict)
+    optimization_used: bool = False
+    optimization_iterations: int = 0
 
 
 class VectorKnowledgeBaseModule:
@@ -450,8 +457,8 @@ class ToolConstructionModule:
             retriever=retriever,
             name="search_physics_knowledge",
             description=(
-                "【必须优先使用】用于搜索 CDEM 软件的技术手册、API 接口文档和完整脚本案例。"
-                "编写脚本前，必须先调用此工具查找类似的现成案例。"
+                "【必须优先使用】用于搜索 CDEM 软件的技术手册、API 接口文档和脚本案例。"
+                "编写脚本前，必须先调用此工具：优先阅读技术手册/API 确认接口与参数含义，再参考案例的流程结构。"
                 "请使用具体的关键词进行搜索，参数 query 必须是纯字符串（例如 'BallBlast'），禁止传入 JSON 或字典。"
             )
         )
@@ -471,6 +478,7 @@ class AgentConstructionModule:
         self.model_name = model_name
         self.enable_preprocessing = enable_preprocessing
         self.vectorstore = vectorstore
+        self.last_run_metrics: Dict[str, Any] = {}
         self._build_agent()
         
         # 初始化预处理器 (即使禁用了预处理，也初始化以便后续开启)
@@ -536,16 +544,50 @@ class AgentConstructionModule:
         
         docs = []
         try:
-            # 2. 混合检索策略
-            # 策略 A: 语义检索 (k=8)
-            results_sem = self.vectorstore.similarity_search(query, k=8)
+            def search_with_fallback(q: str, k: int, source_types: Optional[List[str]] = None) -> List:
+                if not source_types:
+                    return self.vectorstore.similarity_search(q, k=k)
+                
+                where = None
+                if len(source_types) == 1:
+                    where = {"source_type": source_types[0]}
+                else:
+                    where = {"source_type": {"$in": source_types}}
+                
+                try:
+                    return self.vectorstore.similarity_search(q, k=k, filter=where)
+                except TypeError:
+                    pass
+                except Exception:
+                    pass
+                
+                raw = self.vectorstore.similarity_search(q, k=max(k * 5, 20))
+                filtered = [d for d in raw if (d.metadata or {}).get("source_type") in set(source_types)]
+                return filtered[:k]
             
-            # 策略 B: 关键词检索 (k=5)
+            # 2. 混合检索策略
+            # 方案：分桶检索（手册/API 与 案例分开取），避免案例把手册挤出 TopK
+            manual_types = ["api_reference", "manual"]
+            case_types = ["training_case", "case"]
+            
+            results_manual_sem = search_with_fallback(query, k=10, source_types=manual_types)
+            results_case_sem = search_with_fallback(query, k=10, source_types=case_types)
+            
+            # 手册增强：从 query 中提取模块名，再做一轮“模块关键词”手册检索
+            module_tokens = self._extract_required_modules(query)
+            results_manual_module = []
+            if module_tokens:
+                module_query = " ".join(module_tokens)
+                results_manual_module = search_with_fallback(module_query, k=8, source_types=manual_types)
+            
+            # 策略 B: 关键词检索 (k=10)
             keywords = self._extract_keywords(query)
-            results_kw = []
+            results_manual_kw = []
+            results_case_kw = []
             if keywords:
                 print(f"🔍 [Debug] Keyword Search: {keywords}")
-                results_kw = self.vectorstore.similarity_search(keywords, k=5)
+                results_manual_kw = search_with_fallback(keywords, k=10, source_types=manual_types)
+                results_case_kw = search_with_fallback(keywords, k=10, source_types=case_types)
             
             # 3. 合并与去重
             seen_sources = set()
@@ -566,11 +608,14 @@ class AgentConstructionModule:
                         seen_sources.add(src)
                         combined_candidates.append(doc)
 
-            add_docs(results_sem)
-            add_docs(results_kw)
+            add_docs(results_manual_sem)
+            add_docs(results_manual_kw)
+            add_docs(results_manual_module)
+            add_docs(results_case_sem)
+            add_docs(results_case_kw)
             
-            # 取 Top 5
-            docs = combined_candidates[:5]
+            # 取 Top 10 进入二次排序（手册/API优先）
+            docs = combined_candidates[:10]
             
         except Exception as e:
             print(f"❌ 检索失败: {e}")
@@ -579,21 +624,60 @@ class AgentConstructionModule:
         if not docs:
             return "", 0
         
-        context = ""
-        for i, doc in enumerate(docs):
-            ref = doc.page_content
-            meta = doc.metadata
-            source = meta.get('source', 'unknown')
-            if not ref: continue
-            print(f"\n🔍 [Debug] Retrieved Doc {i+1} ({source})\n")
-            context += f"\n--- 参考案例 {i+1} (来源: {source}) ---\n{ref}\n"
-            
+        def source_priority(d) -> int:
+            st = (d.metadata or {}).get("source_type", "")
+            if st == "api_reference":
+                return 0
+            if st == "manual":
+                return 1
+            if st == "training_case":
+                return 3
+            if st == "case":
+                return 4
+            return 2
+        
+        docs_sorted = sorted(docs, key=source_priority)
+        api_docs = [d for d in docs_sorted if (d.metadata or {}).get("source_type") == "api_reference"]
+        manual_docs = [d for d in docs_sorted if (d.metadata or {}).get("source_type") == "manual"]
+        case_docs = [d for d in docs_sorted if (d.metadata or {}).get("source_type") in {"case", "training_case"}]
+        other_docs = [
+            d for d in docs_sorted
+            if (d.metadata or {}).get("source_type") not in {"api_reference", "manual", "case", "training_case"}
+        ]
+        
+        def clip(text: str, limit: int = 4000) -> str:
+            if not text:
+                return ""
+            return text[:limit] + ("\n...（已截断）" if len(text) > limit else "")
+        
+        context_parts: List[str] = []
+        
+        def render_group(title: str, docs_group: List, label: str, max_n: int):
+            if not docs_group:
+                return
+            context_parts.append(f"\n【{title}】\n")
+            for i, doc in enumerate(docs_group[:max_n], 1):
+                ref = clip(doc.page_content)
+                meta = doc.metadata or {}
+                source = meta.get("source", "unknown")
+                if not ref:
+                    continue
+                print(f"\n🔍 [Debug] Retrieved Doc {i} ({source})\n")
+                context_parts.append(f"--- {label} {i} (来源: {source}) ---\n{ref}\n")
+        
+        render_group("技术手册 / API（优先依据）", api_docs + manual_docs, "手册/接口", max_n=6)
+        render_group("案例参考（仅供结构与参数范围参考，禁止逐行抄写）", case_docs, "案例", max_n=4)
+        render_group("其他检索片段", other_docs, "片段", max_n=2)
+        
+        if not context_parts:
+            return "", 0
+        
         return (
             "\n\n【知识库检索结果】\n"
-            "系统已为你检索到以下相关代码案例。请优先参考这些代码来编写脚本，"
-            "特别是注意 API 的用法和参数设置：\n"
-            f"{context}\n"
-        ), len(docs)
+            "请优先依据【技术手册/API】确认接口与参数含义；【案例参考】仅用于借鉴流程结构与参数范围，禁止逐行抄写。\n"
+            + "".join(context_parts)
+            + "\n"
+        ), len(docs_sorted)
 
     def _extract_required_modules(self, query: str) -> List[str]:
         modules: List[str] = []
@@ -636,20 +720,181 @@ class AgentConstructionModule:
                 missing.append(mod)
         return missing
 
+    def _estimate_token_cost(self, text: str) -> int:
+        if not text:
+            return 0
+        return int((len(text) + 3) / 4)
+
+    def _score_simplicity(self, token_est: int, duration_s: float) -> float:
+        if token_est <= 0:
+            return 0.0
+        t_score = 10.0
+        if token_est > 2800:
+            t_score -= 6.0
+        elif token_est > 1800:
+            t_score -= 4.0
+        elif token_est > 1200:
+            t_score -= 2.0
+        elif token_est > 800:
+            t_score -= 1.0
+
+        d_score = 10.0
+        if duration_s > 60:
+            d_score -= 6.0
+        elif duration_s > 40:
+            d_score -= 4.0
+        elif duration_s > 25:
+            d_score -= 2.0
+        elif duration_s > 15:
+            d_score -= 1.0
+
+        return max(0.0, min(10.0, (t_score * 0.7 + d_score * 0.3)))
+
+    def _score_fit(self, code: str, required_modules: List[str]) -> tuple[float, List[str]]:
+        issues: List[str] = []
+        if not code or len(code.strip()) < 10:
+            return 0.0, ["代码为空或过短"]
+
+        if "search_physics_knowledge" in code:
+            issues.append("包含 search_physics_knowledge")
+        if "setCurDir(getSrcDir());" not in code:
+            issues.append("缺少 setCurDir(getSrcDir());")
+        if re.search(r"\bwhile\s*\(\s*true\s*\)", code):
+            issues.append("包含 while(true)")
+        if code.count("{") != code.count("}"):
+            issues.append("花括号不匹配")
+        if code.count("(") != code.count(")"):
+            issues.append("括号不匹配")
+
+        missing = self._missing_required_modules(code, required_modules)
+        if missing:
+            issues.append("缺少必要模块调用: " + ", ".join(missing))
+
+        solve_like = bool(re.search(r"\bSolve\s*\(|\.\s*Solve\s*\(", code))
+        if not solve_like:
+            issues.append("未检测到求解/执行入口（Solve）")
+
+        quality = CodeQualityEvaluator.evaluate(code)
+        base = quality
+        if issues:
+            base -= min(5.0, 0.8 * len(issues))
+        return max(0.0, min(10.0, base)), issues
+
+    def _score_physics_consistency(self, code: str) -> tuple[float, List[str]]:
+        issues: List[str] = []
+        if not code or len(code.strip()) < 10:
+            return 0.0, ["代码为空或过短"]
+
+        def extract_named_values(names: List[str]) -> List[tuple[str, float]]:
+            out: List[tuple[str, float]] = []
+            for name in names:
+                pat = rf"{re.escape(name)}\s*[:=,]\s*([-+]?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?)"
+                for m in re.finditer(pat, code):
+                    try:
+                        out.append((name, float(m.group(1))))
+                    except Exception:
+                        continue
+            return out
+
+        for k, v in extract_named_values(["density", "rho", "Density", "Rho"]):
+            if v <= 0:
+                issues.append(f"{k} <= 0")
+
+        for k, v in extract_named_values(["dt", "Dt", "timeStep", "TimeStep", "timestep"]):
+            if v <= 0:
+                issues.append(f"{k} <= 0")
+            if v > 1:
+                issues.append(f"{k} 过大（>1s）")
+
+        for k, v in extract_named_values(["poisson", "nu", "Poisson", "Nu"]):
+            if v <= 0 or v >= 0.5:
+                issues.append(f"{k} 不在 (0, 0.5) 内")
+
+        for k, v in extract_named_values(["young", "Young", "E", "ElasticModulus"]):
+            if v <= 0:
+                issues.append(f"{k} <= 0")
+
+        g_match = re.search(r"\bgravity\b.*?\[([^\]]+)\]", code, re.IGNORECASE)
+        if g_match:
+            try:
+                parts = [float(x.strip()) for x in g_match.group(1).split(",")[:3]]
+                if len(parts) == 3:
+                    gmag = (parts[0] ** 2 + parts[1] ** 2 + parts[2] ** 2) ** 0.5
+                    if gmag > 200:
+                        issues.append("重力加速度幅值异常（>200）")
+            except Exception:
+                pass
+
+        score = 10.0
+        if issues:
+            score -= min(7.0, 1.2 * len(issues))
+        return max(0.0, min(10.0, score)), issues
+
+    def _pareto_front(self, candidates: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        front: List[Dict[str, Any]] = []
+        for a in candidates:
+            dominated = False
+            for b in candidates:
+                if a is b:
+                    continue
+                if (
+                    b["simplicity_score"] >= a["simplicity_score"]
+                    and b["fit_score"] >= a["fit_score"]
+                    and b["physics_score"] >= a["physics_score"]
+                    and (
+                        b["simplicity_score"] > a["simplicity_score"]
+                        or b["fit_score"] > a["fit_score"]
+                        or b["physics_score"] > a["physics_score"]
+                    )
+                ):
+                    dominated = True
+                    break
+            if not dominated:
+                front.append(a)
+        return front
+
+    def _select_from_pareto(self, pareto: List[Dict[str, Any]], target_fit: float, target_physics: float) -> Dict[str, Any]:
+        if not pareto:
+            return {}
+        best = None
+        best_score = -1e9
+        for c in pareto:
+            fit = c["fit_score"]
+            phys = c["physics_score"]
+            simp = c["simplicity_score"]
+            lam_fit = 1.0 + max(0.0, target_fit - fit) / max(target_fit, 1e-6)
+            lam_phys = 1.0 + max(0.0, target_physics - phys) / max(target_physics, 1e-6)
+            lam_simp = 1.0
+            total = lam_fit * fit + lam_phys * phys + lam_simp * simp
+            if total > best_score:
+                best_score = total
+                best = c
+        assert best is not None
+        best["reward_total"] = best_score
+        best["reward_breakdown"] = {
+            "simplicity_score": float(best["simplicity_score"]),
+            "fit_score": float(best["fit_score"]),
+            "physics_score": float(best["physics_score"]),
+        }
+        return best
+
     def _get_default_system_prompt(self) -> str:
         """默认系统提示词"""
         return """你是一个专业的CDEM物理仿真脚本生成助手。
 
 你的任务是：
 1. **分析需求**：仔细阅读用户的详细需求规范，特别是推荐的搜索关键词。
-2. **检索知识**：必须调用 `search_physics_knowledge` 工具。请尝试使用推荐的关键词进行搜索。如果第一次搜索结果不佳，请尝试换一个关键词再次搜索。
-3. **生成脚本**：基于检索到的案例和API文档，编写准确的JavaScript脚本。
+2. **检索知识**：必须调用 `search_physics_knowledge` 工具。请尝试使用推荐的关键词进行搜索。
+   - 优先查找具体的 API 接口说明（如 `API参考` 类型的文档）。
+   - 其次查找类似的完整脚本案例。
+3. **生成脚本**：基于检索到的 API 文档和案例，编写准确的 JavaScript 脚本。
 
 重要规则：
+- **API 优先**：如果检索到了具体的 API 文档（如 `API名称: Set`），请严格按照文档中的参数说明和示例来编写代码，不要臆造 API。
 - **强制检索**：在编写任何代码前，必须先调用检索工具。
-- **模仿案例**：参考检索到的案例代码结构和API用法。
+- **模仿案例**：参考检索到的案例代码结构。
 - **代码规范**：保持代码风格一致，添加必要的注释。
-- **自我修正**：如果发现检索结果中没有直接相关的案例，请根据已有知识尽力推断，并在注释中说明。
+- **自我修正**：如果发现检索结果中没有直接相关的案例，请根据检索到的 API 文档进行逻辑组合，并在注释中说明推导过程。
 
 输出格式：
 只输出JavaScript代码，不要添加任何解释性文字。代码应该可以直接执行。
@@ -659,28 +904,65 @@ class AgentConstructionModule:
         """生成代码的主入口"""
         start_time = time.time()
         retrieved_count = 0
+        self.last_run_metrics = {}
+        
+        max_recursion_limit = int(os.environ.get("CDEM_AGENT_RECURSION_LIMIT", "25"))
+        max_tool_calls = int(os.environ.get("CDEM_AGENT_MAX_TOOL_CALLS", "6"))
+        enable_opt = os.environ.get("CDEM_ENABLE_GAME_OPT", "1").strip() in {"1", "true", "True"}
+        max_opt_iters = int(os.environ.get("CDEM_OPT_MAX_ITERS", "2"))
+        target_fit = float(os.environ.get("CDEM_OPT_TARGET_FIT", "7.0"))
+        target_physics = float(os.environ.get("CDEM_OPT_TARGET_PHYSICS", "7.0"))
+        
+        if not hasattr(self, "_generation_memory"):
+            self._generation_memory = {
+                "last_feedback": "",
+                "last_query": "",
+                "global_feedback": [],
+            }
+        
+        def build_memory_prompt() -> str:
+            parts: List[str] = []
+            last_feedback = (self._generation_memory.get("last_feedback") or "").strip()
+            if last_feedback:
+                parts.append("【上一次生成复盘（必须改进）】\n" + last_feedback)
+            global_fb = self._generation_memory.get("global_feedback") or []
+            if global_fb:
+                parts.append("【近期常见失败点（请主动规避）】\n- " + "\n- ".join(global_fb[-5:]))
+            return "\n\n".join(parts).strip()
 
-        def run_once(prompt_text: str) -> tuple[str, int]:
+        def run_once(prompt_text: str, dyn_prompt: str = "") -> tuple[str, int, float]:
+            t0 = time.time()
             local_retrieved = 0
             local_generated = ""
             final_messages = []
             
             input_messages = [HumanMessage(content=prompt_text)]
+            memory_prompt = build_memory_prompt()
+            if memory_prompt:
+                input_messages.insert(0, SystemMessage(content=memory_prompt))
             if dynamic_sys_prompt:
                 input_messages.insert(0, SystemMessage(content=f"【动态优化指令】\n{dynamic_sys_prompt}"))
+            if dyn_prompt:
+                input_messages.insert(0, SystemMessage(content=f"【动态优化指令】\n{dyn_prompt}"))
 
             # 兼容性处理：如果 executor 期待 list，传入 list；如果期待 dict，传入 dict
             # 标准 create_agent 生成的 executor 通常接受 {"messages": ...}
             
+            step = 0
+            tool_calls = 0
+            hit_limit = False
             for chunk in self.agent_executor.stream(
                 {"messages": input_messages},
-                stream_mode="values"
+                stream_mode="values",
+                config={"recursion_limit": max_recursion_limit},
             ):
+                step += 1
                 final_messages = chunk["messages"]
                 last_message = chunk["messages"][-1]
 
                 if isinstance(last_message, AIMessage):
                     if last_message.tool_calls:
+                        tool_calls += len(last_message.tool_calls)
                         if verbose:
                             tc = last_message.tool_calls[0]
                             print(f"\n🛠️  调用工具: {tc['name']}")
@@ -689,11 +971,31 @@ class AgentConstructionModule:
                         local_generated = last_message.content
                         if verbose:
                             print("\n✅ Agent 输出最终脚本")
+                
+                if tool_calls >= max_tool_calls:
+                    if verbose:
+                        print(f"\n⚠️ 达到最大工具调用次数限制: {tool_calls}/{max_tool_calls}，提前结束以避免循环。")
+                    hit_limit = True
+                    break
+                if step >= max_recursion_limit:
+                    if verbose:
+                        print(f"\n⚠️ 达到最大步数限制: {step}/{max_recursion_limit}，提前结束以避免循环。")
+                    hit_limit = True
+                    break
             
             # 准确统计工具调用次数 (遍历最终消息历史)
             local_retrieved = sum(1 for m in final_messages if hasattr(m, "type") and m.type == "tool")
             
-            return local_generated, local_retrieved
+            if hit_limit and not local_generated:
+                try:
+                    resp = self.llm.invoke(input_messages)
+                    if hasattr(resp, "content") and resp.content:
+                        local_generated = resp.content
+                except Exception as e:
+                    if verbose:
+                        print(f"\n⚠️ 降级为直连模型生成失败: {e}")
+            
+            return local_generated, local_retrieved, time.time() - t0
 
         try:
             if verbose:
@@ -753,12 +1055,14 @@ class AgentConstructionModule:
                 + reference_context
                 + "\n\n【生成要求】\n"
                 "1. 请仔细分析上述提供的【知识库检索结果】（如果有）。\n"
-                "2. 模仿检索到的案例结构和 API 用法。\n"
+                "2. 以【技术手册/API】为准确认接口与参数含义；【案例参考】仅用于借鉴流程结构与参数范围，禁止逐行抄写整段代码。\n"
                 "3. 最终输出：只提供完整的 JavaScript 脚本代码（使用 ```javascript 包裹）。\n"
                 "4. 严禁在代码中包含 `search_physics_knowledge` 调用，严禁输出 JSON 格式。"
             )
 
-            generated_text, retrieved_once = run_once(base_prompt)
+            required_modules = self._extract_required_modules(query)
+
+            generated_text, retrieved_once, dur_once = run_once(base_prompt)
             retrieved_count = max(retrieved_count, retrieved_once)
             generated_code = self._extract_code(generated_text)
             
@@ -766,7 +1070,6 @@ class AgentConstructionModule:
             is_json_output = generated_code.strip().startswith("{") and '"name":' in generated_code
 
             # 检测缺失的模块
-            required_modules = self._extract_required_modules(query)
             missing_modules = self._missing_required_modules(generated_code, required_modules)
 
             normalized = CodeSimilarityCalculator._normalize_code(generated_code)
@@ -794,10 +1097,128 @@ class AgentConstructionModule:
                     "1. 参考上文提供的检索结果。\n"
                     "2. 只输出 JavaScript 代码块，不要 JSON，不要包含 `search_physics_knowledge`。"
                 )
-                generated_text_strict, retrieved_retry = run_once(strict_prompt)
+                generated_text_strict, retrieved_retry, dur_retry = run_once(strict_prompt, dyn_prompt="拟合度优先：确保脚本可直接运行，补全缺失模块调用与求解入口，禁止输出 JSON/工具名。")
                 if generated_text_strict:
                     generated_code = self._extract_code(generated_text_strict)
                     retrieved_count = max(retrieved_count, retrieved_retry, retrieved_count)
+                    dur_once = max(dur_once, dur_retry)
+
+            candidates: List[Dict[str, Any]] = []
+            base_tokens = self._estimate_token_cost(base_prompt) + self._estimate_token_cost(generated_code)
+            simp = self._score_simplicity(base_tokens, dur_once)
+            fit_score, fit_issues = self._score_fit(generated_code, required_modules)
+            phys_score, phys_issues = self._score_physics_consistency(generated_code)
+            candidates.append(
+                {
+                    "name": "baseline",
+                    "code": generated_code,
+                    "token_est": base_tokens,
+                    "duration_s": dur_once,
+                    "simplicity_score": simp,
+                    "fit_score": fit_score,
+                    "physics_score": phys_score,
+                    "fit_issues": fit_issues,
+                    "physics_issues": phys_issues,
+                }
+            )
+
+            need_opt = enable_opt and (
+                len(query.strip()) < 160
+                or fit_score < target_fit
+                or phys_score < target_physics
+                or retrieved_count == 0
+            )
+
+            opt_iters = 0
+            if need_opt:
+                opt_objectives = [
+                    "简约性优先：在不降低可执行性的前提下，减少冗余注释与重复设置，减少不必要的变量与输出，缩短脚本长度，并保持运行更快。",
+                    "拟合度优先：优先保证脚本能正确运行并输出结果，确保必要模块调用齐全、求解入口存在、关键参数完整，避免臆造 API。",
+                    "物理一致性优先：检查并修正明显违反基本物理规律的参数（例如密度/时间步长/弹性参数/泊松比等），保证参数取值合理且为正，边界条件与载荷方向自洽。",
+                ]
+                for _ in range(max_opt_iters):
+                    opt_iters += 1
+                    for obj in opt_objectives:
+                        cand_text, cand_retrieved, cand_dur = run_once(base_prompt, dyn_prompt=obj)
+                        cand_code = self._extract_code(cand_text)
+                        if not cand_code:
+                            continue
+                        token_est = self._estimate_token_cost(base_prompt) + self._estimate_token_cost(cand_code)
+                        simp_s = self._score_simplicity(token_est, cand_dur)
+                        fit_s, fit_is = self._score_fit(cand_code, required_modules)
+                        phys_s, phys_is = self._score_physics_consistency(cand_code)
+                        candidates.append(
+                            {
+                                "name": f"opt{opt_iters}",
+                                "code": cand_code,
+                                "token_est": token_est,
+                                "duration_s": cand_dur,
+                                "simplicity_score": simp_s,
+                                "fit_score": fit_s,
+                                "physics_score": phys_s,
+                                "fit_issues": fit_is,
+                                "physics_issues": phys_is,
+                            }
+                        )
+                    pareto = self._pareto_front(candidates)
+                    selected = self._select_from_pareto(pareto, target_fit=target_fit, target_physics=target_physics)
+                    if selected:
+                        if selected["fit_score"] >= target_fit and selected["physics_score"] >= target_physics:
+                            break
+                pareto = self._pareto_front(candidates)
+                selected = self._select_from_pareto(pareto, target_fit=target_fit, target_physics=target_physics)
+            else:
+                selected = candidates[0]
+                pareto = [selected]
+
+            if selected and selected.get("code"):
+                generated_code = selected["code"]
+                if selected.get("name") != "baseline":
+                    dur_once = max(dur_once, float(selected.get("duration_s", 0.0)))
+            
+            self.last_run_metrics = {
+                "token_estimate": int(selected.get("token_est", 0)) if selected else 0,
+                "simplicity_score": float(selected.get("simplicity_score", 0.0)) if selected else 0.0,
+                "physics_consistency_score": float(selected.get("physics_score", 0.0)) if selected else 0.0,
+                "fit_score": float(selected.get("fit_score", 0.0)) if selected else 0.0,
+                "reward_total": float(selected.get("reward_total", 0.0)) if selected else 0.0,
+                "reward_breakdown": dict(selected.get("reward_breakdown", {})) if selected else {},
+                "optimization_used": bool(need_opt),
+                "optimization_iterations": int(opt_iters),
+                "pareto_size": int(len(pareto)),
+                "candidates_count": int(len(candidates)),
+            }
+            
+            feedback_items: List[str] = []
+            if "setCurDir(getSrcDir());" not in generated_code:
+                feedback_items.append("缺少脚本起手式：setCurDir(getSrcDir());")
+            if "search_physics_knowledge" in generated_code:
+                feedback_items.append("代码中出现 search_physics_knowledge（严禁出现在最终脚本）")
+            if re.search(r"\bwhile\s*\(\s*true\s*\)", generated_code):
+                feedback_items.append("包含 while(true) 可能导致脚本自身无限循环")
+            missing_modules = self._missing_required_modules(generated_code, required_modules)
+            if missing_modules:
+                feedback_items.append(f"缺少必要模块调用：{', '.join(missing_modules)}")
+            _, fit_issues_final = self._score_fit(generated_code, required_modules)
+            _, phys_issues_final = self._score_physics_consistency(generated_code)
+            if fit_issues_final:
+                for it in fit_issues_final[:3]:
+                    if it not in feedback_items:
+                        feedback_items.append(it)
+            if phys_issues_final:
+                for it in phys_issues_final[:3]:
+                    if it not in feedback_items:
+                        feedback_items.append(it)
+            
+            if feedback_items:
+                self._generation_memory["last_query"] = query
+                self._generation_memory["last_feedback"] = "\n".join(f"- {x}" for x in feedback_items)
+                for item in feedback_items:
+                    if item not in self._generation_memory["global_feedback"]:
+                        self._generation_memory["global_feedback"].append(item)
+            else:
+                self._generation_memory["last_query"] = query
+                self._generation_memory["last_feedback"] = ""
 
             elapsed_time = time.time() - start_time
             return generated_code, elapsed_time, retrieved_count
@@ -857,6 +1278,7 @@ class EvaluationModule:
         
         # 生成代码 (调用 Agent 模块)
         generated_code, gen_time, retrieved_count = self.agent_module.generate_code(query, verbose)
+        extra = getattr(self.agent_module, "last_run_metrics", {}) or {}
         
         # 计算评估指标
         similarity = CodeSimilarityCalculator.calculate_similarity(ground_truth_code, generated_code)
@@ -896,7 +1318,14 @@ class EvaluationModule:
             functionality_score=functionality,
             retrieved_docs_count=retrieved_count,
             retrieval_quality=retrieval_quality,
-            evaluation_time=datetime.now().isoformat()
+            evaluation_time=datetime.now().isoformat(),
+            token_estimate=int(extra.get("token_estimate", 0) or 0),
+            simplicity_score=float(extra.get("simplicity_score", 0.0) or 0.0),
+            physics_consistency_score=float(extra.get("physics_consistency_score", 0.0) or 0.0),
+            reward_total=float(extra.get("reward_total", 0.0) or 0.0),
+            reward_breakdown=dict(extra.get("reward_breakdown", {}) or {}),
+            optimization_used=bool(extra.get("optimization_used", False)),
+            optimization_iterations=int(extra.get("optimization_iterations", 0) or 0),
         )
         return result
 
@@ -1206,19 +1635,23 @@ def main():
     # =====================================================================
     
     # 1. 向量数据库配置（使用增强版）
-    # VECTOR_DB_PATH = r"D:/Codes/langchain/physic/chroma_db_cdem_enhanced"  # Windows
-    VECTOR_DB_PATH = "/Users/cxh/Codes/langchain/physic/tools/js_store/chroma_db_cdem_v2"  # macOS
+    project_root = Path(__file__).resolve().parents[2]
+    default_vector_db_path = project_root / "tools" / "js_store" / "chroma_db_cdem"
+    VECTOR_DB_PATH = os.environ.get("CDEM_VECTOR_DB_PATH", str(default_vector_db_path))
     
     # 2. 数据集配置
-    # DATASET_SPLIT_JSON = r"D:/Codes/langchain/physic/dataset_split.json"  # Windows
-    DATASET_SPLIT_JSON = "/Users/cxh/Codes/langchain/physic/dataset_split_results/dataset_split.json"  # macOS
-    QUERY_DATASET_JSON = "/Users/cxh/Codes/langchain/physic/dataset_split_results/case_queries_content.json"
+    dataset_root = project_root / "dataset_split_results"
+    default_dataset_split_json = dataset_root / "dataset_split.json"
+    default_query_dataset_json = dataset_root / "case_queries_content.json"
+    DATASET_SPLIT_JSON = os.environ.get("CDEM_DATASET_SPLIT_JSON", str(default_dataset_split_json))
+    QUERY_DATASET_JSON = os.environ.get("CDEM_QUERY_DATASET_JSON", str(default_query_dataset_json))
     
-    # TEST_DATA_DIR = r"D:/Codes/langchain/physic/docs/案例"  # 419个脚本所在目录
-    TEST_DATA_DIR = "/Users/cxh/Codes/langchain/physic/docs/案例"  # macOS
+    docs_root = project_root / "docs"
+    default_test_data_dir = docs_root / "案例"
+    TEST_DATA_DIR = os.environ.get("CDEM_CASE_DIR", str(default_test_data_dir))
     
     # 3. 输出目录
-    OUTPUT_DIR = "./evaluation_results.3.9.1"
+    OUTPUT_DIR = os.environ.get("CDEM_EVAL_OUTPUT_DIR", str(Path(__file__).resolve().parent / "results/evaluation_results.3.12.5(加入优化目标)"))
     
     # 4. LLM模型
     MODEL_NAME = "llama3.1:latest"
