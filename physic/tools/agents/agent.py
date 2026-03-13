@@ -483,6 +483,14 @@ class AgentConstructionModule:
         
         # 初始化预处理器 (即使禁用了预处理，也初始化以便后续开启)
         self.preprocessor = QueryPreprocessor(self.llm)
+        self.reset_generation_memory()
+
+    def reset_generation_memory(self):
+        self._generation_memory = {
+            "last_feedback": "",
+            "last_query": "",
+            "global_feedback": [],
+        }
 
     def _build_agent(self):
         print("\n🤖 构建智能体...")
@@ -535,13 +543,10 @@ class AgentConstructionModule:
         ]
         return " ".join(specific_keywords)
 
-    def _build_reference_context(self, query: str) -> tuple[str, int]:
+    def _build_reference_context(self, query: str, search_hints: Optional[List[str]] = None) -> tuple[str, int]:
         if not getattr(self, "vectorstore", None):
             return "", 0
-        
-        # 1. 确定类别（用于后处理过滤）
-        category = self._determine_category(query)
-        
+
         docs = []
         try:
             def search_with_fallback(q: str, k: int, source_types: Optional[List[str]] = None) -> List:
@@ -565,29 +570,53 @@ class AgentConstructionModule:
                 filtered = [d for d in raw if (d.metadata or {}).get("source_type") in set(source_types)]
                 return filtered[:k]
             
-            # 2. 混合检索策略
+            # 2. 混合检索策略（不做“类别过滤”，完全依赖查询信号与文档 source_type）
             # 方案：分桶检索（手册/API 与 案例分开取），避免案例把手册挤出 TopK
             manual_types = ["api_reference", "manual"]
             case_types = ["training_case", "case"]
             
-            results_manual_sem = search_with_fallback(query, k=10, source_types=manual_types)
-            results_case_sem = search_with_fallback(query, k=10, source_types=case_types)
+            hints: List[str] = []
+            if search_hints:
+                for h in search_hints:
+                    if not h:
+                        continue
+                    hs = str(h).strip()
+                    if not hs:
+                        continue
+                    if hs not in hints:
+                        hints.append(hs)
+            if len(hints) > 5:
+                hints = hints[:5]
             
             # 手册增强：从 query 中提取模块名，再做一轮“模块关键词”手册检索
             module_tokens = self._extract_required_modules(query)
-            results_manual_module = []
-            if module_tokens:
-                module_query = " ".join(module_tokens)
-                results_manual_module = search_with_fallback(module_query, k=8, source_types=manual_types)
             
             # 策略 B: 关键词检索 (k=10)
             keywords = self._extract_keywords(query)
-            results_manual_kw = []
-            results_case_kw = []
-            if keywords:
-                print(f"🔍 [Debug] Keyword Search: {keywords}")
-                results_manual_kw = search_with_fallback(keywords, k=10, source_types=manual_types)
-                results_case_kw = search_with_fallback(keywords, k=10, source_types=case_types)
+
+            api_like_tokens = []
+            for m in re.findall(r"\b[A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*\b", query):
+                if m not in api_like_tokens:
+                    api_like_tokens.append(m)
+            if len(api_like_tokens) > 8:
+                api_like_tokens = api_like_tokens[:8]
+            
+            query_variants: List[str] = []
+            for qv in [query, keywords, " ".join(module_tokens) if module_tokens else "", " ".join(api_like_tokens) if api_like_tokens else ""]:
+                qv = (qv or "").strip()
+                if qv and qv not in query_variants:
+                    query_variants.append(qv)
+            for h in hints:
+                if h and h not in query_variants:
+                    query_variants.append(h)
+
+            results_manual = []
+            results_case = []
+            for qv in query_variants:
+                if keywords and qv == keywords:
+                    print(f"🔍 [Debug] Keyword Search: {keywords}")
+                results_manual.extend(search_with_fallback(qv, k=6, source_types=manual_types))
+                results_case.extend(search_with_fallback(qv, k=4, source_types=case_types))
             
             # 3. 合并与去重
             seen_sources = set()
@@ -596,26 +625,18 @@ class AgentConstructionModule:
             def add_docs(candidates):
                 for doc in candidates:
                     src = doc.metadata.get('source', '')
-                    if src not in seen_sources:
-                        # 4. 类别过滤
-                        if category:
-                            if category == "建模":
-                                if "建模" not in src and "网格" not in src:
-                                    continue
-                            elif category not in src:
-                                continue
-                        
-                        seen_sources.add(src)
-                        combined_candidates.append(doc)
+                    if not src:
+                        src = (doc.metadata or {}).get("doc_id", "") or (doc.metadata or {}).get("path", "") or "unknown"
+                    if src in seen_sources:
+                        continue
+                    seen_sources.add(src)
+                    combined_candidates.append(doc)
 
-            add_docs(results_manual_sem)
-            add_docs(results_manual_kw)
-            add_docs(results_manual_module)
-            add_docs(results_case_sem)
-            add_docs(results_case_kw)
+            add_docs(results_manual)
+            add_docs(results_case)
             
-            # 取 Top 10 进入二次排序（手册/API优先）
-            docs = combined_candidates[:10]
+            # 取 Top N 进入二次排序（手册/API优先）
+            docs = combined_candidates[:14]
             
         except Exception as e:
             print(f"❌ 检索失败: {e}")
@@ -645,29 +666,44 @@ class AgentConstructionModule:
             if (d.metadata or {}).get("source_type") not in {"api_reference", "manual", "case", "training_case"}
         ]
         
-        def clip(text: str, limit: int = 4000) -> str:
+        per_doc_chars = int(os.environ.get("CDEM_RAG_MAX_CHARS_PER_DOC", "1600"))
+        total_chars_limit = int(os.environ.get("CDEM_RAG_MAX_TOTAL_CHARS", "14000"))
+
+        def clip(text: str, limit: int) -> str:
             if not text:
                 return ""
             return text[:limit] + ("\n...（已截断）" if len(text) > limit else "")
         
         context_parts: List[str] = []
+        used_chars = 0
         
         def render_group(title: str, docs_group: List, label: str, max_n: int):
+            nonlocal used_chars
             if not docs_group:
                 return
             context_parts.append(f"\n【{title}】\n")
             for i, doc in enumerate(docs_group[:max_n], 1):
-                ref = clip(doc.page_content)
+                if used_chars >= total_chars_limit:
+                    break
+                remaining = max(0, total_chars_limit - used_chars)
+                limit = min(per_doc_chars, remaining) if remaining else 0
+                if limit <= 0:
+                    break
+                ref = clip(doc.page_content, limit=limit)
                 meta = doc.metadata or {}
                 source = meta.get("source", "unknown")
                 if not ref:
                     continue
                 print(f"\n🔍 [Debug] Retrieved Doc {i} ({source})\n")
                 context_parts.append(f"--- {label} {i} (来源: {source}) ---\n{ref}\n")
+                used_chars += len(ref)
         
-        render_group("技术手册 / API（优先依据）", api_docs + manual_docs, "手册/接口", max_n=6)
-        render_group("案例参考（仅供结构与参数范围参考，禁止逐行抄写）", case_docs, "案例", max_n=4)
-        render_group("其他检索片段", other_docs, "片段", max_n=2)
+        max_manual_n = int(os.environ.get("CDEM_RAG_MAX_MANUAL_DOCS", "6"))
+        max_case_n = int(os.environ.get("CDEM_RAG_MAX_CASE_DOCS", "4"))
+        max_other_n = int(os.environ.get("CDEM_RAG_MAX_OTHER_DOCS", "2"))
+        render_group("技术手册 / API（优先依据）", api_docs + manual_docs, "手册/接口", max_n=max_manual_n)
+        render_group("案例参考（仅供结构与参数范围参考，禁止逐行抄写）", case_docs, "案例", max_n=max_case_n)
+        render_group("其他检索片段", other_docs, "片段", max_n=max_other_n)
         
         if not context_parts:
             return "", 0
@@ -884,14 +920,14 @@ class AgentConstructionModule:
 
 你的任务是：
 1. **分析需求**：仔细阅读用户的详细需求规范，特别是推荐的搜索关键词。
-2. **检索知识**：必须调用 `search_physics_knowledge` 工具。请尝试使用推荐的关键词进行搜索。
-   - 优先查找具体的 API 接口说明（如 `API参考` 类型的文档）。
-   - 其次查找类似的完整脚本案例。
-3. **生成脚本**：基于检索到的 API 文档和案例，编写准确的 JavaScript 脚本。
+2. **使用知识**：
+   - 如果输入中已经包含【知识库检索结果】，请直接基于其中的【技术手册/API】编写脚本，不要再次调用 `search_physics_knowledge`。
+   - 如果输入中没有提供【知识库检索结果】，才允许调用 `search_physics_knowledge` 进行检索，并优先查找具体的 API 接口说明（如 `API参考` 类型的文档），其次查找类似的完整脚本案例。
+3. **生成脚本**：基于技术手册/API（优先）与案例（仅参考流程结构与参数范围），编写准确的 JavaScript 脚本。
 
 重要规则：
 - **API 优先**：如果检索到了具体的 API 文档（如 `API名称: Set`），请严格按照文档中的参数说明和示例来编写代码，不要臆造 API。
-- **强制检索**：在编写任何代码前，必须先调用检索工具。
+- **禁止重复检索**：当输入已经提供【知识库检索结果】时，不要反复检索同一关键词。
 - **模仿案例**：参考检索到的案例代码结构。
 - **代码规范**：保持代码风格一致，添加必要的注释。
 - **自我修正**：如果发现检索结果中没有直接相关的案例，请根据检索到的 API 文档进行逻辑组合，并在注释中说明推导过程。
@@ -908,10 +944,17 @@ class AgentConstructionModule:
         
         max_recursion_limit = int(os.environ.get("CDEM_AGENT_RECURSION_LIMIT", "25"))
         max_tool_calls = int(os.environ.get("CDEM_AGENT_MAX_TOOL_CALLS", "6"))
+        stream_timeout_s = float(os.environ.get("CDEM_AGENT_STREAM_TIMEOUT_SECONDS", "90"))
+        total_timeout_s = float(os.environ.get("CDEM_AGENT_TOTAL_TIMEOUT_SECONDS", "240"))
+        max_repeat_signature = int(os.environ.get("CDEM_AGENT_MAX_REPEAT_SIGNATURE", "6"))
+        max_chunks = int(os.environ.get("CDEM_AGENT_MAX_CHUNKS", str(max_recursion_limit * 4)))
         enable_opt = os.environ.get("CDEM_ENABLE_GAME_OPT", "1").strip() in {"1", "true", "True"}
         max_opt_iters = int(os.environ.get("CDEM_OPT_MAX_ITERS", "2"))
         target_fit = float(os.environ.get("CDEM_OPT_TARGET_FIT", "7.0"))
         target_physics = float(os.environ.get("CDEM_OPT_TARGET_PHYSICS", "7.0"))
+
+        if os.environ.get("CDEM_RESET_MEMORY_EACH_CALL", "0").strip() in {"1", "true", "True"}:
+            self.reset_generation_memory()
         
         if not hasattr(self, "_generation_memory"):
             self._generation_memory = {
@@ -934,6 +977,7 @@ class AgentConstructionModule:
             t0 = time.time()
             local_retrieved = 0
             local_generated = ""
+            last_ai_text = ""
             final_messages = []
             
             input_messages = [HumanMessage(content=prompt_text)]
@@ -951,16 +995,43 @@ class AgentConstructionModule:
             step = 0
             tool_calls = 0
             hit_limit = False
+            hit_reason = ""
+            last_sig = ""
+            repeat_sig = 0
             for chunk in self.agent_executor.stream(
                 {"messages": input_messages},
                 stream_mode="values",
                 config={"recursion_limit": max_recursion_limit},
             ):
+                now = time.time()
+                if (now - t0) >= stream_timeout_s:
+                    if verbose:
+                        print(f"\n⏱️ 达到单次生成超时限制: {now - t0:.1f}s/{stream_timeout_s}s，截断以避免循环。")
+                    hit_limit = True
+                    hit_reason = "stream_timeout"
+                    break
+                if (now - start_time) >= total_timeout_s:
+                    if verbose:
+                        print(f"\n⏱️ 达到总超时限制: {now - start_time:.1f}s/{total_timeout_s}s，截断以避免循环。")
+                    hit_limit = True
+                    hit_reason = "total_timeout"
+                    break
+
                 step += 1
                 final_messages = chunk["messages"]
                 last_message = chunk["messages"][-1]
+                
+                if step >= max_chunks:
+                    if verbose:
+                        print(f"\n⚠️ 达到最大chunk限制: {step}/{max_chunks}，提前结束以避免循环。")
+                    hit_limit = True
+                    hit_reason = "max_chunks"
+                    break
 
                 if isinstance(last_message, AIMessage):
+                    if last_message.content:
+                        last_ai_text = last_message.content
+
                     if last_message.tool_calls:
                         tool_calls += len(last_message.tool_calls)
                         if verbose:
@@ -971,22 +1042,51 @@ class AgentConstructionModule:
                         local_generated = last_message.content
                         if verbose:
                             print("\n✅ Agent 输出最终脚本")
+
+                    sig = ""
+                    if last_message.tool_calls:
+                        try:
+                            tc0 = last_message.tool_calls[0]
+                            sig = f"tool:{tc0.get('name')}:{json.dumps(tc0.get('args', {}), ensure_ascii=False, sort_keys=True)}"
+                        except Exception:
+                            sig = "tool:unknown"
+                    else:
+                        sig = "final:" + (last_message.content or "").strip()[:200]
+                    if sig and sig == last_sig:
+                        repeat_sig += 1
+                    else:
+                        repeat_sig = 0
+                        last_sig = sig
+                    if repeat_sig >= max_repeat_signature:
+                        if verbose:
+                            print(f"\n⚠️ 检测到重复行为（signature 连续重复 {repeat_sig} 次），截断以避免循环。")
+                        hit_limit = True
+                        hit_reason = "repeat_signature"
+                        break
+                elif hasattr(last_message, "type") and last_message.type == "tool":
+                    tool_calls += 1
                 
                 if tool_calls >= max_tool_calls:
                     if verbose:
                         print(f"\n⚠️ 达到最大工具调用次数限制: {tool_calls}/{max_tool_calls}，提前结束以避免循环。")
                     hit_limit = True
+                    hit_reason = "max_tool_calls"
                     break
                 if step >= max_recursion_limit:
                     if verbose:
                         print(f"\n⚠️ 达到最大步数限制: {step}/{max_recursion_limit}，提前结束以避免循环。")
                     hit_limit = True
+                    hit_reason = "max_steps"
                     break
             
             # 准确统计工具调用次数 (遍历最终消息历史)
             local_retrieved = sum(1 for m in final_messages if hasattr(m, "type") and m.type == "tool")
             
             if hit_limit and not local_generated:
+                if last_ai_text:
+                    local_generated = last_ai_text
+
+            if hit_limit and not local_generated and (time.time() - start_time) < total_timeout_s:
                 try:
                     resp = self.llm.invoke(input_messages)
                     if hasattr(resp, "content") and resp.content:
@@ -995,6 +1095,15 @@ class AgentConstructionModule:
                     if verbose:
                         print(f"\n⚠️ 降级为直连模型生成失败: {e}")
             
+            if hit_limit:
+                self.last_run_metrics["cutoff"] = {
+                    "hit": True,
+                    "reason": hit_reason,
+                    "steps": step,
+                    "tool_calls": tool_calls,
+                    "elapsed_s": round(time.time() - t0, 3),
+                }
+
             return local_generated, local_retrieved, time.time() - t0
 
         try:
@@ -1004,6 +1113,7 @@ class AgentConstructionModule:
                 print(f"{'='*60}")
 
             final_query = query
+            search_hints: List[str] = []
 
             if self.enable_preprocessing:
                 if verbose:
@@ -1016,8 +1126,18 @@ class AgentConstructionModule:
                 final_query = pre_result["expanded_prompt"]
                 if verbose:
                     print("✅ 需求扩写完成")
+                
+                try:
+                    hinted = (pre_result.get("structured_data") or {}).get("suggested_search_queries") or []
+                    if isinstance(hinted, list):
+                        for h in hinted:
+                            hs = str(h).strip()
+                            if hs and hs not in search_hints:
+                                search_hints.append(hs)
+                except Exception:
+                    search_hints = []
 
-            reference_context, system_retrieved_count = self._build_reference_context(final_query)
+            reference_context, system_retrieved_count = self._build_reference_context(final_query, search_hints=search_hints)
             retrieved_count = max(retrieved_count, system_retrieved_count)
             
             # 增强检索逻辑：如果检索结果为空，或者第一轮检索质量可能不佳，尝试混合策略
@@ -1033,7 +1153,7 @@ class AgentConstructionModule:
                 if specific_keywords:
                     keyword_query = " ".join(specific_keywords)
                     print(f"🔄 Fallback 1 (English Keywords): {keyword_query}")
-                    ref_ctx_1, count_1 = self._build_reference_context(keyword_query)
+                    ref_ctx_1, count_1 = self._build_reference_context(keyword_query, search_hints=search_hints)
                     if count_1 > 0:
                         reference_context = ref_ctx_1
                         retrieved_count = max(retrieved_count, count_1)
@@ -1044,7 +1164,7 @@ class AgentConstructionModule:
                     if modules:
                         module_query = " ".join(modules) + " case example"
                         print(f"🔄 Fallback 2 (Modules): {module_query}")
-                        ref_ctx_2, count_2 = self._build_reference_context(module_query)
+                        ref_ctx_2, count_2 = self._build_reference_context(module_query, search_hints=search_hints)
                         if count_2 > 0:
                             reference_context = ref_ctx_2
                             retrieved_count = max(retrieved_count, count_2)
@@ -1137,8 +1257,14 @@ class AgentConstructionModule:
                     "物理一致性优先：检查并修正明显违反基本物理规律的参数（例如密度/时间步长/弹性参数/泊松比等），保证参数取值合理且为正，边界条件与载荷方向自洽。",
                 ]
                 for _ in range(max_opt_iters):
+                    if (time.time() - start_time) >= total_timeout_s:
+                        if verbose:
+                            print(f"\n⏱️ 达到总超时限制: {time.time() - start_time:.1f}s/{total_timeout_s}s，停止继续优化迭代。")
+                        break
                     opt_iters += 1
                     for obj in opt_objectives:
+                        if (time.time() - start_time) >= total_timeout_s:
+                            break
                         cand_text, cand_retrieved, cand_dur = run_once(base_prompt, dyn_prompt=obj)
                         cand_code = self._extract_code(cand_text)
                         if not cand_code:
@@ -1267,6 +1393,12 @@ class EvaluationModule:
 
     def evaluate_single_case(self, filename: str, ground_truth_code: str, verbose: bool = False) -> EvaluationResult:
         """评估单个测试案例"""
+        if os.environ.get("CDEM_EVAL_RESET_MEMORY_PER_CASE", "1").strip() in {"1", "true", "True"}:
+            try:
+                self.agent_module.reset_generation_memory()
+            except Exception:
+                pass
+
         if self.query_map:
             queries = self.query_map.get(filename)
             if queries:
@@ -1651,7 +1783,7 @@ def main():
     TEST_DATA_DIR = os.environ.get("CDEM_CASE_DIR", str(default_test_data_dir))
     
     # 3. 输出目录
-    OUTPUT_DIR = os.environ.get("CDEM_EVAL_OUTPUT_DIR", str(Path(__file__).resolve().parent / "results/evaluation_results.3.12.5(加入优化目标)"))
+    OUTPUT_DIR = os.environ.get("CDEM_EVAL_OUTPUT_DIR", str(Path(__file__).resolve().parent / "results/evaluation_results.3.13.2(修改Agent上下文)"))
     
     # 4. LLM模型
     MODEL_NAME = "llama3.1:latest"
