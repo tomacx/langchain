@@ -7,11 +7,11 @@ CDEM 案例库及手册向量数据库构建器 (Windows/Chroma版)
 import os
 import re
 import json
+import shutil
 import asyncio
 from pathlib import Path
 from typing import List, Dict, Any, Optional
-from dataclasses import dataclass, asdict
-from datetime import datetime
+from dataclasses import dataclass
 
 # LangChain imports
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -19,12 +19,6 @@ from langchain_ollama import OllamaEmbeddings
 from langchain_chroma import Chroma
 from langchain_core.documents import Document
 
-# Markdown processing
-import markdown
-from bs4 import BeautifulSoup
-
-# JavaScript parsing
-import esprima
 import fitz  # PyMuPDF
 
 @dataclass
@@ -72,8 +66,110 @@ class CDEMKnowledgeBuilder:
             separators=["\n\n", "\n", ";", ""]
         )
         
+        self.context_window = int(config.get("context_window", 0) or 0)
+        self.max_context_chars = int(config.get("max_context_chars", 2000) or 2000)
+        self.include_headers = bool(config.get("include_headers", True))
+        self.split_by_character = (config.get("split_by_character") or None)
+        self.split_by_character_only = bool(config.get("split_by_character_only", False))
+        self.use_raganything = bool(config.get("use_raganything", False))
+        self.raganything_working_dir = str(config.get("raganything_working_dir") or "./rag_storage_cdem")
+        self.raganything_parser = str(config.get("raganything_parser") or "mineru")
+        self.raganything_parse_method = str(config.get("raganything_parse_method") or "auto")
+        self.raganything_max_context_tokens = int(config.get("raganything_max_context_tokens", 2000) or 2000)
+        self._rag = None
+        self._rag_parser_ready = False
+        if self.use_raganything:
+            try:
+                from raganything import RAGAnything, RAGAnythingConfig
+                
+                ra_cfg = RAGAnythingConfig(
+                    working_dir=self.raganything_working_dir,
+                    parser=self.raganything_parser,
+                    parse_method=self.raganything_parse_method,
+                    display_content_stats=False,
+                    enable_image_processing=False,
+                    enable_table_processing=False,
+                    enable_equation_processing=False,
+                    context_window=max(1, int(self.context_window or 1)),
+                    context_mode="page",
+                    max_context_tokens=self.raganything_max_context_tokens,
+                    include_headers=self.include_headers,
+                    include_captions=True,
+                )
+                self._rag = RAGAnything(config=ra_cfg)
+                self._rag_parser_ready = bool(self._rag.check_parser_installation())
+                if not self._rag_parser_ready:
+                    print("⚠️ RAG-Anything 解析器未就绪，自动回退到本地解析/切分。")
+            except Exception as e:
+                self._rag = None
+                self._rag_parser_ready = False
+                print(f"⚠️ RAG-Anything 初始化失败，自动回退到本地解析/切分：{e}")
+        
         # 5. 暂存文档列表
         self.documents: List[CDEMDocument] = []
+    
+    def _split_markdown_sections(self, content: str) -> List[Dict[str, Any]]:
+        lines = content.splitlines()
+        sections: List[Dict[str, Any]] = []
+        header_stack: List[tuple[int, str]] = []
+        cur_lines: List[str] = []
+        cur_header_path = ""
+        
+        def flush():
+            nonlocal cur_lines, cur_header_path
+            txt = "\n".join(cur_lines).strip()
+            if txt:
+                sections.append({"header_path": cur_header_path, "text": txt})
+            cur_lines = []
+        
+        for line in lines:
+            m = re.match(r"^(#{1,6})\\s+(.+?)\\s*$", line)
+            if m:
+                flush()
+                level = len(m.group(1))
+                title = m.group(2).strip()
+                while header_stack and header_stack[-1][0] >= level:
+                    header_stack.pop()
+                header_stack.append((level, title))
+                cur_header_path = " > ".join([t for _, t in header_stack])
+                cur_lines.append(line)
+            else:
+                cur_lines.append(line)
+        
+        flush()
+        return sections
+    
+    def _build_context_text(self, units: List[str], idx: int) -> str:
+        if self.context_window <= 0 or not units:
+            return ""
+        start = max(0, idx - self.context_window)
+        end = min(len(units) - 1, idx + self.context_window)
+        if start == idx and end == idx:
+            return ""
+        parts: List[str] = []
+        for j in range(start, end + 1):
+            if j == idx:
+                continue
+            s = units[j].strip()
+            if not s:
+                continue
+            if len(s) > 800:
+                s = s[:800] + "…"
+            parts.append(s)
+        if not parts:
+            return ""
+        ctx = "\n\n".join(parts)
+        if len(ctx) > self.max_context_chars:
+            ctx = ctx[: self.max_context_chars] + "…"
+        return ctx
+    
+    def _split_text_units(self, text: str) -> List[str]:
+        split_by = self.split_by_character
+        if not split_by:
+            return [text]
+        if self.split_by_character_only:
+            return [t for t in (s.strip() for s in text.split(split_by)) if t]
+        return [text.replace(split_by, "\n\n")]
         
     def scan_cdem_directory(self, directory: str) -> Dict[str, List[Path]]:
         """扫描CDEM目录，分类文件 (Windows路径适配) - 原有逻辑保持不变"""
@@ -245,64 +341,135 @@ class CDEMKnowledgeBuilder:
         return documents
 
     def _read_file_content(self, file_path: Path) -> Optional[str]:
-        """尝试多种编码读取文件 - 原有逻辑保持不变"""
-        encodings = ['utf-8', 'gbk', 'gb2312', 'latin-1', 'cp1252']
+        encodings = ["utf-8", "utf-8-sig", "gb18030", "gbk", "gb2312", "cp936", "latin-1", "cp1252"]
+        try:
+            data = file_path.read_bytes()
+        except Exception as e:
+            print(f"⚠️ 读取错误 {file_path.name}: {e}")
+            return None
         for encoding in encodings:
             try:
-                with open(file_path, 'r', encoding=encoding) as f:
-                    return f.read()
+                return data.decode(encoding)
             except UnicodeDecodeError:
                 continue
-            except Exception as e:
-                print(f"⚠️ 读取错误 {file_path.name}: {e}")
-                return None
-        print(f"❌ 无法识别文件编码: {file_path.name}")
-        return None
+            except Exception:
+                continue
+        try:
+            return data.decode("utf-8", errors="replace")
+        except Exception:
+            return None
 
     def parse_cdem_manual_pdf(self, file_path: Path) -> List[CDEMDocument]:
         """
         解析 PDF 技术手册
         使用 PyMuPDF 提取文本，并尝试保留结构
         """
-        documents = []
+        documents: List[CDEMDocument] = []
         try:
-            doc = fitz.open(file_path)
-            content = ""
-            for page in doc:
-                content += page.get_text() + "\n\n"
-            doc.close()
+            pdf = fitz.open(file_path)
         except Exception as e:
             print(f"❌ 解析 PDF 失败 {file_path.name}: {e}")
             return documents
 
-        if not content.strip():
-            return documents
-
         metadata = self._extract_common_metadata(file_path)
-        
-        # 1. 整体文档
-        doc_id = f"manual_pdf_{file_path.stem}"
-        doc = CDEMDocument(
-            doc_id=doc_id,
-            source_type="manual_pdf",
-            content=content,
-            metadata=metadata,
-            file_path=str(file_path),
-            category=metadata.get('category', '技术手册'),
-            tags=['manual', 'pdf', metadata.get('module', 'general')]
-        )
-        documents.append(doc)
-        
-        # 2. 尝试简单的 API 提取 (基于 PDF 文本特征)
-        # PDF 提取的文本通常没有 Markdown 那样的明确锚点，
-        # 这里使用简单的关键词匹配来尝试提取可能的 API 章节
-        # 例如查找类似 "Function:", "接口:", "说明:" 等模式
-        
-        # 简单的基于段落的分割，尝试找到函数定义
-        # 假设函数定义通常独立成段，且包含 "function" 或 "接口" 字样
-        # 这是一个简化的启发式策略
-        
+        all_pages: List[str] = []
+        try:
+            for idx, page in enumerate(pdf):
+                txt = (page.get_text() or "").strip()
+                if not txt:
+                    continue
+                all_pages.append(txt)
+                documents.append(
+                    CDEMDocument(
+                        doc_id=f"manual_pdf_{file_path.stem}_p{idx+1}",
+                        source_type="manual_pdf",
+                        content=txt,
+                        metadata={**metadata, "page_number": idx + 1, "type": "pdf_page"},
+                        file_path=str(file_path),
+                        category=metadata.get("category", "技术手册"),
+                        tags=["manual", "pdf", metadata.get("module", "general")],
+                    )
+                )
+        finally:
+            try:
+                pdf.close()
+            except Exception:
+                pass
+
+        full_text = "\n\n".join(all_pages).strip()
+        if full_text:
+            documents.append(
+                CDEMDocument(
+                    doc_id=f"manual_pdf_{file_path.stem}_full",
+                    source_type="manual_pdf",
+                    content=full_text,
+                    metadata={**metadata, "type": "pdf_full"},
+                    file_path=str(file_path),
+                    category=metadata.get("category", "技术手册"),
+                    tags=["manual", "pdf", metadata.get("module", "general")],
+                )
+            )
+
         return documents
+
+    def _extract_markdown_tables(self, content: str) -> List[Dict[str, Any]]:
+        """
+        提取 Markdown 表格并转换为结构化数据
+        
+        Args:
+            content: Markdown 文本内容
+            
+        Returns:
+            表格列表，每个表格包含 'caption' (如果有) 和 'text' (表格的文本表示)
+        """
+        tables = []
+        lines = content.splitlines()
+        i = 0
+        while i < len(lines):
+            line = lines[i].strip()
+            
+            # 检测表格标题 (e.g. <center>表4.1 孔隙渗流接口函数列表</center>)
+            caption = ""
+            if line.startswith("<center>") and "表" in line:
+                match = re.search(r"<center>(.*?)</center>", line)
+                if match:
+                    caption = match.group(1)
+                i += 1
+                if i >= len(lines): break
+                line = lines[i].strip()
+            
+            # 检测表格开始 (Markdown 表格通常以 | ... | 开始，或者第二行是分隔线 |---|)
+            if "|" in line:
+                # 检查下一行是否是分隔线
+                if i + 1 < len(lines) and re.match(r"^\|?\s*:?-+:?\s*(\|?\s*:?-+:?\s*)+\|?$", lines[i+1].strip()):
+                    # 这是一个表格
+                    table_lines = []
+                    # 如果有标题，先加上
+                    if caption:
+                        table_lines.append(f"表格标题: {caption}")
+                    
+                    # 提取表头
+                    table_lines.append(line)
+                    i += 1 # 跳过表头
+                    table_lines.append(lines[i]) # 分隔线
+                    i += 1 # 跳过分隔线
+                    
+                    # 提取表体
+                    while i < len(lines):
+                        row = lines[i].strip()
+                        if not row or "|" not in row:
+                            break
+                        table_lines.append(row)
+                        i += 1
+                    
+                    tables.append({
+                        "caption": caption,
+                        "text": "\n".join(table_lines)
+                    })
+                    continue
+            
+            i += 1
+        return tables
 
     def parse_cdem_manual(self, file_path: Path) -> List[CDEMDocument]:
         """
@@ -329,14 +496,31 @@ class CDEMKnowledgeBuilder:
         )
         documents.append(doc)
         
-        # 2. 提取 API 条目（增强索引）
+        # 2. 提取概览表格（模块功能列表）
+        tables = self._extract_markdown_tables(content)
+        for idx, table in enumerate(tables):
+            # 过滤掉太小的表格，或者不含“函数”、“方法”、“接口”等关键词的表格（可能是普通数据表）
+            if len(table['text']) > 50 and any(k in table.get('caption', '') + table['text'] for k in ['函数', '方法', '接口', '功能', '列表']):
+                table_doc = CDEMDocument(
+                    doc_id=f"manual_overview_table_{file_path.stem}_{idx}",
+                    source_type="manual_overview",
+                    content=f"【模块功能概览】\n所属模块: {metadata.get('module', 'General')}\n{table['text']}",
+                    metadata={
+                        **metadata,
+                        'type': 'overview_table',
+                        'table_caption': table.get('caption', '')
+                    },
+                    file_path=str(file_path),
+                    category="模块概览",
+                    tags=['overview', 'table', metadata.get('module', 'general')]
+                )
+                documents.append(table_doc)
+        
+        # 3. 提取 API 条目（增强索引）
         # 利用 <!--HJS_...--> 锚点分割 API
         api_sections = re.split(r'<!--HJS_', content)
         
         for section in api_sections[1:]: # 跳过第一个（通常是文件头）
-            # 恢复 HJS_ 前缀以便后续可能需要
-            section_content = "<!--HJS_" + section
-            
             # 提取 API 名称
             # 通常在 ### Header 中
             header_match = re.search(r'###\s+(.+?)(?:\n|\r)', section)
@@ -349,9 +533,21 @@ class CDEMKnowledgeBuilder:
                 desc_match = re.search(r'####\s+说明\s+(.+?)(?:\n####|\r####)', section, re.DOTALL)
                 description = desc_match.group(1).strip() if desc_match else ""
                 
-                # 提取参数列表（简单提取）
+                # 提取格式定义
+                fmt_match = re.search(r'####\s+格式定义\s+(.+?)(?:\n####|\r####)', section, re.DOTALL)
+                format_def = fmt_match.group(1).strip() if fmt_match else ""
+
+                # 提取参数列表
                 params_match = re.search(r'####\s+参数\s+(.+?)(?:\n####|\r####)', section, re.DOTALL)
                 params = params_match.group(1).strip() if params_match else ""
+
+                # 提取备注
+                remarks_match = re.search(r'####\s+备注\s+(.+?)(?:\n####|\r####)', section, re.DOTALL)
+                remarks = remarks_match.group(1).strip() if remarks_match else ""
+
+                # 提取范例
+                example_match = re.search(r'####\s+范例\s+(.+?)(?:\n####|\r####|$)', section, re.DOTALL)
+                example = example_match.group(1).strip() if example_match else ""
                 
                 # 构建 API 专用文档块
                 # 这个文档块专门用于回答 "如何使用 xxx 函数"
@@ -359,7 +555,10 @@ class CDEMKnowledgeBuilder:
                     f"API名称: {clean_api_name}\n"
                     f"所属模块: {metadata.get('module', 'General')}\n"
                     f"功能说明: {description}\n"
+                    f"格式定义: {format_def}\n"
                     f"参数详情: {params}\n"
+                    f"备注: {remarks}\n"
+                    f"范例: {example}\n"
                     f"完整文档:\n{section}"
                 )
                 
@@ -377,8 +576,90 @@ class CDEMKnowledgeBuilder:
                     tags=['api', clean_api_name, metadata.get('module', 'general')]
                 )
                 documents.append(api_doc)
+
+                # 3. 提取范例（如果存在且长度适中，单独作为案例存入）
+                if example and len(example) > 20:
+                    example_doc = CDEMDocument(
+                        doc_id=f"api_example_{clean_api_name}_{file_path.stem}",
+                        source_type="api_example",
+                        content=f"API: {clean_api_name}\n说明: {description}\n\n范例代码:\n{example}",
+                        metadata={
+                            **metadata,
+                            'api_name': clean_api_name,
+                            'type': 'api_example'
+                        },
+                        file_path=str(file_path),
+                        category="API范例",
+                        tags=['example', clean_api_name, metadata.get('module', 'general')]
+                    )
+                    documents.append(example_doc)
                 
         return documents
+    
+    async def parse_cdem_manual_raganything(self, file_path: Path) -> List[CDEMDocument]:
+        if not self._rag or not self._rag_parser_ready:
+            return self.parse_cdem_manual(file_path)
+        
+        metadata = self._extract_common_metadata(file_path)
+        try:
+            content_list, content_based_doc_id = await self._rag.parse_document(
+                file_path=str(file_path),
+                output_dir=None,
+                parse_method=self.raganything_parse_method,
+                display_stats=False,
+            )
+        except Exception as e:
+            print(f"⚠️ RAG-Anything 解析失败，回退到本地解析：{file_path.name} ({e})")
+            return self.parse_cdem_manual(file_path)
+        
+        docs: List[CDEMDocument] = []
+        for i, item in enumerate(content_list):
+            t = (item.get("type") or "").strip()
+            page_idx = item.get("page_idx")
+            text = ""
+            if t == "text":
+                text = item.get("text") or ""
+            elif t == "table":
+                body = item.get("table_body") or ""
+                caps = item.get("table_caption") or []
+                foot = item.get("table_footnote") or []
+                text = "\n".join([*caps, body, *foot]).strip()
+            elif t == "equation":
+                latex = item.get("latex") or ""
+                desc = item.get("text") or ""
+                text = "\n".join([latex, desc]).strip()
+            elif t == "image":
+                path = item.get("img_path") or ""
+                caps = item.get("image_caption") or []
+                foot = item.get("image_footnote") or []
+                text = "\n".join([path, *caps, *foot]).strip()
+            else:
+                text = item.get("text") or item.get("content") or ""
+            
+            if not str(text).strip():
+                continue
+            
+            md = {**metadata, "type": f"raganything_{t or 'unknown'}"}
+            if page_idx is not None:
+                md["page_idx"] = page_idx
+                try:
+                    md["page_number"] = int(page_idx) + 1
+                except Exception:
+                    pass
+            
+            docs.append(
+                CDEMDocument(
+                    doc_id=f"manual_ra_{file_path.stem}_{content_based_doc_id}_{i}",
+                    source_type="manual",
+                    content=str(text),
+                    metadata=md,
+                    file_path=str(file_path),
+                    category=metadata.get("category", "技术手册"),
+                    tags=["manual", "raganything", metadata.get("module", "general")],
+                )
+            )
+        
+        return docs
 
     def parse_cdem_case(self, file_path: Path, case_type: str) -> List[CDEMDocument]:
         """解析案例文件 (JS/TXT) - 原有逻辑保持不变"""
@@ -464,14 +745,48 @@ class CDEMKnowledgeBuilder:
             elif doc.source_type in ["case", "training_case"]:
                 # 脚本文件使用大块分割，尽可能保留完整代码
                 chunks = self.script_splitter.split_text(doc.content)
+            elif doc.source_type == "manual" and str(doc.file_path).lower().endswith(".md"):
+                sections = self._split_markdown_sections(doc.content)
+                units = [s.get("text", "") for s in sections]
+                md_chunks: List[str] = []
+                for idx, sec in enumerate(sections):
+                    header_path = (sec.get("header_path") or "").strip()
+                    body = sec.get("text", "")
+                    base = body
+                    if self.include_headers and header_path:
+                        base = f"标题路径: {header_path}\n\n{body}"
+                    ctx = self._build_context_text(units, idx)
+                    if ctx:
+                        base = f"{base}\n\n关联上下文:\n{ctx}"
+                    for unit in self._split_text_units(base):
+                        md_chunks.extend(self.text_splitter.split_text(unit))
+                chunks = md_chunks if md_chunks else self.text_splitter.split_text(doc.content)
+            elif doc.source_type == "manual_pdf" and doc.metadata.get("type") == "pdf_page":
+                page_number = int(doc.metadata.get("page_number") or 0)
+                base = doc.content
+                if self.context_window > 0 and page_number > 0:
+                    all_pages = [
+                        d.content
+                        for d in self.documents
+                        if d.source_type == "manual_pdf"
+                        and d.file_path == doc.file_path
+                        and d.metadata.get("type") == "pdf_page"
+                    ]
+                    units = all_pages
+                    idx = page_number - 1
+                    ctx = self._build_context_text(units, idx)
+                    if ctx:
+                        base = f"{base}\n\n关联上下文:\n{ctx}"
+                pdf_chunks: List[str] = []
+                for unit in self._split_text_units(base):
+                    pdf_chunks.extend(self.text_splitter.split_text(unit))
+                chunks = pdf_chunks if pdf_chunks else self.text_splitter.split_text(base)
             else:
                 # 手册等文档使用常规分割
                 chunks = self.text_splitter.split_text(doc.content)
             
             # 2. 构建语义增强的头部信息
             # Windows路径分隔符如果是反斜杠，显示时可能不美观，可转为 / 
-            display_path = Path(doc.file_path).name # 只保留文件名，或者相对路径
-            
             if doc.source_type == "api_reference":
                 semantic_header = (
                     f"【API参考】\n"
@@ -500,7 +815,10 @@ class CDEMKnowledgeBuilder:
                         "source": str(doc.file_path), # Chroma 喜欢 'source' 字段
                         "category": doc.category,
                         "file_name": doc.metadata['file_name'],
-                        "source_type": doc.source_type  # 添加源类型标记
+                        "source_type": doc.source_type,
+                        "content_type": doc.metadata.get("type"),
+                        "page_number": doc.metadata.get("page_number"),
+                        "page_idx": (int(doc.metadata.get("page_number") or 0) - 1) if doc.metadata.get("page_number") else None,
                     }
                 )
                 langchain_docs.append(lc_doc)
@@ -514,6 +832,12 @@ class CDEMKnowledgeBuilder:
             return
 
         print(f"💾 正在将 {len(documents)} 个文档块存入 Chroma (目录: {self.persist_directory})...")
+        reset_db = (os.environ.get("CDEM_RESET_DB") or "").strip().lower() in {"1", "true", "yes"}
+        if reset_db:
+            try:
+                shutil.rmtree(self.persist_directory, ignore_errors=True)
+            except Exception:
+                pass
         
         # 初始化 Chroma，直接传入 Document 列表进行持久化
         # client_settings 可用于优化性能，但在 Windows 本地默认即可
@@ -546,12 +870,20 @@ class CDEMKnowledgeBuilder:
         
         # 1. 扫描与分类技术手册（原有逻辑）
         file_cats = self.scan_cdem_directory(manual_directory)
+        build_limit_raw = (os.environ.get("CDEM_BUILD_LIMIT") or "").strip()
+        build_limit = int(build_limit_raw) if build_limit_raw.isdigit() else None
+        if build_limit and build_limit > 0:
+            for k in list(file_cats.keys()):
+                file_cats[k] = file_cats[k][:build_limit]
         
         # 2. 解析技术手册文件（原有逻辑）
         print("\n📚 解析技术手册内容...")
         # 手册
         for p in file_cats['manuals']:
-            self.documents.extend(self.parse_cdem_manual(p))
+            if self._rag_parser_ready:
+                self.documents.extend(await self.parse_cdem_manual_raganything(p))
+            else:
+                self.documents.extend(self.parse_cdem_manual(p))
             
         # PDF 手册
         for p in file_cats['pdf_files']:
@@ -573,6 +905,8 @@ class CDEMKnowledgeBuilder:
         if training_set_json and case_directory:
             print("\n📚 解析训练集案例...")
             training_files = self.load_training_set_files(training_set_json, case_directory)
+            if build_limit and build_limit > 0:
+                training_files = training_files[:build_limit]
             
             training_doc_count = 0
             for file_path in training_files:
@@ -600,16 +934,22 @@ class CDEMKnowledgeBuilder:
 class CDEMKnowledgeRetriever:
     """CDEM 检索器 (Chroma版) - 原有逻辑保持不变"""
     
-    def __init__(self, persist_dir: str, embedding_model_name: str = "bge-m3:latest"):
+    def __init__(
+        self,
+        persist_dir: str,
+        embedding_model_name: str = "bge-m3:latest",
+        collection_name: str = "cdem_knowledge",
+        ollama_base_url: str = "http://localhost:11434",
+    ):
         print(f"🔍 加载 Chroma 数据库: {persist_dir}")
         self.embeddings = OllamaEmbeddings(
             model=embedding_model_name,
-            base_url="http://localhost:11434"
+            base_url=ollama_base_url
         )
         self.vectorstore = Chroma(
             persist_directory=persist_dir,
             embedding_function=self.embeddings,
-            collection_name="cdem_knowledge"
+            collection_name=collection_name
         )
         
     def search(self, query: str, k: int = 5):
@@ -634,6 +974,7 @@ async def main():
     # =====================================================================
     
     project_root = Path(__file__).resolve().parents[2]
+    repo_root = Path(__file__).resolve().parents[3]
     docs_root = project_root / "docs"
     dataset_root = project_root / "dataset_split_results"
     js_store_root = Path(__file__).resolve().parent
@@ -646,25 +987,62 @@ async def main():
     default_case_dir = case_dir_candidate if case_dir_candidate.exists() else combined_dir_candidate
     default_dataset_split_json = dataset_root / "dataset_split.json"
     
-    MANUAL_DIR = os.environ.get("CDEM_MANUAL_DIR", str(default_manual_dir))
-    DATASET_SPLIT_JSON = os.environ.get("CDEM_DATASET_SPLIT_JSON", str(default_dataset_split_json))
-    CASE_DIR = os.environ.get("CDEM_CASE_DIR", str(default_case_dir))
-    
-    CHROMA_DB_DIR = os.environ.get("CDEM_CHROMA_DB_DIR", str(js_store_root / "chroma_db_cdem"))
+    def resolve_env_path(key: str, default_path: Path) -> str:
+        raw = (os.environ.get(key) or "").strip()
+        if not raw:
+            return str(default_path)
+        p = Path(raw)
+        if not p.is_absolute():
+            p = (repo_root / p).resolve()
+        return str(p)
+
+    MANUAL_DIR = resolve_env_path("CDEM_MANUAL_DIR", default_manual_dir)
+    DATASET_SPLIT_JSON = resolve_env_path("CDEM_DATASET_SPLIT_JSON", default_dataset_split_json)
+    CASE_DIR = resolve_env_path("CDEM_CASE_DIR", default_case_dir)
+    CHROMA_DB_DIR = resolve_env_path("CDEM_CHROMA_DB_DIR", js_store_root / "new_db_cdem")
     
     # 4. Embedding模型配置
+    embedding_model = (os.environ.get("CDEM_EMBEDDING_MODEL") or "bge-m3:latest").strip()
+    ollama_base_url = (os.environ.get("CDEM_OLLAMA_BASE_URL") or "http://localhost:11434").strip()
+    context_window_raw = (os.environ.get("CDEM_CONTEXT_WINDOW") or "").strip()
+    max_context_chars_raw = (os.environ.get("CDEM_MAX_CONTEXT_CHARS") or "").strip()
+    include_headers_raw = (os.environ.get("CDEM_INCLUDE_HEADERS") or "").strip().lower()
+    split_by_character_raw = (os.environ.get("CDEM_SPLIT_BY_CHARACTER") or "").strip()
+    split_by_character_only_raw = (os.environ.get("CDEM_SPLIT_BY_CHARACTER_ONLY") or "").strip().lower()
+    use_raganything_raw = (os.environ.get("CDEM_USE_RAGANYTHING") or "").strip().lower()
+    raganything_working_dir_raw = (os.environ.get("CDEM_RAGANYTHING_DIR") or "").strip()
+    raganything_parser_raw = (os.environ.get("CDEM_RAGANYTHING_PARSER") or "").strip()
+    raganything_parse_method_raw = (os.environ.get("CDEM_RAGANYTHING_PARSE_METHOD") or "").strip()
+    raganything_max_context_tokens_raw = (os.environ.get("CDEM_RAGANYTHING_MAX_CONTEXT_TOKENS") or "").strip()
+    context_window = int(context_window_raw) if context_window_raw.isdigit() else 2
+    max_context_chars = int(max_context_chars_raw) if max_context_chars_raw.isdigit() else 2000
+    include_headers = include_headers_raw not in {"0", "false", "no"}
+    split_by_character = split_by_character_raw or None
+    split_by_character_only = split_by_character_only_raw in {"1", "true", "yes"}
+    use_raganything = use_raganything_raw in {"1", "true", "yes"}
+    raganything_working_dir = raganything_working_dir_raw or str((js_store_root / "rag_storage_cdem").resolve())
+    raganything_parser = raganything_parser_raw or "mineru"
+    raganything_parse_method = raganything_parse_method_raw or "auto"
+    raganything_max_context_tokens = int(raganything_max_context_tokens_raw) if raganything_max_context_tokens_raw.isdigit() else 2000
     config = {
-        # 推荐使用 bge-m3:latest，它支持长文本(8k)且对中文和代码理解能力强
-        "embedding_model": "bge-m3:latest",
-        "ollama_base_url": "http://localhost:11434",
+        "embedding_model": embedding_model,
+        "ollama_base_url": ollama_base_url,
         "persist_directory": CHROMA_DB_DIR,
-        "collection_name": "cdem_knowledge",
-        # bge-m3 支持长文本，但为了检索精度，建议适度切分
-        "chunk_size": 1000, 
+        "collection_name": "new_db_cdem",
+        "chunk_size": 1000,
         "chunk_overlap": 200,
-        # 脚本文件保持较大切片以保留上下文
         "script_chunk_size": 8000,
-        "script_chunk_overlap": 0
+        "script_chunk_overlap": 0,
+        "context_window": context_window,
+        "max_context_chars": max_context_chars,
+        "include_headers": include_headers,
+        "split_by_character": split_by_character,
+        "split_by_character_only": split_by_character_only,
+        "use_raganything": use_raganything,
+        "raganything_working_dir": raganything_working_dir,
+        "raganything_parser": raganything_parser,
+        "raganything_parse_method": raganything_parse_method,
+        "raganything_max_context_tokens": raganything_max_context_tokens,
     }
     
     # =====================================================================
@@ -698,7 +1076,9 @@ async def main():
     if Path(CHROMA_DB_DIR).exists():
         retriever = CDEMKnowledgeRetriever(
             config["persist_directory"], 
-            config["embedding_model"]
+            config["embedding_model"],
+            collection_name=config["collection_name"],
+            ollama_base_url=config["ollama_base_url"],
         )
         
         # 测试查询（包含对训练集的测试）
