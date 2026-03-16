@@ -19,6 +19,10 @@ except Exception:
 # LangChain imports
 from langchain_chroma import Chroma
 from langchain_core.tools import create_retriever_tool
+try:
+    from langchain_core.tools import tool as lc_tool
+except Exception:
+    lc_tool = None
 from langchain_ollama import ChatOllama, OllamaEmbeddings
 try:
     from langchain_openai import ChatOpenAI
@@ -93,9 +97,9 @@ class EvaluationResult:
 class VectorKnowledgeBaseModule:
     """向量知识库模块：负责连接和管理向量数据库"""
     @staticmethod
-    def connect(persist_directory: str, collection_name: str = "cdem_knowledge") -> Chroma:
+    def connect(persist_directory: str, collection_name: str = "new_db_cdem") -> Chroma:
         try:
-            print(f"🔄 正在加载 Chroma 数据库: {persist_directory}")
+            print(f"Loading vector DB: {persist_directory} (collection={collection_name})")
             
             embeddings = OllamaEmbeddings(
                 model="bge-m3:latest",
@@ -111,14 +115,33 @@ class VectorKnowledgeBaseModule:
             # 检查数据库中的文档数量
             try:
                 count = vectorstore._collection.count()
-                print(f"✅ 向量数据库加载成功，包含 {count} 个文档块")
+                print(f"Vector DB ready: {count} chunks")
+                if count == 0:
+                    candidates = []
+                    if collection_name != "new_db_cdem":
+                        candidates.append("new_db_cdem")
+                    if collection_name != "cdem_knowledge":
+                        candidates.append("cdem_knowledge")
+                    for cand in candidates:
+                        try:
+                            alt = Chroma(
+                                persist_directory=persist_directory,
+                                embedding_function=embeddings,
+                                collection_name=cand
+                            )
+                            alt_count = alt._collection.count()
+                            if alt_count > 0:
+                                print(f"Switching to non-empty collection: {cand} ({alt_count} chunks)")
+                                return alt
+                        except Exception:
+                            continue
             except:
-                print("✅ 向量数据库加载成功")
+                print("Vector DB ready")
             
             return vectorstore
 
         except Exception as e:
-            print(f"❌ 加载向量数据库失败: {e}")
+            print(f"Failed to load vector DB: {e}")
             raise
 
 class QueryGenerator:
@@ -446,26 +469,242 @@ class QueryPreprocessor:
 
 class ToolConstructionModule:
     """工具构造模块：负责创建智能体所需的工具"""
+    def __init__(self, model_name: Optional[str] = None):
+        self.model_name = (model_name or os.environ.get("CDEM_TOOL_LLM_MODEL") or os.environ.get("CDEM_LLM_MODEL") or "qwen3.5-flash").strip()
+        self.provider = (os.environ.get("CDEM_TOOL_LLM_PROVIDER") or os.environ.get("CDEM_LLM_PROVIDER") or "bailian").strip().lower()
+        self.enable_query_rewrite = (os.environ.get("CDEM_TOOL_QUERY_REWRITE") or "1").strip() not in {"0", "false", "off", "no"}
+        self.debug = (os.environ.get("CDEM_TOOL_DEBUG") or "").strip() in {"1", "true", "on", "yes"}
+        self._llm = self._build_llm() if self.enable_query_rewrite else None
+
+    def _build_llm(self):
+        if self.provider in {"ollama", "local"}:
+            ollama_base_url = (os.environ.get("CDEM_OLLAMA_BASE_URL") or "http://localhost:11434").strip()
+            return ChatOllama(model=self.model_name, temperature=0.0, base_url=ollama_base_url, streaming=False, keep_alive="5m")
+        if ChatOpenAI is None:
+            return None
+        api_key = (
+            os.environ.get("CDEM_BAILIAN_API_KEY")
+            or os.environ.get("DASHSCOPE_API_KEY")
+            or os.environ.get("OPENAI_API_KEY")
+            or ""
+        ).strip()
+        base_url = (os.environ.get("CDEM_BAILIAN_BASE_URL") or "https://dashscope.aliyuncs.com/compatible-mode/v1").strip()
+        if not api_key:
+            return None
+        return ChatOpenAI(model_name=self.model_name, api_key=api_key, base_url=base_url, temperature=0.0, streaming=False)
+
+    def _extract_keywords(self, query: str) -> str:
+        english_keywords = re.findall(r"[a-zA-Z0-9]+", query or "")
+        stop_words = {
+            "cdyna", "case", "script", "gflow", "mudsim", "supercdem",
+            "3d", "2d", "js", "example", "simulation", "model", "file",
+            "test", "analysis", "method", "using", "with", "for", "function",
+        }
+        specific = [k for k in english_keywords if k.lower() not in stop_words and len(k) > 3]
+        return " ".join(specific)
+
+    def _extract_modules(self, query: str) -> List[str]:
+        q = (query or "").lower()
+        modules = [
+            "igeo", "imeshing", "blkdyn", "dyna", "pdyna", "rdface",
+            "gfun", "imesh", "gflow", "mudsim", "supercdem",
+        ]
+        out: List[str] = []
+        for m in modules:
+            if m in q and m not in out:
+                out.append(m)
+        return out
+
+    def _rewrite_search_queries(self, query: str) -> List[str]:
+        q = (query or "").strip()
+        if not q:
+            return []
+
+        api_like = []
+        for m in re.findall(r"\b[A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*\b", q):
+            if m not in api_like:
+                api_like.append(m)
+        if len(api_like) > 8:
+            api_like = api_like[:8]
+
+        keywords = self._extract_keywords(q)
+        modules = self._extract_modules(q)
+
+        variants: List[str] = []
+        for v in [q, " ".join(api_like) if api_like else "", keywords, " ".join(modules) if modules else ""]:
+            v = (v or "").strip()
+            if v and v not in variants:
+                variants.append(v)
+
+        if not self._llm:
+            return variants[:6]
+
+        sys = (
+            "你是CDEM知识库检索意图理解器。你的任务：把用户的一句话需求改写为用于向量库检索的关键词/短语列表。\n"
+            "输出必须是严格 JSON 数组（只能输出数组），数组元素为字符串。\n"
+            "要求：\n"
+            "1) 只输出 3~6 条检索短语；每条尽量短（建议 2~10 个词/字）。\n"
+            "2) 优先包含可区分的动作/对象/现象/边界/结果（例如 旋转、接触、爆破、渗流、投影拉伸、非球形颗粒）。\n"
+            "3) 如能推断到模块/API英文关键词，可加入 1~2 个（例如 RotateGrid, Import, SetMat），但不要编造不存在的API。\n"
+            "4) 严禁只给泛词：例如 案例/脚本/模拟/生成/CDyna/CDEM。\n"
+        )
+        user = {"query": q, "hints": {"api_like": api_like, "keywords": keywords, "modules": modules}}
+        try:
+            resp = self._llm.invoke([{"role": "system", "content": sys}, {"role": "user", "content": json.dumps(user, ensure_ascii=False)}])
+            content = (getattr(resp, "content", "") or "").strip()
+            m = re.search(r"\[[\s\S]*\]", content)
+            if m:
+                data = json.loads(m.group(0))
+                if isinstance(data, list):
+                    out: List[str] = []
+                    for x in data:
+                        s = str(x).strip()
+                        if not s:
+                            continue
+                        if s not in out:
+                            out.append(s)
+                    for v in variants:
+                        if v not in out:
+                            out.append(v)
+                    return out[:8]
+        except Exception:
+            pass
+        return variants[:6]
+
+    def _search_with_filter(self, vectorstore: Chroma, query: str, k: int, source_types: Optional[List[str]] = None) -> List[Any]:
+        if not source_types:
+            try:
+                if hasattr(vectorstore, "max_marginal_relevance_search"):
+                    return vectorstore.max_marginal_relevance_search(query, k=k, fetch_k=max(10, k * 4), lambda_mult=0.7)
+            except Exception:
+                pass
+            return vectorstore.similarity_search(query, k=k)
+
+        where = None
+        if len(source_types) == 1:
+            where = {"source_type": source_types[0]}
+        else:
+            where = {"source_type": {"$in": source_types}}
+        try:
+            return vectorstore.similarity_search(query, k=k, filter=where)
+        except TypeError:
+            pass
+        except Exception:
+            pass
+        raw = vectorstore.similarity_search(query, k=max(k * 5, 20))
+        st_set = set(source_types)
+        filtered = [d for d in raw if (d.metadata or {}).get("source_type") in st_set]
+        return filtered[:k]
+
+    def _format_docs(self, docs: List[Any]) -> str:
+        if not docs:
+            return "【知识库检索结果】\n（未检索到相关内容）"
+
+        def source_priority(d) -> int:
+            st = (d.metadata or {}).get("source_type", "")
+            if st == "api_reference":
+                return 0
+            if st == "manual":
+                return 1
+            if st == "training_case":
+                return 3
+            if st == "case":
+                return 4
+            return 2
+
+        docs_sorted = sorted(docs, key=source_priority)
+        api_docs = [d for d in docs_sorted if (d.metadata or {}).get("source_type") == "api_reference"]
+        manual_docs = [d for d in docs_sorted if (d.metadata or {}).get("source_type") == "manual"]
+        case_docs = [d for d in docs_sorted if (d.metadata or {}).get("source_type") in {"case", "training_case"}]
+        other_docs = [d for d in docs_sorted if (d.metadata or {}).get("source_type") not in {"api_reference", "manual", "case", "training_case"}]
+
+        per_doc_chars = int(os.environ.get("CDEM_TOOL_MAX_CHARS_PER_DOC", "1400"))
+        max_manual_n = int(os.environ.get("CDEM_TOOL_MAX_MANUAL_DOCS", "4"))
+        max_case_n = int(os.environ.get("CDEM_TOOL_MAX_CASE_DOCS", "3"))
+        max_other_n = int(os.environ.get("CDEM_TOOL_MAX_OTHER_DOCS", "1"))
+
+        def clip(text: str, limit: int) -> str:
+            if not text:
+                return ""
+            t = text.strip()
+            return t[:limit] + ("\n...（已截断）" if len(t) > limit else "")
+
+        parts: List[str] = ["【知识库检索结果】"]
+
+        def render(title: str, docs_group: List[Any], label: str, max_n: int):
+            if not docs_group:
+                return
+            parts.append(f"\n【{title}】")
+            for i, doc in enumerate(docs_group[:max_n], 1):
+                meta = doc.metadata or {}
+                source = meta.get("source") or meta.get("path") or meta.get("doc_id") or "unknown"
+                st = meta.get("source_type") or "unknown"
+                content = clip(getattr(doc, "page_content", "") or "", per_doc_chars)
+                if not content:
+                    continue
+                parts.append(f"--- {label}{i} ({st}; {source}) ---\n{content}")
+
+        render("技术手册 / API（优先依据）", api_docs + manual_docs, "手册/接口", max_n=max_manual_n)
+        render("案例参考（仅供结构与参数范围参考，禁止逐行抄写）", case_docs, "案例", max_n=max_case_n)
+        render("其他补充", other_docs, "补充", max_n=max_other_n)
+        return "\n".join(parts).strip()
+
     def build_physics_search_tool(self, vectorstore: Chroma, k: int = 3) -> Any:
-        retriever = vectorstore.as_retriever(
-            search_type="mmr",
-            search_kwargs={
-                "k": k,
-                "fetch_k": 10,
-                "lambda_mult": 0.7
-            }
-        )
-        
-        physics_tool = create_retriever_tool(
-            retriever=retriever,
-            name="search_physics_knowledge",
-            description=(
-                "【必须优先使用】用于搜索 CDEM 软件的技术手册、API 接口文档和脚本案例。"
-                "编写脚本前，必须先调用此工具：优先阅读技术手册/API 确认接口与参数含义，再参考案例的流程结构。"
-                "请使用具体的关键词进行搜索，参数 query 必须是纯字符串（例如 'BallBlast'），禁止传入 JSON 或字典。"
+        if lc_tool is None:
+            retriever = vectorstore.as_retriever(
+                search_type="mmr",
+                search_kwargs={"k": k, "fetch_k": 10, "lambda_mult": 0.7},
             )
+            return create_retriever_tool(
+                retriever=retriever,
+                name="search_physics_knowledge",
+                description=(
+                    "用于搜索 CDEM 软件的技术手册、API 接口文档和脚本案例。"
+                    "支持自然语言查询；请尽量描述关键动作/对象/现象。参数 query 必须是纯字符串。"
+                ),
+            )
+
+        @lc_tool("search_physics_knowledge")
+        def search_physics_knowledge(query: str) -> str:
+            """用于搜索 CDEM 软件的技术手册、API 接口文档和脚本案例。
+
+            支持自然语言查询：工具会先对 query 做意图理解并自动改写为更有效的检索短语，
+            再对向量数据库进行检索，返回最匹配的资料片段。
+            """
+            q = (query or "").strip()
+            if not q:
+                return "【知识库检索结果】\n（空查询）"
+            rewritten = self._rewrite_search_queries(q)
+            manual_types = ["api_reference", "manual"]
+            case_types = ["training_case", "case"]
+
+            seen = set()
+            merged: List[Any] = []
+
+            def add(docs_in: List[Any]):
+                for d in docs_in:
+                    meta = d.metadata or {}
+                    key = meta.get("source") or meta.get("path") or meta.get("doc_id") or (getattr(d, "page_content", "") or "")[:80]
+                    if not key or key in seen:
+                        continue
+                    seen.add(key)
+                    merged.append(d)
+
+            for qv in rewritten[:8]:
+                add(self._search_with_filter(vectorstore, qv, k=max(4, k), source_types=manual_types))
+                add(self._search_with_filter(vectorstore, qv, k=max(3, k), source_types=case_types))
+                if len(merged) >= max(10, k * 3):
+                    break
+
+            if self.debug:
+                return f"【Tool Debug】rewritten={rewritten}\n\n{self._format_docs(merged[:14])}"
+            return self._format_docs(merged[:14])
+
+        search_physics_knowledge.description = (
+            "用于搜索 CDEM 软件的技术手册、API 接口文档和脚本案例。"
+            "你可以直接输入自然语言需求，本工具会先做意图理解并自动改写为更有效的检索短语，再检索并返回最匹配的资料。"
         )
-        return physics_tool
+        return search_physics_knowledge
 
 
 class AgentConstructionModule:
@@ -484,8 +723,7 @@ class AgentConstructionModule:
         self.last_run_metrics: Dict[str, Any] = {}
         self._build_agent()
         
-        # 初始化预处理器 (即使禁用了预处理，也初始化以便后续开启)
-        self.preprocessor = QueryPreprocessor(self.llm)
+        self.preprocessor = None
         self.reset_generation_memory()
 
     def reset_generation_memory(self):
@@ -495,13 +733,12 @@ class AgentConstructionModule:
             "global_feedback": [],
         }
 
-    def _build_task_steps(self, query: str, expanded_query: str, reference_context: str) -> List[str]:
+    def _build_task_steps(self, query: str, reference_context: str) -> List[str]:
         prompt = (
             "你是 CDEM 物理仿真脚本执行规划专家。请把用户需求拆解为可执行步骤，要求步骤具体、可操作、可按顺序执行。\n"
             "输出必须是严格 JSON 数组（只能输出一个 JSON 数组，数组元素为字符串），禁止输出任何额外文字。\n"
             "每个步骤必须以动词开头，建议 6-10 步。\n\n"
             f"用户原始需求:\n{query}\n\n"
-            f"扩写后的需求:\n{expanded_query}\n\n"
             f"可用参考资料（可能为空）:\n{reference_context[:4000] if reference_context else ''}\n"
         )
         try:
@@ -554,7 +791,9 @@ class AgentConstructionModule:
         return issues
 
     def _build_agent(self):
-        print("\n🤖 构建智能体...")
+        print("Building agent...")
+        streaming_enabled = (os.environ.get("CDEM_STREAMING") or "").strip() in {"1", "true", "on", "yes"}
+        callbacks = [StreamingStdOutCallbackHandler()] if streaming_enabled else None
         provider = (os.environ.get("CDEM_LLM_PROVIDER") or "bailian").strip().lower()
         if provider in {"ollama", "local"}:
             ollama_base_url = (os.environ.get("CDEM_OLLAMA_BASE_URL") or "http://localhost:11434").strip()
@@ -563,7 +802,8 @@ class AgentConstructionModule:
                 temperature=0.0,
                 base_url=ollama_base_url,
                 keep_alive="5m",
-                callbacks=[StreamingStdOutCallbackHandler()],
+                streaming=streaming_enabled,
+                callbacks=callbacks,
             )
         else:
             if ChatOpenAI is None:
@@ -584,8 +824,8 @@ class AgentConstructionModule:
                 api_key=api_key,
                 base_url=base_url,
                 temperature=0.0,
-                streaming=True,
-                callbacks=[StreamingStdOutCallbackHandler()],
+                streaming=streaming_enabled,
+                callbacks=callbacks,
             )
         
         # 3. 系统提示词
@@ -700,8 +940,8 @@ class AgentConstructionModule:
             results_manual = []
             results_case = []
             for qv in query_variants:
-                if keywords and qv == keywords:
-                    print(f"🔍 [Debug] Keyword Search: {keywords}")
+                if keywords and qv == keywords and (os.environ.get("CDEM_RAG_DEBUG") or "").strip() in {"1", "true", "on", "yes"}:
+                    print(f"RAG debug keyword search: {keywords}")
                 results_manual.extend(search_with_fallback(qv, k=6, source_types=manual_types))
                 results_case.extend(search_with_fallback(qv, k=4, source_types=case_types))
             
@@ -781,7 +1021,8 @@ class AgentConstructionModule:
                 source = meta.get("source", "unknown")
                 if not ref:
                     continue
-                print(f"\n🔍 [Debug] Retrieved Doc {i} ({source})\n")
+                if (os.environ.get("CDEM_RAG_DEBUG") or "").strip() in {"1", "true", "on", "yes"}:
+                    print(f"RAG debug retrieved doc {i}: {source}")
                 context_parts.append(f"--- {label} {i} (来源: {source}) ---\n{ref}\n")
                 used_chars += len(ref)
         
@@ -1031,51 +1272,29 @@ class AgentConstructionModule:
 
         try:
             if verbose:
-                print(f"\n{'='*60}")
-                print(f"查询: {query}")
-                print(f"{'='*60}")
+                print(f"\nQuery: {query}")
 
-            final_query = query
             search_hints: List[str] = []
 
-            if self.enable_preprocessing:
-                if verbose:
-                    print("⚙️  正在进行需求扩写与分析...")
-                pre_result = self.preprocessor.expand_query(query)
-
-                if pre_result["needs_clarification"]:
-                    print(f"⚠️  警告: 需求置信度低 ({pre_result['confidence']:.2f})")
-
-                final_query = pre_result["expanded_prompt"]
-                if verbose:
-                    print("✅ 需求扩写完成")
-                
-                try:
-                    hinted = (pre_result.get("structured_data") or {}).get("suggested_search_queries") or []
-                    if isinstance(hinted, list):
-                        for h in hinted:
-                            hs = str(h).strip()
-                            if hs and hs not in search_hints:
-                                search_hints.append(hs)
-                except Exception:
-                    search_hints = []
-
-            reference_context, system_retrieved_count = self._build_reference_context(final_query, search_hints=search_hints)
+            retrieval_query = query
+            reference_context, system_retrieved_count = self._build_reference_context(retrieval_query, search_hints=search_hints)
             retrieved_count = max(retrieved_count, system_retrieved_count)
             
             # 增强检索逻辑：如果检索结果为空，或者第一轮检索质量可能不佳，尝试混合策略
             if system_retrieved_count == 0:
-                print("⚠️ [警告] 检索结果为空！启动 Fallback 混合检索...")
+                if verbose:
+                    print("RAG: 0 chunks, trying fallback...")
                 
                 # 策略 1: 提取英文关键词 (针对 "FracS", "UCTest" 等)
-                english_keywords = re.findall(r'[a-zA-Z0-9]+', final_query)
+                english_keywords = re.findall(r'[a-zA-Z0-9]+', retrieval_query)
                 # 过滤掉通用词
                 stop_words = {'cdyna', 'case', 'script', 'gflow', 'mudsim', 'supercdem', '3d', '2d'}
                 specific_keywords = [k for k in english_keywords if k.lower() not in stop_words and len(k) > 3]
                 
                 if specific_keywords:
                     keyword_query = " ".join(specific_keywords)
-                    print(f"🔄 Fallback 1 (English Keywords): {keyword_query}")
+                    if verbose:
+                        print(f"Fallback keywords: {keyword_query}")
                     ref_ctx_1, count_1 = self._build_reference_context(keyword_query, search_hints=search_hints)
                     if count_1 > 0:
                         reference_context = ref_ctx_1
@@ -1083,20 +1302,24 @@ class AgentConstructionModule:
                 
                 # 策略 2: 如果策略1还是没结果，尝试模块名提取
                 if retrieved_count == 0:
-                    modules = self._extract_required_modules(final_query)
+                    modules = self._extract_required_modules(retrieval_query)
                     if modules:
                         module_query = " ".join(modules) + " case example"
-                        print(f"🔄 Fallback 2 (Modules): {module_query}")
+                        if verbose:
+                            print(f"Fallback modules: {module_query}")
                         ref_ctx_2, count_2 = self._build_reference_context(module_query, search_hints=search_hints)
                         if count_2 > 0:
                             reference_context = ref_ctx_2
                             retrieved_count = max(retrieved_count, count_2)
 
-            steps = self._build_task_steps(query=query, expanded_query=final_query, reference_context=reference_context)
             if verbose:
-                print("\n🧩 任务拆解（按步骤执行）")
+                print(f"RAG: {retrieved_count} chunks")
+
+            steps = self._build_task_steps(query=query, reference_context=reference_context)
+            if verbose:
+                print("任务拆解:")
                 for i, s in enumerate(steps, 1):
-                    print(f"  {i}. {s}")
+                    print(f"{i}. {s}")
 
             steps_text = "\n".join([f"{i}. {s}" for i, s in enumerate(steps, 1)])
 
@@ -1105,7 +1328,7 @@ class AgentConstructionModule:
                 + steps_text
                 + "\n\n"
                 "【用户需求与背景】\n"
-                + final_query
+                + query
                 + reference_context
                 + "\n\n【生成要求】\n"
                 "1. 请仔细分析上述提供的【知识库检索结果】（如果有）。\n"
@@ -1649,12 +1872,22 @@ class EvaluationModule:
 class CDEMAgentEvaluator:
     """(Wrapper) 兼容旧版接口的包装类"""
     
-    def __init__(self, vector_db_path: str, test_data_dir: str, output_dir: str, model_name: str = "llama3.1:latest", enable_preprocessing: bool = True, query_dataset_json: Optional[str] = None):
+    def __init__(
+        self,
+        vector_db_path: str,
+        test_data_dir: str,
+        output_dir: str,
+        model_name: str = "llama3.1:latest",
+        enable_preprocessing: bool = True,
+        query_dataset_json: Optional[str] = None,
+        vector_db_collection: Optional[str] = None,
+    ):
         # 1. 向量库模块
-        self.vector_module = VectorKnowledgeBaseModule.connect(vector_db_path)
+        collection = (vector_db_collection or os.environ.get("CDEM_VECTOR_DB_COLLECTION") or "new_db_cdem").strip()
+        self.vector_module = VectorKnowledgeBaseModule.connect(vector_db_path, collection_name=collection)
         
         # 2. 工具构造模块
-        self.tool_module = ToolConstructionModule()
+        self.tool_module = ToolConstructionModule(model_name=model_name)
         physics_tool = self.tool_module.build_physics_search_tool(self.vector_module)
         
         # 3. 智能体构造模块
@@ -1711,8 +1944,9 @@ def main():
             p = (repo_root / p).resolve()
         return str(p)
     
-    default_vector_db_path = project_root / "tools" / "js_store" / "chroma_db_cdem"
+    default_vector_db_path = project_root / "tools" / "js_store" / "new_db_cdem"
     VECTOR_DB_PATH = resolve_env_path("CDEM_VECTOR_DB_PATH", default_vector_db_path)
+    VECTOR_DB_COLLECTION = (os.environ.get("CDEM_VECTOR_DB_COLLECTION") or "new_db_cdem").strip()
     
     # 2. 数据集配置
     dataset_root = project_root / "dataset_split_results"
@@ -1726,7 +1960,7 @@ def main():
     TEST_DATA_DIR = resolve_env_path("CDEM_CASE_DIR", default_test_data_dir)
     
     # 3. 输出目录
-    default_output_dir = Path(__file__).resolve().parent / "results/evaluation_results.3.15.3(改成API)"
+    default_output_dir = Path(__file__).resolve().parent / "results/evaluation_results"
     OUTPUT_DIR = resolve_env_path("CDEM_EVAL_OUTPUT_DIR", default_output_dir)
     
     # 4. LLM模型
@@ -1735,24 +1969,23 @@ def main():
     MODEL_NAME = os.environ.get("CDEM_LLM_MODEL", default_model)
     
     # 5. 功能配置
-    ENABLE_PREPROCESSING = False  # 预处理模块开关
+    ENABLE_PREPROCESSING = False
     RUN_AB_TEST = False          # 是否运行A/B对比测试
     
     # =====================================================================
     # 评估流程
     # =====================================================================
     
-    print("🚀 CDEM脚本生成评估")
-    print("="*60)
-    print(f"向量库: {VECTOR_DB_PATH}")
-    print(f"测试数据: {TEST_DATA_DIR}")
-    print(f"模型: {MODEL_NAME}")
-    print(f"预处理模块: {'启用' if ENABLE_PREPROCESSING else '禁用'}")
-    print("="*60)
+    print("CDEM Agent Eval")
+    print(f"DB: {VECTOR_DB_PATH} (collection={VECTOR_DB_COLLECTION})")
+    print(f"Cases: {TEST_DATA_DIR}")
+    print(f"Model: {MODEL_NAME}")
+    print(f"Output: {OUTPUT_DIR}")
     
     # 创建评估器
     evaluator = CDEMAgentEvaluator(
         vector_db_path=VECTOR_DB_PATH,
+        vector_db_collection=VECTOR_DB_COLLECTION,
         test_data_dir=TEST_DATA_DIR,
         output_dir=OUTPUT_DIR,
         model_name=MODEL_NAME,

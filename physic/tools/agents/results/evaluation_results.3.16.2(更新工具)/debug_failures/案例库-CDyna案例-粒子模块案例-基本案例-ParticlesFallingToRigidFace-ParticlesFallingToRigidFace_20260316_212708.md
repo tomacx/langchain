@@ -1,0 +1,201 @@
+# Failure Analysis: 案例库-CDyna案例-粒子模块案例-基本案例-ParticlesFallingToRigidFace-ParticlesFallingToRigidFace.js
+
+## Query
+请编写一个CDyna仿真脚本，实现基本案例-ParticlesFallingToRigidFace-ParticlesFallingToRigidFace，并输出必要的结果与监测。
+
+## Generated Code
+```javascript
+setCurDir(getSrcDir());
+
+// 清除内存数据
+dyna.Clear();
+doc.clearResult();
+
+// 设置输出间隔为500步
+dyna.Set("Output_Interval 500");
+
+// 关闭虚质量计算开关
+dyna.Set("If_Virtural_Mass 0");
+
+// 设置三个方向的全局重力加速度（Z轴向下）
+dyna.Set("Gravity 0.0 0.0 -9.8");
+
+// 设置接触容差为0.001m
+dyna.Set("Contact_Detect_Tol 0.001");
+
+// 设置计算时步
+dyna.Set("Time_Step 1e-4");
+
+// 设置迭代步数
+var totalSteps = 10000;
+
+// 创建刚性面（地面），组号为1
+var fCoord = new Array();
+fCoord[0] = new Array(-2, -2, 0);
+fCoord[1] = new Array(2, -2, 0);
+fCoord[2] = new Array(2, 2, 0);
+fCoord[3] = new Array(-2, 2, 0);
+rdface.Create(1, 1, 4, fCoord);
+
+// 创建第一组随机颗粒，组号为2
+var xMin = -0.5, xMax = 0.5;
+var yMin = -0.5, yMax = 0.5;
+var zMin = 1.0, zMax = 1.5;
+pdyna.CreateByCoord(5000, 2, 1, 0.01, 0.01, 0.0, [xMin, xMax], [yMin, yMax], [zMin, zMax]);
+
+// 设置颗粒模型为脆性断裂模型
+pdyna.SetModel("brittleMC");
+
+// 设置颗粒的材料参数：密度、弹性模量、泊松比、抗拉强度、粘聚力、内摩擦角、局部阻尼、粘性阻尼系数
+pdyna.SetMat(2500, 1e7, 0.25, 0.0, 0.0, 25, 0.0, 0.3);
+
+// 设置颗粒初始速度为零
+pdyna.FixV("xyz", 0.0, "xyz", 0.0);
+
+// 启动动态计算引擎运行仿真
+dyna.Solve(totalSteps);
+
+// 调用 pfly.ExportRigidFaceTargetInfo 接口导出着靶颗粒详细统计信息
+// 刚性面组号范围为1到1
+pfly.ExportRigidFaceTargetInfo(1, 1);
+
+// 等待仿真完成
+dyna.WaitComplete();
+
+// 保存最终仿真结果文件
+doc.saveResult();
+
+// 关闭当前脚本执行会话
+dyna.Close();
+```
+
+## Ground Truth
+```javascript
+//设置当前路径为JavaScript脚本所在的路径
+setCurDir(getSrcDir());
+
+//设置输出的间隔为500步
+dyna.Set("Output_Interval 500");
+
+//关闭虚质量计算开关
+dyna.Set("If_Virtural_Mass 0");
+
+//设置三个方向的重力加速度
+dyna.Set("Gravity 0.0 -9.8 0.0");
+
+//设置接触容差为0.001m
+dyna.Set("Contact_Detect_Tol 0.001");
+
+//设置颗粒超出范围后清除颗粒
+dyna.Set("Particle_Out_Kill 1 -3 3 -0.1 3 -3 3 0");
+
+//导入gid格式的刚性面边界
+rdface.Import(2,"boundary.msh");
+
+//导入gid格式的颗粒
+pdyna.Import("gid","particle.msh");
+
+//根据颗粒的ID号重新设置颗粒的组号
+pdyna.SetGroupByID(3,1,1111111);
+
+//设置颗粒模型为脆性断裂模型
+pdyna.SetModel("brittleMC");
+
+//设置颗粒的材料参数，依次为密度、弹性模量、泊松比、抗拉强度、粘聚力、内摩擦角、局部阻尼、粘性阻尼系数（临界阻尼比）
+pdyna.SetMat(2500, 1e7, 0.25, 0.0, 0.0, 25, 0.0, 0.3);
+
+//设置计算时步
+dyna.Set("Time_Step 1e-4");
+
+//迭代1万步
+dyna.Solve(10000);
+```
+
+## Unified Diff
+```diff
+--- 案例库-CDyna案例-粒子模块案例-基本案例-ParticlesFallingToRigidFace-ParticlesFallingToRigidFace.js (ground_truth)
++++ 案例库-CDyna案例-粒子模块案例-基本案例-ParticlesFallingToRigidFace-ParticlesFallingToRigidFace.js (generated)
+@@ -1,38 +1,62 @@
+-//设置当前路径为JavaScript脚本所在的路径
+ setCurDir(getSrcDir());
+ 
+-//设置输出的间隔为500步
++// 清除内存数据
++dyna.Clear();
++doc.clearResult();
++
++// 设置输出间隔为500步
+ dyna.Set("Output_Interval 500");
+ 
+-//关闭虚质量计算开关
++// 关闭虚质量计算开关
+ dyna.Set("If_Virtural_Mass 0");
+ 
+-//设置三个方向的重力加速度
+-dyna.Set("Gravity 0.0 -9.8 0.0");
++// 设置三个方向的全局重力加速度（Z轴向下）
++dyna.Set("Gravity 0.0 0.0 -9.8");
+ 
+-//设置接触容差为0.001m
++// 设置接触容差为0.001m
+ dyna.Set("Contact_Detect_Tol 0.001");
+ 
+-//设置颗粒超出范围后清除颗粒
+-dyna.Set("Particle_Out_Kill 1 -3 3 -0.1 3 -3 3 0");
++// 设置计算时步
++dyna.Set("Time_Step 1e-4");
+ 
+-//导入gid格式的刚性面边界
+-rdface.Import(2,"boundary.msh");
++// 设置迭代步数
++var totalSteps = 10000;
+ 
+-//导入gid格式的颗粒
+-pdyna.Import("gid","particle.msh");
++// 创建刚性面（地面），组号为1
++var fCoord = new Array();
++fCoord[0] = new Array(-2, -2, 0);
++fCoord[1] = new Array(2, -2, 0);
++fCoord[2] = new Array(2, 2, 0);
++fCoord[3] = new Array(-2, 2, 0);
++rdface.Create(1, 1, 4, fCoord);
+ 
+-//根据颗粒的ID号重新设置颗粒的组号
+-pdyna.SetGroupByID(3,1,1111111);
++// 创建第一组随机颗粒，组号为2
++var xMin = -0.5, xMax = 0.5;
++var yMin = -0.5, yMax = 0.5;
++var zMin = 1.0, zMax = 1.5;
++pdyna.CreateByCoord(5000, 2, 1, 0.01, 0.01, 0.0, [xMin, xMax], [yMin, yMax], [zMin, zMax]);
+ 
+-//设置颗粒模型为脆性断裂模型
++// 设置颗粒模型为脆性断裂模型
+ pdyna.SetModel("brittleMC");
+ 
+-//设置颗粒的材料参数，依次为密度、弹性模量、泊松比、抗拉强度、粘聚力、内摩擦角、局部阻尼、粘性阻尼系数（临界阻尼比）
++// 设置颗粒的材料参数：密度、弹性模量、泊松比、抗拉强度、粘聚力、内摩擦角、局部阻尼、粘性阻尼系数
+ pdyna.SetMat(2500, 1e7, 0.25, 0.0, 0.0, 25, 0.0, 0.3);
+ 
+-//设置计算时步
+-dyna.Set("Time_Step 1e-4");
++// 设置颗粒初始速度为零
++pdyna.FixV("xyz", 0.0, "xyz", 0.0);
+ 
+-//迭代1万步
+-dyna.Solve(10000);
++// 启动动态计算引擎运行仿真
++dyna.Solve(totalSteps);
++
++// 调用 pfly.ExportRigidFaceTargetInfo 接口导出着靶颗粒详细统计信息
++// 刚性面组号范围为1到1
++pfly.ExportRigidFaceTargetInfo(1, 1);
++
++// 等待仿真完成
++dyna.WaitComplete();
++
++// 保存最终仿真结果文件
++doc.saveResult();
++
++// 关闭当前脚本执行会话
++dyna.Close();
+```

@@ -1,0 +1,170 @@
+--- 案例库-CDyna案例-块体模块案例-扩展案例-计算弹性体应变能-计算弹性体应变能.js (ground_truth)
++++ 案例库-CDyna案例-块体模块案例-扩展案例-计算弹性体应变能-计算弹性体应变能.js (generated)
+@@ -1,83 +1,116 @@
+-
+ setCurDir(getSrcDir());
+ 
++// 清空之前的计算结果
+ dyna.Clear();
+-
+ doc.clearResult();
+ 
+-dyna.Set("Gravity 0 0 0");
++// 设置重力加速度（无重力）
++dyna.Set("Gravity 0.0 0.0 0.0");
+ 
+-blkdyn.GenBrick3D(1,1,1,10,10,10,1);
++// 设置计算结果输出间隔
++dyna.Set("Output_Interval 100");
+ 
++// 设置监测结果输出时步
++dyna.Set("Moniter_Iter 10");
++
++// 创建三维砖块网格 (1m x 1m x 1m, 10x10x10个单元)
++blkdyn.GenBrick3D(1, 1, 1, 10, 10, 10, 1);
++
++// 设置单元模型为线弹性模型
+ blkdyn.SetModel("linear");
+ 
+-blkdyn.SetMat(2500,3e10,0.25,1,1,1,1);
++// 设置材料参数：密度、弹性模量、泊松比、粘聚力、抗拉强度、内摩擦角、局部阻尼
++blkdyn.SetMat(2500, 3e10, 0.25, 1e6, 1e6, 30, 0.0);
+ 
++// 底部固定Y方向速度
++blkdyn.FixV("y", 0.0, "y", -0.001, 0.001);
+ 
+-blkdyn.ApplyConditionByCoord("face_force",[0,1e6,0],[0,0,0,0,0,0,0,0,0],-100,100,0.999,1.1,-100,100, false);
++// 顶部施加向下的速度载荷
++blkdyn.FixV("y", -1e-9, "y", 0.999, 1.001);
+ 
+-blkdyn.FixV("y",0,"y",-1,0.001);
++// 设置监测点（中心位置）
++dyna.Monitor("block", "ydis", 0.5, 0.5, 0.5);
++dyna.Monitor("block", "syy", 0.5, 0.5, 0.5);
+ 
+-dyna.Solve();
++// 计算前初始化求解器状态
++dyna.BeforeCal();
+ 
++// 应变能初始值
++var Stain_Energy = 0.0;
++var TotalWork = 0.0;
+ 
+-
+-//应变能
+-var Stain_Energy = 0.0;
+-
+-//由于返回值是浮点型的，需要转化为整型进行循环
++// 获取总单元数
+ var TotalElem = dyna.GetValue("Total_Block_Num");
+ TotalElem = Math.round(TotalElem);
+ 
++// 获取总节点数
++var TotalNode = dyna.GetValue("Total_Node_Num");
++TotalNode = Math.round(TotalNode);
+ 
+-//循环所有单元
+-for(var ielem = 1; ielem <= TotalElem; ielem++)
+-{
+-
+-var siglev = 0.0;
+-
+-//所有分量相加
+-for(var i = 1; i <= 6; i++)
+-{
+-siglev  += 0.5 * blkdyn.GetElemValue(ielem, "Stress", i) * blkdyn.GetElemValue(ielem, "Strain", i);
++// 计算循环
++for(var i = 0; i < 5000; i++) {
++    // 计算单元变形力
++    blkdyn.CalBlockForce();
++    
++    // 计算节点运动
++    var unbal = blkdyn.CalNodeMovement();
++    
++    // 输出监测信息
++    dyna.OutputMonitorData();
++    
++    // 每100步输出一次
++    if(i != 0 && i % 100 == 0) {
++        print("不平衡率：" + unbal);
++        print("当前步数：" + i);
++        
++        // 计算当前应变能
++        var Current_Energy = 0.0;
++        for(var jelem = 1; jelem <= TotalElem; jelem++) {
++            var siglev = 0.0;
++            // 所有应力应变分量相加
++            for(var k = 1; k <= 6; k++) {
++                siglev += 0.5 * blkdyn.GetElemValue(jelem, "Stress", k) * blkdyn.GetElemValue(jelem, "Strain", k);
++            }
++            // 乘以体积
++            Current_Energy += siglev * blkdyn.GetElemValue(jelem, "Volume");
++        }
++        print("当前应变能：" + Current_Energy);
++        
++        // 推送结果信息至GDEM-Env
++        dyna.PutStep(1, i, 0.1);
++    }
+ }
+ 
+-//乘以体积
+-Stain_Energy += siglev * blkdyn.GetElemValue(ielem, "Volume");
+-
++// 计算最终应变能
++var Final_Energy = 0.0;
++for(var ielem = 1; ielem <= TotalElem; ielem++) {
++    var siglev = 0.0;
++    for(var i = 1; i <= 6; i++) {
++        siglev += 0.5 * blkdyn.GetElemValue(ielem, "Stress", i) * blkdyn.GetElemValue(ielem, "Strain", i);
++    }
++    Final_Energy += siglev * blkdyn.GetElemValue(ielem, "Volume");
+ }
+ 
++print("========================================");
++print("最终应变能 = " + Final_Energy);
+ 
+-print("应变能 = " + Stain_Energy);
+-
+-
+-var TotalNode = dyna.GetValue("Total_Node_Num");
+-TotalNode = Math.round(TotalNode);
++// 计算外力功
+ var addno = 0;
+ var averDisp = 0.0;
+-for(var inode = 1; inode <= TotalNode; inode++ )
+-{
+-var ycoord = blkdyn.GetNodeValue(inode,"Coord0",2);
+-
+-
+-if(ycoord >= 0.999)
+-{
+-averDisp += blkdyn.GetNodeValue(inode,"Displace",2);
+-
+-addno++;
++for(var inode = 1; inode <= TotalNode; inode++) {
++    var ycoord = blkdyn.GetNodeValue(inode, "Coord0", 2);
++    if(ycoord >= 0.999) {
++        averDisp += blkdyn.GetNodeValue(inode, "Displace", 2);
++        addno++;
++    }
+ }
+ 
+-}
+-
+-if(addno > 0)
+-{
+-averDisp = averDisp / addno;
++if(addno > 0) {
++    averDisp = averDisp / addno;
+ }
+ 
+ var work = 1e6 * 1 * 1 * Math.abs(averDisp);
+ print("外力功 = " + work);
+-
+-
+-print("阻尼耗散能 = " + (work - Stain_Energy));
+-
+-
++print("阻尼耗散能 = " + (work - Final_Energy));
++print("能量守恒误差 = " + Math.abs(work - Final_Energy) / work * 100 + "%");
++print("========================================");

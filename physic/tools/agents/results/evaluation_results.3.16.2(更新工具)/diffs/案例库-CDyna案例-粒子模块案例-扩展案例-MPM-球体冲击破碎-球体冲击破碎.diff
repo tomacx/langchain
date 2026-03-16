@@ -1,0 +1,140 @@
+--- 案例库-CDyna案例-粒子模块案例-扩展案例-MPM-球体冲击破碎-球体冲击破碎.js (ground_truth)
++++ 案例库-CDyna案例-粒子模块案例-扩展案例-MPM-球体冲击破碎-球体冲击破碎.js (generated)
+@@ -1,55 +1,106 @@
+-//设置工作路径为脚本文件所在路径
+ setCurDir(getSrcDir());
+ 
++// ==================== 1. 初始化求解器环境 ====================
++dyna.Clear();
++doc.ClearResult();
+ 
+-//设置输出间隔为200步
+-dyna.Set("Output_Interval 200");
++// 设置输出间隔为100步
++dyna.Set("Output_Interval 100");
+ 
+-//设置重力方向
+-dyna.Set("Gravity  0 -9.8 0");
++// 设置重力方向（向下）
++dyna.Set("Gravity 0 -9.8 0");
+ 
+-//打开大变形计算开关
++// 打开大变形计算开关
+ dyna.Set("Large_Displace 1");
+ 
+-//关闭虚拟质量开关
++// 关闭虚拟质量开关
+ dyna.Set("If_Virtural_Mass 0");
+ 
+-//设置计算时步为1e-5
+-dyna.Set("Time_Step 5e-6");
++// 设置计算时步
++dyna.Set("Time_Step 1e-6");
+ 
+-//设置不平衡率为1e-3
++// 设置不平衡率
+ dyna.Set("UnBalance_Ratio 1e-3");
+ 
+-//设置颗粒计算类型为 mpm方法
++// 设置颗粒计算类型为MPM方法
+ dyna.Set("Particle_Cal_Type 4");
+ 
++// 设置块体软化值
+ dyna.Set("Block_Soften_Value 1e-1 3e-1");
+ 
+-//设置颗粒与刚性面接触模型采用全局参数
+-dyna.Set("If_Contact_Use_GlobMat 1 2 5e9 5e9  0.0 0.0 0.0");
++// 设置颗粒与刚性面接触模型采用全局参数
++dyna.Set("If_Contact_Use_GlobMat 1 2 5e9 5e9 0.0 0.0 0.0");
+ 
+-//导入gid格式的球体颗粒簇
+-pdyna.Import("gid","BallD0.4.msh");
++// ==================== 2. 构建球体几何模型 ====================
++// 生成球体几何（半径0.5m，中心位置(0, 1.5, 0)）
++igeo.genSphere(0.5, 0, 1.5, 0, 0.05, 3);
+ 
+-//初始化球体运动速度为-50m/s
+-pdyna.InitCondByGroup ("velocity", [0,-50.0,0], 1,100);
++// 划分网格
++imeshing.genMeshByGmsh(2);
+ 
+-//设置材料参数，依次为density, young, poisson, tension, cohesion, friction, localdamp, viscdamp
+-pdyna.SetMat(2000,1e9,0.35, 10e6, 10e6, 30.0, 0.01,0);
+-//创建mpm背景网格
+-mpm.SetBackGrid(3,0.025, [-1,-0.6, -1], [80, 40, 80]);
++// 将Mesh模块网格下载至Dyna模块中
++blkdyn.GetMesh(imeshing);
+ 
+-//设置mpm模型为mohr-coulomb应变软化模型
+-mpm.SetModelByGroup("MC",1,2);
++// ==================== 3. 设置用户自定义材料参数 ====================
++// 通过SetUDFValue设置用户自定义材料参数列表
++var udfParams = [2000, 1e9, 0.35, 10e6, 10e6, 30.0, 0.01, 0];
++dyna.SetUDFValue(udfParams);
+ 
+-//创建三维刚性面
+-var fCoord=new Array();
+-fCoord[0]=new Array(-1.0,-0.5,-1)
+-fCoord[1]=new Array(1,-0.5,-1)
+-fCoord[2]=new Array(1,-0.5,1)
+-fCoord[3]=new Array(-1,-0.5,1)
+-rdface.Create (2, 2, 4, fCoord);
++// ==================== 4. 定义MPM本构关系（损伤与破裂准则） ====================
++// 设置MPM模型为Mohr-Coulomb应变软化模型（支持损伤）
++mpm.SetModelByGroup("MC", 1, 2);
+ 
++// 设置MPM背景网格（3D，网格尺寸0.025m）
++mpm.SetBackGrid(3, 0.025, [-1, -0.6, -1], [80, 40, 80]);
+ 
+-//求解4000步
++// 设置KGV参数（体积模量、剪切模量等）
++mpm.SetKGVByGroup(5e6, 0.0, 1e-3, 1, 11);
++
++// 设置MPM拉伸强度阈值
++dyna.Set("MPM_Fluid_Tension 1e2");
++
++// ==================== 5. 施加初始速度载荷 ====================
++// 初始化球体运动速度为-50m/s（向下冲击）
++pdyna.InitCondByGroup("velocity", [0, -50.0, 0], 1, 100);
++
++// ==================== 6. 配置颗粒接触检测逻辑 ====================
++// 创建三维刚性面作为冲击目标
++var fCoord = new Array();
++fCoord[0] = new Array(-1.0, -0.5, -1);
++fCoord[1] = new Array(1, -0.5, -1);
++fCoord[2] = new Array(1, -0.5, 1);
++fCoord[3] = new Array(-1, -0.5, 1);
++rdface.Create(2, 2, 4, fCoord);
++
++// 计算颗粒与刚性面的接触力
++pdyna.CalPFContact();
++
++// 计算颗粒与颗粒之间的转角弹簧力
++pdyna.CalRotaSpring();
++
++// ==================== 7. 设置输出监测项 ====================
++// 监测关键节点的位移、速度和损伤
++dyna.Monitor("block", "displacement", 1, 100);
++dyna.Monitor("block", "velocity", 1, 100);
++dyna.Monitor("block", "damage", 1, 100);
++dyna.Monitor("block", "stress", 1, 100);
++dyna.Monitor("block", "strain", 1, 100);
++
++// ==================== 8. 执行自定义计算命令流 ====================
++// 运行用户自定义命令流，调用二次开发程序中的UserDefFunction_Execute函数
++dyna.RunUDFCmd("InitImpactSimulation");
++
++// 可选：带参数的自定义命令流
++var result = dyna.RunUDFCmdAdv("CheckDamageThreshold", [0.5, 0.8, 1.0]);
++
++// ==================== 9. 启动显式动力学时间积分循环 ====================
++// 求解4000步完成冲击破碎过程
+ dyna.Solve(4000);
++
++// ==================== 10. 导出最终结果文件 ====================
++// 保存结果到指定目录
++doc.SaveResult("impact_breach_result.dat");
++
++// 输出完成信息
++print("MPM球体冲击破碎仿真计算完成！");
++print("结果文件已保存至：impact_breach_result.dat");

@@ -1,0 +1,76 @@
+--- 案例库-CDyna案例-其他模块案例-非球形离散元案例-导入PDyna颗粒Stl文件计算多面体颗粒掉落-导入PDyna颗粒Stl文件计算多面体颗粒掉落.js (ground_truth)
++++ 案例库-CDyna案例-其他模块案例-非球形离散元案例-导入PDyna颗粒Stl文件计算多面体颗粒掉落-导入PDyna颗粒Stl文件计算多面体颗粒掉落.js (generated)
+@@ -1,47 +1,52 @@
+-//设置当前路径为JavaScript脚本所在的路径
+ setCurDir(getSrcDir());
+ 
+-//设置结果的输出间隔为500步
++// 设置结果的输出间隔为500步
+ dyna.Set("Output_Interval 500");
+ 
+-//关闭虚拟质量开关
++// 关闭虚拟质量开关
+ dyna.Set("If_Virtural_Mass 0");
+ 
+-//设置重力加速度
+-dyna.Set("Gravity 0.0 -9.8 0.0 ");
++// 设置重力加速度 (Z轴向下)
++dyna.Set("Gravity 0.0 0.0 -9.8");
+ 
+-//设置接触容差
++// 设置接触容差
+ dyna.Set("Contact_Detect_Tol 0.0");
+ 
++// 关闭GiD输出
+ dyna.Set("GiD_Out 0");
+ 
++// 关闭滚动计算
+ dyna.Set("If_Particle_Cal_Rolling 0");
+ 
+-dyna.Set("Particle_Out_Kill 1 0 0.3 0 0.8 0 0.3 0");
+-
+-
+-//设置底部刚性面
++// 设置底部刚性面
+ rdface.Import("gid", "BoundMesh.msh");
+ 
++// 导入STL文件创建多面体颗粒
++// pdyna.CrtPolyhedronPartSTL(strStlName, nGroupNo, afCenter, fMaxLength, nRandomDirFlag, Type, Value)
++var fCenter = [0, 0, 2];
++pdyna.CrtPolyhedronPartSTL("R001.stl", 1, fCenter, 2.0, 1, 1, 5);
+ 
+-
+-//pdyna.CrtPolyhedronPartFromFile(<strSTLFile, strPDynaFile, strSizeScaleType, fPara1, fPara2, nGrpLow, nGrpUp, nRandomDirFlag [, Type, Value]>);
+-pdyna.CrtPolyhedronPartFromFile("SiglePar.stl", "pdyna-par.dat", "uniform", 1, 1.0, 1, 111, 1,2,0.003);
+-
+-print("完成创建");
+-
+-//设置颗粒的材料参数，依次为密度、弹性模量、泊松比、抗拉强度、粘聚力、内摩擦角、局部平动阻尼、局部转动阻尼、粘性阻尼系数（临界阻尼比）
++// 设置颗粒的材料参数
++// 密度(kg/m³)、弹性模量(Pa)、泊松比、抗拉强度(Pa)、粘聚力(Pa)、内摩擦角(°)、局部平动阻尼、局部转动阻尼、粘性阻尼系数
+ pdyna.SetPartMat(2500, 1e6, 0.25, 0.0, 0.0, 10, 0.01, 0.05, 0.06);
+ 
+-//设置颗粒接触模型为考虑应变软化的Mohr-Coulomb模型
++// 设置颗粒接触模型为Mohr-Coulomb模型
+ pdyna.SetModel("brittleMC");
+ 
+-
+-//设置动态计算时步为1e-4秒
++// 设置动态计算时步
+ dyna.TimeStepCorrect(0.2);
+ 
++// 创建监测点监测颗粒运动状态
++// 监测颗粒ID、监测内容类型(x/y/z方向位移/速度/力等)
++dyna.CreateMonitor(1, 1, "particle", "pa_xdis, pa_ydis, pa_zdis, pa_magvel, pa_magforce");
+ 
+-//计算3万步
++// 执行动态计算，模拟颗粒下落与碰撞
+ dyna.Solve(100000);
+ 
++// 后处理：获取监测数据
++var result = pdyna.PostProcess();
+ 
++// 导出监测数据到文件
++dyna.ExportResult("result.txt");
++
++print("仿真完成，结果已导出至 result.txt");

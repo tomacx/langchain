@@ -1,0 +1,167 @@
+--- 案例库-建模及网格案例-复杂几何边界球形粒子快速填充案例-汽车案例-汽车.js (ground_truth)
++++ 案例库-建模及网格案例-复杂几何边界球形粒子快速填充案例-汽车案例-汽车.js (generated)
+@@ -1,13 +1,156 @@
+ setCurDir(getSrcDir());
+ 
+-var msh1 = imesh.importStl("qiche1.stl");
+-var msh2 = imesh.importStl("qiche2.stl");
+-var msh3 = imesh.importStl("qiche3.stl");
+-var msh4 = imesh.importStl("qiche4.stl");
+-var msh5 = imesh.importStl("qiche5.stl");
+-var msh6 = imesh.importStl("qiche6.stl");
++// ============================================
++// 1. 初始化仿真求解器并设定三维计算域
++// ============================================
++dyna.Set("Particle_Cal_Type", 1);  // 启用颗粒模块 DEM
++dyna.Set("Time_Step", 1e-6);        // 计算时步 1微秒
++dyna.Set("Total_Time", 5.0);        // 总计算时间 5秒
++dyna.Set("Output_Interval", 0.1);   // 输出间隔 0.1秒
++
++// 设置三维计算域尺寸 (m)
++skwave.DefMesh(3, [5.0, 3.0, 2.5], [50, 30, 25]);
++
++// ============================================
++// 2. 加载汽车车身复杂几何边界模型
++// ============================================
++var msh1 = imesh.importStl("car_body_bottom.stl");
++var msh2 = imesh.importStl("car_body_left.stl");
++var msh3 = imesh.importStl("car_body_right.stl");
++var msh4 = imesh.importStl("car_body_top.stl");
++var msh5 = imesh.importStl("car_body_front.stl");
++var msh6 = imesh.importStl("car_body_rear.stl");
+ 
+ pargen.addBound(msh1, msh2, msh3, msh4, msh5, msh6);
+ 
+-///半径是1m
+-pargen.gen(0.005);
++// ============================================
++// 3. 定义球形颗粒基础参数
++// ============================================
++// 设置颗粒半径分布 (最小半径0.005m)
++var particleRadius = 0.005;
++
++// 设置材料属性
++dyna.Set("Density", 2500.0);           // 颗粒密度 kg/m³
++dyna.Set("Young_Modulus", 1e9);        // 弹性模量 Pa
++dyna.Set("Poisson_Ratio", 0.3);        // 泊松比
++dyna.Set("Friction_Coefficient", 0.5); // 摩擦系数
++
++// ============================================
++// 4. 配置 UserDefParameters 自定义本构参数
++// ============================================
++var userDefParams = [
++    1.0,      // 参数1: 刚度系数
++    0.5,      // 参数2: 阻尼系数
++    0.3,      // 参数3: 内摩擦角
++    10000.0,  // 参数4: 粘聚力 Pa
++    0.0,      // 参数5: 拉伸强度 Pa
++    0.0       // 参数6: 破坏阈值
++];
++dyna.SetUserDefValue(userDefParams);
++
++// ============================================
++// 5. 生成颗粒并映射到背景格子
++// ============================================
++// 填充颗粒到汽车内部空间
++var particleCount = pargen.gen(particleRadius);
++
++// 将颗粒映射到背景格子上便于接触检测
++pdyna.CellMapping();
++
++// ============================================
++// 6. 配置颗粒注入源与填充速率
++// ============================================
++// 设置注入源位置 (汽车顶部开口处)
++var injectSource = [2.5, 1.5, 2.0];  // x, y, z 坐标
++dyna.SetInjectSource(injectSource, 1000.0);  // 位置 + 注入速率 particles/s
++
++// 设置重力加速度
++dyna.SetGravity([0, -9.81, 0]);
++
++// ============================================
++// 7. 设置监测对象
++// ============================================
++// 创建监测点记录颗粒速度
++var monitorSpeed = dyna.CreateMonitor("Velocity_Monitor", "Particle_Velocity");
++
++// 创建监测点记录接触力链
++var monitorForce = dyna.CreateMonitor("Force_Chain_Monitor", "Contact_Force");
++
++// 创建监测点记录系统总能量
++var monitorEnergy = dyna.CreateMonitor("Energy_Monitor", "Total_Energy");
++
++// 设置监测输出频率
++monitorSpeed.SetOutputInterval(0.1);
++monitorForce.SetOutputInterval(0.1);
++monitorEnergy.SetOutputInterval(0.1);
++
++// ============================================
++// 8. 启动仿真计算循环
++// ============================================
++var startTime = GetTime();
++var isConverged = false;
++var maxIterations = 50000;
++var iteration = 0;
++
++while (!isConverged && iteration < maxIterations) {
++    // 执行计算步
++    dyna.Step();
++    
++    // 更新背景格子映射
++    pdyna.CellMapping();
++    
++    // 检查收敛性 (系统动能趋于稳定)
++    var currentEnergy = monitorEnergy.GetValue();
++    if (iteration > 1000 && Math.abs(currentEnergy - lastEnergy) / lastEnergy < 0.01) {
++        isConverged = true;
++    }
++    lastEnergy = currentEnergy;
++    
++    iteration++;
++}
++
++var endTime = GetTime();
++print("仿真完成，耗时: " + (endTime - startTime).toFixed(2) + " 秒");
++print("总迭代步数: " + iteration);
++
++// ============================================
++// 9. 保存结果输出文件
++// ============================================
++// 保存颗粒坐标数据
++dyna.SaveParticleData("output/particle_coords.dat");
++
++// 保存接触对状态
++dyna.SaveContactData("output/contact_pairs.dat");
++
++// 保存监测数据
++monitorSpeed.SaveToFile("output/velocity_history.dat");
++monitorForce.SaveToFile("output/force_chain_history.dat");
++monitorEnergy.SaveToFile("output/energy_history.dat");
++
++// ============================================
++// 10. 分析填充均匀度与孔隙率并生成报告
++// ============================================
++var fillStats = pargen.getValue("FillStatistics");
++var uniformity = fillStats["Uniformity"];
++var porosity = fillStats["Porosity"];
++var totalVolume = fillStats["TotalVolume"];
++var particleVolume = fillStats["ParticleVolume"];
++
++// 生成仿真报告
++var report = "=== CDEM汽车颗粒填充仿真报告 ===\n";
++report += "生成颗粒数量: " + particleCount + "\n";
++report += "填充均匀度: " + uniformity.toFixed(4) + "\n";
++report += "系统孔隙率: " + porosity.toFixed(4) + "\n";
++report += "总体积: " + totalVolume.toFixed(4) + " m³\n";
++report += "颗粒总体积: " + particleVolume.toFixed(4) + " m³\n";
++report += "仿真耗时: " + (endTime - startTime).toFixed(2) + " 秒\n";
++report += "====================================\n";
++
++print(report);
++
++// 保存报告到文件
++var fs = new File("output/simulation_report.txt", "w");
++fs.Write(report);
++fs.Close();
++
++print("仿真报告已保存至 output/simulation_report.txt");
