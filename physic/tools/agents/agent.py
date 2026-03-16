@@ -9,10 +9,21 @@ from typing import List, Dict, Any, Optional
 from dataclasses import dataclass, asdict, field
 from datetime import datetime
 
+try:
+    from dotenv import load_dotenv
+
+    load_dotenv(encoding="utf-8")
+except Exception:
+    pass
+
 # LangChain imports
 from langchain_chroma import Chroma
 from langchain_core.tools import create_retriever_tool
 from langchain_ollama import ChatOllama, OllamaEmbeddings
+try:
+    from langchain_openai import ChatOpenAI
+except Exception:
+    ChatOpenAI = None
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 from langchain.agents import create_agent
 from langchain_core.callbacks import StreamingStdOutCallbackHandler
@@ -65,18 +76,18 @@ class EvaluationResult:
     # 检索信息
     retrieved_docs_count: int
     retrieval_quality: str  # "excellent" | "good" | "poor"
+
+    # 对比信息
+    diff_unified: str = ""
+    diff_file: str = ""
+
+    task_steps: List[str] = field(default_factory=list)
     
     # 额外信息
     error_message: str = ""
     notes: str = ""
     evaluation_time: str = ""
-    token_estimate: int = 0
-    simplicity_score: float = 0.0
-    physics_consistency_score: float = 0.0
-    reward_total: float = 0.0
-    reward_breakdown: Dict[str, float] = field(default_factory=dict)
-    optimization_used: bool = False
-    optimization_iterations: int = 0
+    last_run_metrics: Dict[str, Any] = field(default_factory=dict)
 
 
 class VectorKnowledgeBaseModule:
@@ -109,14 +120,6 @@ class VectorKnowledgeBaseModule:
         except Exception as e:
             print(f"❌ 加载向量数据库失败: {e}")
             raise
-
-
-class VectorStoreManager:
-    """(Deprecated) 兼容旧代码的向量数据库管理器"""
-    @staticmethod
-    def connect(persist_directory: str, collection_name: str):
-        return VectorKnowledgeBaseModule.connect(persist_directory, collection_name)
-
 
 class QueryGenerator:
     """从文件名生成查询"""
@@ -492,14 +495,98 @@ class AgentConstructionModule:
             "global_feedback": [],
         }
 
+    def _build_task_steps(self, query: str, expanded_query: str, reference_context: str) -> List[str]:
+        prompt = (
+            "你是 CDEM 物理仿真脚本执行规划专家。请把用户需求拆解为可执行步骤，要求步骤具体、可操作、可按顺序执行。\n"
+            "输出必须是严格 JSON 数组（只能输出一个 JSON 数组，数组元素为字符串），禁止输出任何额外文字。\n"
+            "每个步骤必须以动词开头，建议 6-10 步。\n\n"
+            f"用户原始需求:\n{query}\n\n"
+            f"扩写后的需求:\n{expanded_query}\n\n"
+            f"可用参考资料（可能为空）:\n{reference_context[:4000] if reference_context else ''}\n"
+        )
+        try:
+            resp = self.llm.invoke(prompt)
+            content = getattr(resp, "content", "") or ""
+            m = re.search(r"\[[\s\S]*\]", content)
+            if m:
+                data = json.loads(m.group(0))
+                if isinstance(data, list):
+                    steps: List[str] = []
+                    for x in data:
+                        if not x:
+                            continue
+                        s = str(x).strip()
+                        if s and s not in steps:
+                            steps.append(s)
+                    if steps:
+                        return steps[:12]
+        except Exception:
+            pass
+        return [
+            "解析需求并确定目标模块与物理过程",
+            "从检索结果确认可用 API 与关键参数含义",
+            "搭建几何与网格/颗粒初始化并设置材料参数",
+            "设置接触/本构/边界条件与载荷输入",
+            "配置求解控制参数、时间步长与输出",
+            "调用求解入口并保存结果文件",
+        ]
+
+    def _build_feedback_items(self, code: str, required_modules: List[str]) -> List[str]:
+        issues: List[str] = []
+        if not code or len(code.strip()) < 10:
+            return ["代码为空或过短"]
+        if "search_physics_knowledge" in code:
+            issues.append("代码中出现 search_physics_knowledge（严禁出现在最终脚本）")
+        if "setCurDir(getSrcDir());" not in code:
+            issues.append("缺少脚本起手式：setCurDir(getSrcDir());")
+        if re.search(r"\bwhile\s*\(\s*true\s*\)", code):
+            issues.append("包含 while(true) 可能导致脚本自身无限循环")
+        if code.count("{") != code.count("}"):
+            issues.append("花括号不匹配")
+        if code.count("(") != code.count(")"):
+            issues.append("括号不匹配")
+        missing = self._missing_required_modules(code, required_modules)
+        if missing:
+            issues.append("缺少必要模块调用: " + ", ".join(missing))
+        solve_like = bool(re.search(r"\bSolve\s*\(|\.\s*Solve\s*\(", code))
+        if not solve_like:
+            issues.append("未检测到求解/执行入口（Solve）")
+        return issues
+
     def _build_agent(self):
         print("\n🤖 构建智能体...")
-        self.llm = ChatOllama(
-            model=self.model_name,
-            temperature=0.0,
-            keep_alive="5m",
-            callbacks=[StreamingStdOutCallbackHandler()]
-        )
+        provider = (os.environ.get("CDEM_LLM_PROVIDER") or "bailian").strip().lower()
+        if provider in {"ollama", "local"}:
+            ollama_base_url = (os.environ.get("CDEM_OLLAMA_BASE_URL") or "http://localhost:11434").strip()
+            self.llm = ChatOllama(
+                model=self.model_name,
+                temperature=0.0,
+                base_url=ollama_base_url,
+                keep_alive="5m",
+                callbacks=[StreamingStdOutCallbackHandler()],
+            )
+        else:
+            if ChatOpenAI is None:
+                raise ImportError("未安装 langchain-openai：请先安装后再使用百炼/千问（CDEM_LLM_PROVIDER=bailian）。")
+            api_key = (
+                os.environ.get("CDEM_BAILIAN_API_KEY")
+                or os.environ.get("DASHSCOPE_API_KEY")
+                or os.environ.get("OPENAI_API_KEY")
+                or ""
+            ).strip()
+            base_url = (os.environ.get("CDEM_BAILIAN_BASE_URL") or "https://dashscope.aliyuncs.com/compatible-mode/v1").strip()
+
+            if not api_key:
+                raise ValueError("缺少百炼/千问 API Key：请设置环境变量 CDEM_BAILIAN_API_KEY（或 DASHSCOPE_API_KEY/OPENAI_API_KEY）。")
+
+            self.llm = ChatOpenAI(
+                model_name=self.model_name,
+                api_key=api_key,
+                base_url=base_url,
+                temperature=0.0,
+                streaming=True,
+                callbacks=[StreamingStdOutCallbackHandler()],
+            )
         
         # 3. 系统提示词
         if globals().get('HAS_CUSTOM_PROMPT', False) and globals().get('agent_system') is not None:
@@ -718,8 +805,6 @@ class AgentConstructionModule:
     def _extract_required_modules(self, query: str) -> List[str]:
         modules: List[str] = []
         q_lower = query.lower()
-        # 清洗 Query：移除无意义的目录前缀词，提高关键词密度
-        clean_query = q_lower.replace("案例库", "").replace("案例", "").replace("扩展", "").replace("脚本", "")
         
         candidates = [
             ("dyna", "dyna"),
@@ -756,164 +841,6 @@ class AgentConstructionModule:
                 missing.append(mod)
         return missing
 
-    def _estimate_token_cost(self, text: str) -> int:
-        if not text:
-            return 0
-        return int((len(text) + 3) / 4)
-
-    def _score_simplicity(self, token_est: int, duration_s: float) -> float:
-        if token_est <= 0:
-            return 0.0
-        t_score = 10.0
-        if token_est > 2800:
-            t_score -= 6.0
-        elif token_est > 1800:
-            t_score -= 4.0
-        elif token_est > 1200:
-            t_score -= 2.0
-        elif token_est > 800:
-            t_score -= 1.0
-
-        d_score = 10.0
-        if duration_s > 60:
-            d_score -= 6.0
-        elif duration_s > 40:
-            d_score -= 4.0
-        elif duration_s > 25:
-            d_score -= 2.0
-        elif duration_s > 15:
-            d_score -= 1.0
-
-        return max(0.0, min(10.0, (t_score * 0.7 + d_score * 0.3)))
-
-    def _score_fit(self, code: str, required_modules: List[str]) -> tuple[float, List[str]]:
-        issues: List[str] = []
-        if not code or len(code.strip()) < 10:
-            return 0.0, ["代码为空或过短"]
-
-        if "search_physics_knowledge" in code:
-            issues.append("包含 search_physics_knowledge")
-        if "setCurDir(getSrcDir());" not in code:
-            issues.append("缺少 setCurDir(getSrcDir());")
-        if re.search(r"\bwhile\s*\(\s*true\s*\)", code):
-            issues.append("包含 while(true)")
-        if code.count("{") != code.count("}"):
-            issues.append("花括号不匹配")
-        if code.count("(") != code.count(")"):
-            issues.append("括号不匹配")
-
-        missing = self._missing_required_modules(code, required_modules)
-        if missing:
-            issues.append("缺少必要模块调用: " + ", ".join(missing))
-
-        solve_like = bool(re.search(r"\bSolve\s*\(|\.\s*Solve\s*\(", code))
-        if not solve_like:
-            issues.append("未检测到求解/执行入口（Solve）")
-
-        quality = CodeQualityEvaluator.evaluate(code)
-        base = quality
-        if issues:
-            base -= min(5.0, 0.8 * len(issues))
-        return max(0.0, min(10.0, base)), issues
-
-    def _score_physics_consistency(self, code: str) -> tuple[float, List[str]]:
-        issues: List[str] = []
-        if not code or len(code.strip()) < 10:
-            return 0.0, ["代码为空或过短"]
-
-        def extract_named_values(names: List[str]) -> List[tuple[str, float]]:
-            out: List[tuple[str, float]] = []
-            for name in names:
-                pat = rf"{re.escape(name)}\s*[:=,]\s*([-+]?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?)"
-                for m in re.finditer(pat, code):
-                    try:
-                        out.append((name, float(m.group(1))))
-                    except Exception:
-                        continue
-            return out
-
-        for k, v in extract_named_values(["density", "rho", "Density", "Rho"]):
-            if v <= 0:
-                issues.append(f"{k} <= 0")
-
-        for k, v in extract_named_values(["dt", "Dt", "timeStep", "TimeStep", "timestep"]):
-            if v <= 0:
-                issues.append(f"{k} <= 0")
-            if v > 1:
-                issues.append(f"{k} 过大（>1s）")
-
-        for k, v in extract_named_values(["poisson", "nu", "Poisson", "Nu"]):
-            if v <= 0 or v >= 0.5:
-                issues.append(f"{k} 不在 (0, 0.5) 内")
-
-        for k, v in extract_named_values(["young", "Young", "E", "ElasticModulus"]):
-            if v <= 0:
-                issues.append(f"{k} <= 0")
-
-        g_match = re.search(r"\bgravity\b.*?\[([^\]]+)\]", code, re.IGNORECASE)
-        if g_match:
-            try:
-                parts = [float(x.strip()) for x in g_match.group(1).split(",")[:3]]
-                if len(parts) == 3:
-                    gmag = (parts[0] ** 2 + parts[1] ** 2 + parts[2] ** 2) ** 0.5
-                    if gmag > 200:
-                        issues.append("重力加速度幅值异常（>200）")
-            except Exception:
-                pass
-
-        score = 10.0
-        if issues:
-            score -= min(7.0, 1.2 * len(issues))
-        return max(0.0, min(10.0, score)), issues
-
-    def _pareto_front(self, candidates: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        front: List[Dict[str, Any]] = []
-        for a in candidates:
-            dominated = False
-            for b in candidates:
-                if a is b:
-                    continue
-                if (
-                    b["simplicity_score"] >= a["simplicity_score"]
-                    and b["fit_score"] >= a["fit_score"]
-                    and b["physics_score"] >= a["physics_score"]
-                    and (
-                        b["simplicity_score"] > a["simplicity_score"]
-                        or b["fit_score"] > a["fit_score"]
-                        or b["physics_score"] > a["physics_score"]
-                    )
-                ):
-                    dominated = True
-                    break
-            if not dominated:
-                front.append(a)
-        return front
-
-    def _select_from_pareto(self, pareto: List[Dict[str, Any]], target_fit: float, target_physics: float) -> Dict[str, Any]:
-        if not pareto:
-            return {}
-        best = None
-        best_score = -1e9
-        for c in pareto:
-            fit = c["fit_score"]
-            phys = c["physics_score"]
-            simp = c["simplicity_score"]
-            lam_fit = 1.0 + max(0.0, target_fit - fit) / max(target_fit, 1e-6)
-            lam_phys = 1.0 + max(0.0, target_physics - phys) / max(target_physics, 1e-6)
-            lam_simp = 1.0
-            total = lam_fit * fit + lam_phys * phys + lam_simp * simp
-            if total > best_score:
-                best_score = total
-                best = c
-        assert best is not None
-        best["reward_total"] = best_score
-        best["reward_breakdown"] = {
-            "simplicity_score": float(best["simplicity_score"]),
-            "fit_score": float(best["fit_score"]),
-            "physics_score": float(best["physics_score"]),
-        }
-        return best
-
     def _get_default_system_prompt(self) -> str:
         """默认系统提示词"""
         return """你是一个专业的CDEM物理仿真脚本生成助手。
@@ -948,10 +875,6 @@ class AgentConstructionModule:
         total_timeout_s = float(os.environ.get("CDEM_AGENT_TOTAL_TIMEOUT_SECONDS", "240"))
         max_repeat_signature = int(os.environ.get("CDEM_AGENT_MAX_REPEAT_SIGNATURE", "6"))
         max_chunks = int(os.environ.get("CDEM_AGENT_MAX_CHUNKS", str(max_recursion_limit * 4)))
-        enable_opt = os.environ.get("CDEM_ENABLE_GAME_OPT", "1").strip() in {"1", "true", "True"}
-        max_opt_iters = int(os.environ.get("CDEM_OPT_MAX_ITERS", "2"))
-        target_fit = float(os.environ.get("CDEM_OPT_TARGET_FIT", "7.0"))
-        target_physics = float(os.environ.get("CDEM_OPT_TARGET_PHYSICS", "7.0"))
 
         if os.environ.get("CDEM_RESET_MEMORY_EACH_CALL", "0").strip() in {"1", "true", "True"}:
             self.reset_generation_memory()
@@ -1169,7 +1092,18 @@ class AgentConstructionModule:
                             reference_context = ref_ctx_2
                             retrieved_count = max(retrieved_count, count_2)
 
+            steps = self._build_task_steps(query=query, expanded_query=final_query, reference_context=reference_context)
+            if verbose:
+                print("\n🧩 任务拆解（按步骤执行）")
+                for i, s in enumerate(steps, 1):
+                    print(f"  {i}. {s}")
+
+            steps_text = "\n".join([f"{i}. {s}" for i, s in enumerate(steps, 1)])
+
             base_prompt = (
+                "【任务拆解】\n"
+                + steps_text
+                + "\n\n"
                 "【用户需求与背景】\n"
                 + final_query
                 + reference_context
@@ -1193,9 +1127,11 @@ class AgentConstructionModule:
             missing_modules = self._missing_required_modules(generated_code, required_modules)
 
             normalized = CodeSimilarityCalculator._normalize_code(generated_code)
+            used_strict_retry = False
             
             # 移除 retrieved_once == 0 的检查，因为我们采用了 Pre-retrieval 模式
             if ("search_physics_knowledge" in generated_code) or len(normalized.splitlines()) < 10 or is_json_output or missing_modules:
+                used_strict_retry = True
                 if verbose:
                     print("⚠️ 首轮生成不符合要求，将触发一次严格重试...")
                 
@@ -1222,119 +1158,22 @@ class AgentConstructionModule:
                     generated_code = self._extract_code(generated_text_strict)
                     retrieved_count = max(retrieved_count, retrieved_retry, retrieved_count)
                     dur_once = max(dur_once, dur_retry)
-
-            candidates: List[Dict[str, Any]] = []
-            base_tokens = self._estimate_token_cost(base_prompt) + self._estimate_token_cost(generated_code)
-            simp = self._score_simplicity(base_tokens, dur_once)
-            fit_score, fit_issues = self._score_fit(generated_code, required_modules)
-            phys_score, phys_issues = self._score_physics_consistency(generated_code)
-            candidates.append(
-                {
-                    "name": "baseline",
-                    "code": generated_code,
-                    "token_est": base_tokens,
-                    "duration_s": dur_once,
-                    "simplicity_score": simp,
-                    "fit_score": fit_score,
-                    "physics_score": phys_score,
-                    "fit_issues": fit_issues,
-                    "physics_issues": phys_issues,
-                }
-            )
-
-            need_opt = enable_opt and (
-                len(query.strip()) < 160
-                or fit_score < target_fit
-                or phys_score < target_physics
-                or retrieved_count == 0
-            )
-
-            opt_iters = 0
-            if need_opt:
-                opt_objectives = [
-                    "简约性优先：在不降低可执行性的前提下，减少冗余注释与重复设置，减少不必要的变量与输出，缩短脚本长度，并保持运行更快。",
-                    "拟合度优先：优先保证脚本能正确运行并输出结果，确保必要模块调用齐全、求解入口存在、关键参数完整，避免臆造 API。",
-                    "物理一致性优先：检查并修正明显违反基本物理规律的参数（例如密度/时间步长/弹性参数/泊松比等），保证参数取值合理且为正，边界条件与载荷方向自洽。",
-                ]
-                for _ in range(max_opt_iters):
-                    if (time.time() - start_time) >= total_timeout_s:
-                        if verbose:
-                            print(f"\n⏱️ 达到总超时限制: {time.time() - start_time:.1f}s/{total_timeout_s}s，停止继续优化迭代。")
-                        break
-                    opt_iters += 1
-                    for obj in opt_objectives:
-                        if (time.time() - start_time) >= total_timeout_s:
-                            break
-                        cand_text, cand_retrieved, cand_dur = run_once(base_prompt, dyn_prompt=obj)
-                        cand_code = self._extract_code(cand_text)
-                        if not cand_code:
-                            continue
-                        token_est = self._estimate_token_cost(base_prompt) + self._estimate_token_cost(cand_code)
-                        simp_s = self._score_simplicity(token_est, cand_dur)
-                        fit_s, fit_is = self._score_fit(cand_code, required_modules)
-                        phys_s, phys_is = self._score_physics_consistency(cand_code)
-                        candidates.append(
-                            {
-                                "name": f"opt{opt_iters}",
-                                "code": cand_code,
-                                "token_est": token_est,
-                                "duration_s": cand_dur,
-                                "simplicity_score": simp_s,
-                                "fit_score": fit_s,
-                                "physics_score": phys_s,
-                                "fit_issues": fit_is,
-                                "physics_issues": phys_is,
-                            }
-                        )
-                    pareto = self._pareto_front(candidates)
-                    selected = self._select_from_pareto(pareto, target_fit=target_fit, target_physics=target_physics)
-                    if selected:
-                        if selected["fit_score"] >= target_fit and selected["physics_score"] >= target_physics:
-                            break
-                pareto = self._pareto_front(candidates)
-                selected = self._select_from_pareto(pareto, target_fit=target_fit, target_physics=target_physics)
-            else:
-                selected = candidates[0]
-                pareto = [selected]
-
-            if selected and selected.get("code"):
-                generated_code = selected["code"]
-                if selected.get("name") != "baseline":
-                    dur_once = max(dur_once, float(selected.get("duration_s", 0.0)))
             
+            final_is_json_output = generated_code.strip().startswith("{") and '"name":' in generated_code
+            final_missing_modules = self._missing_required_modules(generated_code, required_modules)
+            cutoff_info = dict(self.last_run_metrics.get("cutoff") or {}) if isinstance(self.last_run_metrics, dict) else {}
             self.last_run_metrics = {
-                "token_estimate": int(selected.get("token_est", 0)) if selected else 0,
-                "simplicity_score": float(selected.get("simplicity_score", 0.0)) if selected else 0.0,
-                "physics_consistency_score": float(selected.get("physics_score", 0.0)) if selected else 0.0,
-                "fit_score": float(selected.get("fit_score", 0.0)) if selected else 0.0,
-                "reward_total": float(selected.get("reward_total", 0.0)) if selected else 0.0,
-                "reward_breakdown": dict(selected.get("reward_breakdown", {})) if selected else {},
-                "optimization_used": bool(need_opt),
-                "optimization_iterations": int(opt_iters),
-                "pareto_size": int(len(pareto)),
-                "candidates_count": int(len(candidates)),
+                "retrieved_docs_count": int(retrieved_count),
+                "used_strict_retry": bool(used_strict_retry),
+                "final_is_json_output": bool(final_is_json_output),
+                "final_missing_modules": list(final_missing_modules),
+                "duration_s": round(float(dur_once), 3),
+                "task_steps": list(steps),
             }
+            if cutoff_info:
+                self.last_run_metrics["cutoff"] = cutoff_info
             
-            feedback_items: List[str] = []
-            if "setCurDir(getSrcDir());" not in generated_code:
-                feedback_items.append("缺少脚本起手式：setCurDir(getSrcDir());")
-            if "search_physics_knowledge" in generated_code:
-                feedback_items.append("代码中出现 search_physics_knowledge（严禁出现在最终脚本）")
-            if re.search(r"\bwhile\s*\(\s*true\s*\)", generated_code):
-                feedback_items.append("包含 while(true) 可能导致脚本自身无限循环")
-            missing_modules = self._missing_required_modules(generated_code, required_modules)
-            if missing_modules:
-                feedback_items.append(f"缺少必要模块调用：{', '.join(missing_modules)}")
-            _, fit_issues_final = self._score_fit(generated_code, required_modules)
-            _, phys_issues_final = self._score_physics_consistency(generated_code)
-            if fit_issues_final:
-                for it in fit_issues_final[:3]:
-                    if it not in feedback_items:
-                        feedback_items.append(it)
-            if phys_issues_final:
-                for it in phys_issues_final[:3]:
-                    if it not in feedback_items:
-                        feedback_items.append(it)
+            feedback_items = self._build_feedback_items(generated_code, required_modules)
             
             if feedback_items:
                 self._generation_memory["last_query"] = query
@@ -1391,6 +1230,16 @@ class EvaluationModule:
                 print(f"⚠️ 无法加载查询数据集 {query_dataset_json}: {e}")
                 self.query_map = {}
 
+    def _read_case_text(self, file_path: Path) -> tuple[str, str]:
+        data = file_path.read_bytes()
+        encodings = ["utf-8", "utf-8-sig", "gb18030", "gbk", "cp936"]
+        for enc in encodings:
+            try:
+                return data.decode(enc), enc
+            except UnicodeDecodeError:
+                continue
+        return data.decode("utf-8", errors="replace"), "utf-8(replace)"
+
     def evaluate_single_case(self, filename: str, ground_truth_code: str, verbose: bool = False) -> EvaluationResult:
         """评估单个测试案例"""
         if os.environ.get("CDEM_EVAL_RESET_MEMORY_PER_CASE", "1").strip() in {"1", "true", "True"}:
@@ -1435,6 +1284,13 @@ class EvaluationModule:
         if similarity < 0.3:
             self._save_debug_info(filename, query, ground_truth_code, generated_code)
         
+        diff_unified = self._build_unified_diff(
+            filename=filename,
+            ground_truth_code=ground_truth_code,
+            generated_code=generated_code,
+        )
+        diff_file = self._save_diff_file(filename=filename, diff_text=diff_unified)
+
         category = self._determine_category(filename)
         
         result = EvaluationResult(
@@ -1450,16 +1306,39 @@ class EvaluationModule:
             functionality_score=functionality,
             retrieved_docs_count=retrieved_count,
             retrieval_quality=retrieval_quality,
+            diff_unified=diff_unified[:12000] if diff_unified else "",
+            diff_file=str(diff_file) if diff_file else "",
+            task_steps=[str(x).strip() for x in (extra.get("task_steps") or []) if str(x).strip()],
             evaluation_time=datetime.now().isoformat(),
-            token_estimate=int(extra.get("token_estimate", 0) or 0),
-            simplicity_score=float(extra.get("simplicity_score", 0.0) or 0.0),
-            physics_consistency_score=float(extra.get("physics_consistency_score", 0.0) or 0.0),
-            reward_total=float(extra.get("reward_total", 0.0) or 0.0),
-            reward_breakdown=dict(extra.get("reward_breakdown", {}) or {}),
-            optimization_used=bool(extra.get("optimization_used", False)),
-            optimization_iterations=int(extra.get("optimization_iterations", 0) or 0),
+            last_run_metrics=dict(extra),
         )
         return result
+
+    def _build_unified_diff(self, filename: str, ground_truth_code: str, generated_code: str) -> str:
+        gt_lines = (ground_truth_code or "").splitlines()
+        gen_lines = (generated_code or "").splitlines()
+        diff = difflib.unified_diff(
+            gt_lines,
+            gen_lines,
+            fromfile=f"{filename} (ground_truth)",
+            tofile=f"{filename} (generated)",
+            lineterm="",
+            n=3,
+        )
+        return "\n".join(diff)
+
+    def _save_diff_file(self, filename: str, diff_text: str) -> Optional[Path]:
+        if not diff_text:
+            return None
+        diff_dir = self.output_dir / "diffs"
+        diff_dir.mkdir(exist_ok=True)
+        safe_name = Path(filename).stem
+        diff_path = diff_dir / f"{safe_name}.diff"
+        try:
+            diff_path.write_text(diff_text, encoding="utf-8")
+            return diff_path
+        except Exception:
+            return None
 
     def _save_debug_info(self, filename, query, ground_truth, generated):
         """保存调试信息到文件"""
@@ -1468,11 +1347,16 @@ class EvaluationModule:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         safe_name = Path(filename).stem
         debug_file = debug_dir / f"{safe_name}_{timestamp}.md"
+        diff_unified = self._build_unified_diff(filename=filename, ground_truth_code=ground_truth, generated_code=generated)
         with open(debug_file, "w", encoding="utf-8") as f:
             f.write(f"# Failure Analysis: {filename}\n\n")
             f.write(f"## Query\n{query}\n\n")
             f.write(f"## Generated Code\n```javascript\n{generated}\n```\n\n")
             f.write(f"## Ground Truth\n```javascript\n{ground_truth}\n```\n")
+            if diff_unified:
+                f.write("\n## Unified Diff\n```diff\n")
+                f.write(diff_unified)
+                f.write("\n```\n")
 
     def _evaluate_execution(self, code: str) -> float:
         """评估代码可执行性"""
@@ -1493,6 +1377,43 @@ class EvaluationModule:
         elif '建模' in filename or '网格' in filename: return '建模及网格案例'
         else: return '其他案例'
 
+    def run_custom_query(self, query: str, case_filename: Optional[str] = None, verbose: bool = True) -> Dict[str, Any]:
+        generated_code, gen_time, retrieved_count = self.agent_module.generate_code(query, verbose=verbose)
+        extra = dict(getattr(self.agent_module, "last_run_metrics", {}) or {})
+        out: Dict[str, Any] = {
+            "query": query,
+            "generation_time": float(gen_time),
+            "retrieved_docs_count": int(retrieved_count),
+            "generated_code": generated_code,
+            "task_steps": list(extra.get("task_steps") or []),
+            "last_run_metrics": extra,
+        }
+        if not case_filename:
+            return out
+        file_path = self.test_data_dir / case_filename
+        try:
+            ground_truth, used_enc = self._read_case_text(file_path)
+        except Exception as e:
+            out["error"] = f"无法读取对比案例: {file_path} ({e})"
+            return out
+        similarity = CodeSimilarityCalculator.calculate_similarity(ground_truth, generated_code)
+        diff_unified = self._build_unified_diff(
+            filename=case_filename,
+            ground_truth_code=ground_truth,
+            generated_code=generated_code,
+        )
+        diff_file = self._save_diff_file(filename=case_filename, diff_text=diff_unified)
+        out.update(
+            {
+                "case_filename": case_filename,
+                "ground_truth_encoding": used_enc,
+                "similarity_score": float(similarity),
+                "diff_unified": diff_unified[:12000] if diff_unified else "",
+                "diff_file": str(diff_file) if diff_file else "",
+            }
+        )
+        return out
+
     def run_ab_test(self, test_files: List[str], verbose: bool = False):
         """运行A/B测试"""
         print("\n" + "="*60)
@@ -1512,8 +1433,7 @@ class EvaluationModule:
             # 读取标准答案
             file_path = self.test_data_dir / filename
             try:
-                with open(file_path, 'r', encoding='utf-8') as f:
-                    ground_truth = f.read()
+                ground_truth, used_enc = self._read_case_text(file_path)
             except Exception as e:
                 print(f"❌ 读取失败: {e}")
                 continue
@@ -1521,13 +1441,15 @@ class EvaluationModule:
             # --- B组：关闭预处理 (Baseline) ---
             print("  Running Baseline (Preproc OFF)...")
             self.agent_module.enable_preprocessing = False
-            res_b = self.evaluate_single_case(filename, ground_truth, verbose=False)
+            res_b = self.evaluate_single_case(filename, ground_truth, verbose=verbose)
+            res_b.last_run_metrics["ground_truth_encoding"] = used_enc
             results_b.append(res_b)
             
             # --- A组：开启预处理 (Experimental) ---
             print("  Running Experimental (Preproc ON)...")
             self.agent_module.enable_preprocessing = True
-            res_a = self.evaluate_single_case(filename, ground_truth, verbose=False)
+            res_a = self.evaluate_single_case(filename, ground_truth, verbose=verbose)
+            res_a.last_run_metrics["ground_truth_encoding"] = used_enc
             results_a.append(res_a)
             
             # 打印单次对比
@@ -1590,16 +1512,20 @@ class EvaluationModule:
             print(f"\n[{i}/{len(train_files)}] 验证: {filename}")
             file_path = self.test_data_dir / filename
             try:
-                with open(file_path, 'r', encoding='utf-8') as f:
-                    ground_truth = f.read()
+                ground_truth, used_enc = self._read_case_text(file_path)
             except Exception as e:
                 print(f"  ❌ 无法读取文件: {e}")
                 continue
             
             result = self.evaluate_single_case(filename, ground_truth, verbose=verbose)
+            result.last_run_metrics["ground_truth_encoding"] = used_enc
             self.results.append(result)
             
             print(f"  相似度: {result.similarity_score:.3f} | 质量: {result.code_quality_score:.1f}/10 | 功能: {result.functionality_score:.1f}/10 | 耗时: {result.generation_time:.1f}s")
+            if result.task_steps:
+                print("  任务拆解:")
+                for j, s in enumerate(result.task_steps, 1):
+                    print(f"    {j}. {s}")
             if result.similarity_score < 0.7:
                 print(f"  ⚠️  警告：训练集案例相似度较低！")
         
@@ -1621,15 +1547,19 @@ class EvaluationModule:
             print(f"\n[{i}/{len(test_files)}] 评估: {filename}")
             file_path = self.test_data_dir / filename
             try:
-                with open(file_path, 'r', encoding='utf-8') as f:
-                    ground_truth = f.read()
+                ground_truth, used_enc = self._read_case_text(file_path)
             except Exception as e:
                 print(f"  ❌ 无法读取文件: {e}")
                 continue
             
             result = self.evaluate_single_case(filename, ground_truth, verbose=verbose)
+            result.last_run_metrics["ground_truth_encoding"] = used_enc
             self.results.append(result)
             print(f"  ✓ 相似度: {result.similarity_score:.3f} | 质量: {result.code_quality_score:.1f}/10 | 功能: {result.functionality_score:.1f}/10")
+            if result.task_steps:
+                print("  任务拆解:")
+                for j, s in enumerate(result.task_steps, 1):
+                    print(f"    {j}. {s}")
         
         self._generate_report("test_set", "测试集评估报告")
 
@@ -1758,6 +1688,9 @@ class CDEMAgentEvaluator:
     
     def evaluate_test_set(self, dataset_split_json: str, verbose: bool = False):
         self.eval_module.evaluate_test_set(dataset_split_json, verbose)
+    
+    def run_custom_query(self, query: str, case_filename: Optional[str] = None, verbose: bool = True) -> Dict[str, Any]:
+        return self.eval_module.run_custom_query(query=query, case_filename=case_filename, verbose=verbose)
 
 
 def main():
@@ -1766,27 +1699,40 @@ def main():
     # 配置区域
     # =====================================================================
     
-    # 1. 向量数据库配置（使用增强版）
     project_root = Path(__file__).resolve().parents[2]
+    repo_root = Path(__file__).resolve().parents[3]
+
+    def resolve_env_path(key: str, default_path: Path) -> str:
+        raw = (os.environ.get(key) or "").strip()
+        if not raw:
+            return str(default_path)
+        p = Path(raw)
+        if not p.is_absolute():
+            p = (repo_root / p).resolve()
+        return str(p)
+    
     default_vector_db_path = project_root / "tools" / "js_store" / "chroma_db_cdem"
-    VECTOR_DB_PATH = os.environ.get("CDEM_VECTOR_DB_PATH", str(default_vector_db_path))
+    VECTOR_DB_PATH = resolve_env_path("CDEM_VECTOR_DB_PATH", default_vector_db_path)
     
     # 2. 数据集配置
     dataset_root = project_root / "dataset_split_results"
     default_dataset_split_json = dataset_root / "dataset_split.json"
     default_query_dataset_json = dataset_root / "case_queries_content.json"
-    DATASET_SPLIT_JSON = os.environ.get("CDEM_DATASET_SPLIT_JSON", str(default_dataset_split_json))
-    QUERY_DATASET_JSON = os.environ.get("CDEM_QUERY_DATASET_JSON", str(default_query_dataset_json))
+    DATASET_SPLIT_JSON = resolve_env_path("CDEM_DATASET_SPLIT_JSON", default_dataset_split_json)
+    QUERY_DATASET_JSON = resolve_env_path("CDEM_QUERY_DATASET_JSON", default_query_dataset_json)
     
     docs_root = project_root / "docs"
-    default_test_data_dir = docs_root / "案例"
-    TEST_DATA_DIR = os.environ.get("CDEM_CASE_DIR", str(default_test_data_dir))
+    default_test_data_dir = docs_root / "CDEM案例库及手册"
+    TEST_DATA_DIR = resolve_env_path("CDEM_CASE_DIR", default_test_data_dir)
     
     # 3. 输出目录
-    OUTPUT_DIR = os.environ.get("CDEM_EVAL_OUTPUT_DIR", str(Path(__file__).resolve().parent / "results/evaluation_results.3.13.2(修改Agent上下文)"))
+    default_output_dir = Path(__file__).resolve().parent / "results/evaluation_results.3.15.3(改成API)"
+    OUTPUT_DIR = resolve_env_path("CDEM_EVAL_OUTPUT_DIR", default_output_dir)
     
     # 4. LLM模型
-    MODEL_NAME = "llama3.1:latest"
+    provider = (os.environ.get("CDEM_LLM_PROVIDER") or "bailian").strip().lower()
+    default_model = "llama3.1:latest" if provider in {"ollama", "local"} else "qwen3.5-flash"
+    MODEL_NAME = os.environ.get("CDEM_LLM_MODEL", default_model)
     
     # 5. 功能配置
     ENABLE_PREPROCESSING = False  # 预处理模块开关
@@ -1813,6 +1759,30 @@ def main():
         enable_preprocessing=ENABLE_PREPROCESSING,
         query_dataset_json=QUERY_DATASET_JSON
     )
+
+    custom_query = (os.environ.get("CDEM_CUSTOM_QUERY") or "").strip()
+    custom_case = (os.environ.get("CDEM_CUSTOM_CASE") or "").strip() or None
+    if not custom_query:
+        try:
+            custom_query = (input("请输入自定义query（回车跳过进入数据集评估）: ") or "").strip()
+        except Exception:
+            custom_query = ""
+    if custom_query:
+        if not custom_case:
+            try:
+                custom_case = (input("可选：输入要对比的案例文件名（相对案例目录，回车跳过）: ") or "").strip() or None
+            except Exception:
+                custom_case = None
+        out = evaluator.run_custom_query(custom_query, case_filename=custom_case, verbose=True)
+        print("\n" + "=" * 60)
+        print("✅ 自定义Query测试完成")
+        if out.get("case_filename"):
+            print(f"对比案例: {out.get('case_filename')}")
+            print(f"相似度: {out.get('similarity_score')}")
+            if out.get("diff_file"):
+                print(f"Diff文件: {out.get('diff_file')}")
+        print("=" * 60)
+        return
     
     # A/B测试（如果启用）
     if RUN_AB_TEST:

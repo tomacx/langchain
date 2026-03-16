@@ -1,0 +1,93 @@
+--- 案例库-CDyna案例-粒子模块案例-扩展案例-压板法产生密实颗粒-压板法创建颗粒.js (ground_truth)
++++ 案例库-CDyna案例-粒子模块案例-扩展案例-压板法产生密实颗粒-压板法创建颗粒.js (generated)
+@@ -1,50 +1,57 @@
+ setCurDir(getSrcDir());
+ 
+-dyna.Set("Gravity 0 0 0");
+-dyna.Set("Output_Interval 500");
+-dyna.Set("Contact_Detect_Tol 0.0");
++// ==================== 1. 求解器全局参数设置 ====================
++dyna.Set("Time_Step 1e-5");
++dyna.Set("Output_Interval 100");
++dyna.Set("If_Virtural_Mass 0");
++dyna.Set("Large_Displace 1");
++dyna.Set("Gravity 0 -9.8 0");
+ 
+-var xx = [0,0.5];
+-var yy = [0,0.5];
+-var zz = [0,0];
++// ==================== 2. 颗粒系统初始化 ====================
++// 在容器内随机生成初始颗粒集合
++pdyna.CreateByCoord(1, 2, 0.005, -0.5, 3, -0.5, 0, 0.5);
+ 
+-pdyna.CreateByCoord(10000, 1, 1, 0.002, 0.02, 0,xx,yy,zz);
++// 设置颗粒材料参数 (密度, 杨氏模量, 泊松比, 剪切模量, 体积模量, 摩擦角, 滚动阻力系数)
++pdyna.SetMat(2000, 5e8, 0.25, 1e4, 3e4, 30, 0.8);
+ 
+-
++// 设置颗粒接触本构模型为brittleMC
+ pdyna.SetModel("brittleMC");
+ 
+-pdyna. SetMat(2500, 1e7, 0.25, 0,0,0,0,0.1);
++// ==================== 3. 刚性面几何建模 ====================
++// 创建上压板 (组号1) - 矩形刚性面
++rdface.Create(2, 1, 4, [0, 0.5, 0, 1, 0.5, 0, 1, 0.5, 1, 0, 0.5, 1]);
+ 
+-var aCoord = new Array(2);
++// 创建下压板 (组号2) - 矩形刚性面
++rdface.Create(2, 2, 4, [0, -0.5, 0, 1, -0.5, 0, 1, -0.5, -1, 0, -0.5, -1]);
+ 
+-aCoord[0] = [0,0,0];
+-aCoord[1] = [0.5,0,0];
+-rdface.Create(1,1,2,aCoord);
++// 创建左侧壁 (组号3)
++rdface.Create(2, 3, 4, [-0.5, -0.5, 0, -0.5, 0.5, 0, -0.5, 0.5, 1, -0.5, 0.5, 1]);
+ 
+-aCoord[0] = [0.5,0,0];
+-aCoord[1] = [0.5,0.5,0];
+-rdface.Create(1,2,2,aCoord);
++// 创建右侧壁 (组号4)
++rdface.Create(2, 4, 4, [0.5, -0.5, 0, 0.5, 0.5, 0, 0.5, 0.5, 1, 0.5, -0.5, 1]);
+ 
+-aCoord[0] = [0.5,0.5,0];
+-aCoord[1] = [0,0.5,0];
+-rdface.Create(1,3,2,aCoord);
++// ==================== 4. 刚性面边界条件施加 ====================
++// 设置上压板向下运动速度 (压实方向)
++var vel = 1e-4;
++rdface.ApplyVelocityByGroup([0, -vel, 0], 1, 1);
+ 
+-aCoord[0] = [0,0,0];
+-aCoord[1] = [0,0.5,0];
+-rdface.Create(1,4,2,aCoord);
++// 固定其他刚性面
++rdface.ApplyVelocityByGroup([0, 0, 0], 2, 2);
++rdface.ApplyVelocityByGroup([0, 0, 0], 3, 3);
++rdface.ApplyVelocityByGroup([0, 0, 0], 4, 4);
+ 
+-var vel = 1e-5;
+-
+-rdface.ApplyVelocityByGroup ([0,vel,0], 1, 1);
+-
+-rdface.ApplyVelocityByGroup ([-vel,0,0],2,2);
+-
+-rdface.ApplyVelocityByGroup ([0,-vel,0], 3, 3);
+-
+-rdface.ApplyVelocityByGroup ([vel,0,0],4,4);
+-
++// ==================== 5. 时间步长稳定性校正 ====================
+ dyna.TimeStepCorrect(0.5);
+ 
+-
++// ==================== 6. 启动动力学求解 ====================
++// 求解至稳定状态 (约8000步)
+ dyna.Solve(8000);
+ 
++// ==================== 7. 结果输出与监测 ====================
++// 监测上压板的位移和力
++dyna.Monitor("rdface", "rg_xDis", 1, 1, 1);
++dyna.Monitor("rdface", "rg_yDis", 1, 1, 1);
++dyna.Monitor("rdface", "rg_zDis", 1, 1, 1);
++dyna.Monitor("rdface", "rg_bxForce", 1, 1, 1);
++dyna.Monitor("rdface", "rg_byForce", 1, 1, 1);
++dyna.Monitor("rdface", "rg_bzForce", 1, 1, 1);

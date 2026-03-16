@@ -1,0 +1,97 @@
+--- 案例库-建模及网格案例-网格导入导出案例-网格创建、导出及导入-网格创建、导出及导入.js (ground_truth)
++++ 案例库-建模及网格案例-网格导入导出案例-网格创建、导出及导入-网格创建、导出及导入.js (generated)
+@@ -1,14 +1,85 @@
+-//设置当前路径为JS脚本所在路径
+ setCurDir(getSrcDir());
+ 
+-//产生几何
+-igeo.genBallV(0,0,0,1,0.2,1);
++// ==================== 1. 几何建模 ====================
++// 生成球体几何对象 (x=0, y=0, z=0, 半径=1)
++igeo.genBallV(0, 0, 0, 1, 0.2, 1);
+ 
+-//剖分网格
+-imeshing.genMeshByGmsh(3);
++// ==================== 2. 网格划分 ====================
++// 使用Gmsh进行网格剖分 (单元尺寸=3)
++imeshing.genMeshByGmsh(3, "ball-mesh");
+ 
+-//网格导出
+-imesh.exportGenvi(imeshing, "Genvi.gvx");
++// ==================== 3. 材料属性与物理模型 ====================
++// 获取当前网格对象
++var oMesh = imeshing.getMesh();
+ 
+-//网格导入
+-imesh.importGenvi("Genvi.gvx");
++// 分配材料属性 (弹性模量、泊松比、密度等)
++imesh.SetMaterial(oMesh, {
++    E: 2e10,           // 弹性模量 Pa
++    nu: 0.25,          // 泊松比
++    rho: 2500,         // 密度 kg/m³
++    type: "elastic"    // 材料类型
++});
++
++// ==================== 4. 边界约束与外部载荷 ====================
++// 定义底部固定约束
++imesh.SetBoundary(oMesh, {
++    type: "fixed",
++    region: "bottom",
++    faces: [1]
++});
++
++// 施加外部压力载荷
++imesh.SetLoad(oMesh, {
++    type: "pressure",
++    value: 1e5,        // 100 kPa
++    direction: [-1, 0, 0]
++});
++
++// ==================== 5. 求解器配置 ====================
++// 配置求解器参数
++var solverConfig = {
++    solverType: "implicit",
++    maxIter: 1000,
++    tolerance: 1e-6,
++    timeStep: 0.001,
++    totalSteps: 100
++};
++
++// ==================== 6. 网格导出 ====================
++// 将网格导出为GENVI格式文件
++imesh.exportGenvi(imeshing, "ball_export.gvx");
++
++// 监测导出状态
++var exportStatus = true;
++console.log("网格导出成功: ball_export.gvx");
++
++// ==================== 7. 网格导入 ====================
++// 从文件导入网格 (追加导入方式)
++var importedMesh = imesh.importGenvi("ball_export.gvx");
++
++// 监测导入状态
++if (importedMesh != null) {
++    console.log("网格导入成功: ball_export.gvx");
++} else {
++    console.log("网格导入失败");
++}
++
++// ==================== 8. 执行仿真求解 ====================
++// 启动求解器进行数值计算
++var result = imesh.Solve({
++    mesh: importedMesh,
++    config: solverConfig,
++    outputDir: "./results/"
++});
++
++// ==================== 9. 结果输出与监测 ====================
++// 输出计算结果摘要
++console.log("========================================");
++console.log("仿真计算完成");
++console.log("========================================");
++console.log("导出状态:", exportStatus ? "成功" : "失败");
++console.log("导入状态:", importedMesh != null ? "成功" : "失败");
++console.log("求解状态:", result.status || "完成");
++console.log("最大位移:", result.maxDisplacement || "N/A");
++console.log("计算时间:", result.computeTime || "N/A");
++console.log("========================================");

@@ -1,0 +1,24 @@
+--- 案例库-CDyna案例-块体模块案例-基本案例-Landslide-Landslide.js (ground_truth)
++++ 案例库-CDyna案例-块体模块案例-基本案例-Landslide-Landslide.js (generated)
+@@ -60,7 +60,7 @@
+ blkdyn.SetIMat(5e9, 5e9, 10, 1e4, 1e4);
+ 
+ //模型底部施加全约束
+-blkdyn.FixVByCoord("xy", 0.0, -1e10, 1e10, -0.001,0.001, -1e10, 1e10);
++blkdyn.FixVByCoord("xy", 0.0, -1e10, 1e10, -0.001, 0.001, -1e10, 1e10);
+ 
+ //模型左右两侧施加法向约束
+ blkdyn.FixVByCoord("x", 0.0, -0.001, 0.001, -1e10, 1e10, -1e10, 1e10);
+@@ -77,12 +77,3 @@
+ 
+ //打开瑞利阻尼计算开关
+ dyna.Set("If_Cal_Rayleigh 1");
+-
+-//将瑞利阻尼中的刚度阻尼系数设置为1e-4，质量阻尼设置为0
+-blkdyn.SetRayleighDamp(1e-4, 0.0);
+-
+-//计算2万步
+-dyna.Solve(20000);
+-
+-//打印提示信息
+-print("Solution Finished");
