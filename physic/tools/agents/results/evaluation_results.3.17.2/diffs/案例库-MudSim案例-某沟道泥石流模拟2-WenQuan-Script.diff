@@ -1,0 +1,92 @@
+--- 案例库-MudSim案例-某沟道泥石流模拟2-WenQuan-Script.js (ground_truth)
++++ 案例库-MudSim案例-某沟道泥石流模拟2-WenQuan-Script.js (generated)
+@@ -1,41 +1,60 @@
+ setCurDir(getSrcDir());
+ 
+-mflow.importGrid("GdemGrid","grid.dat");
++// 1. 生成沟道区域四边形计算网格
++var afCoord = new Array(4);
++afCoord[0] = [0, 0, 0];
++afCoord[1] = [500, 0, 0];
++afCoord[2] = [500, 200, 0];
++afCoord[3] = [0, 200, 0];
++imeshing.genQuad("channel", afCoord, 100, 50, 1.0, 1.0);
+ 
+-var rainfall = 56*1e-3 / 3600;
++// 2. 导入计算网格到MudSim求解器
++mflow.importGrid("GdemGrid", "grid.dat");
+ 
+-mflow.setRainData([0.0, rainfall, 1e6, rainfall]);
++// 3. 设置全局物理参数
++mflow.setValue("Output_Interval", 100.0);
++mflow.setValue("cohesion", 500);
++mflow.setValue("friction", 15.0);
++mflow.setValue("MaxTimeStep", 50);
++mflow.setValue("InitWaterCont", 0.25);
++mflow.setValue("ST_a", 8);
++mflow.setValue("ST_ad", 8);
+ 
+-mflow.setParData([0.00020, 0.30, 0.00334, 0.3, 0.0131, 0.40]);
++// 4. 配置降雨时程曲线 (单位：m/s)
++var rainfallRate = 45 * 1e-3 / 3600;
++mflow.setRainData([0.0, rainfallRate, 7200, rainfallRate]);
+ 
+-mflow.setValue("Output_Interval", 2000.0);
++// 5. 定义松散物源颗粒级配分布 (粒径mm, 累计百分比%)
++mflow.setParData([0.00015, 0.25, 0.0025, 0.35, 0.012, 0.40]);
+ 
+-mflow.setValue("cohesion", 800);
+-mflow.setValue("friction", 15);
+-mflow.setValue("MaxTimeStep", 10);
++// 6. 添加监测点记录关键断面时程信息
++// 监测点1 - 上游入口断面
++mflow.hist("height", 50.0, 100.0);
++mflow.hist("magvel", 50.0, 100.0);
++mflow.hist("c", 50.0, 100.0);
++mflow.hist("dh", 50.0, 100.0);
+ 
+-//设置监测点1
+-mflow.hist("height", 401458, 4.48574e6);
+-mflow.hist("magvel", 401458, 4.48574e6);
+-mflow.hist("c", 401458, 4.48574e6);
+-mflow.hist("dh", 401458, 4.48574e6);
++// 监测点2 - 中游控制断面
++mflow.hist("height", 250.0, 100.0);
++mflow.hist("magvel", 250.0, 100.0);
++mflow.hist("c", 250.0, 100.0);
++mflow.hist("dh", 250.0, 100.0);
+ 
+-//设置监测点2
+-mflow.hist("height", 401850, 4.48558e6);
+-mflow.hist("magvel", 401850, 4.48558e6);
+-mflow.hist("c", 401850, 4.48558e6);
+-mflow.hist("dh", 401850, 4.48558e6);
++// 监测点3 - 下游出口断面
++mflow.hist("height", 450.0, 100.0);
++mflow.hist("magvel", 450.0, 100.0);
++mflow.hist("c", 450.0, 100.0);
++mflow.hist("dh", 450.0, 100.0);
+ 
+-//设置监测点3
+-mflow.hist("height", 401643, 4.48508e6);
+-mflow.hist("magvel", 401643, 4.48508e6);
+-mflow.hist("c", 401643, 4.48508e6);
+-mflow.hist("dh", 401643, 4.48508e6);
++// 7. 执行核心求解，模拟时长2小时
++mflow.solve(7200.0);
+ 
+-//设置监测点4
+-mflow.hist("height", 401528, 4.48485e6);
+-mflow.hist("magvel", 401528, 4.48485e6);
+-mflow.hist("c", 401528, 4.48485e6);
+-mflow.hist("dh", 401528, 4.48485e6);
++// 8. 获取最终时刻流场状态
++var finalDepth = mflow.getValue("Final_Depth");
++var maxVelocity = mflow.getValue("Max_Velocity");
+ 
+-mflow.solve(86400);
++// 9. 导出仿真结果文件和监测日志
++mflow.exportTextData();
++mflow.drawHistPos();
++
++print("Simulation completed successfully!");

@@ -1,0 +1,375 @@
+# Failure Analysis: 案例库-CDyna案例-块体模块案例-基本案例-HeatSolidFrac-HeatSolidFrac.js
+
+## Query
+请编写一个CDyna仿真脚本，实现基本案例-HeatSolidFrac-HeatSolidFrac，并输出必要的结果与监测。
+
+## Generated Code
+```javascript
+setCurDir(getSrcDir());
+
+// 清理旧数据
+dyna.Clear();
+doc.clearResult();
+
+// 关闭力学计算开关
+dyna.Set("Mechanic_Cal 0");
+
+// 包含热传导计算模块，开辟相应内存
+dyna.Set("Config_Heat 1");
+
+// 包含裂隙渗流计算模块，开辟相应内存
+dyna.Set("Config_FracSP 1");
+
+// 打开热传导计算开关
+dyna.Set("Heat_Cal 1");
+
+// 打开裂隙渗流计算开关
+dyna.Set("FracSP_Cal 1");
+
+// 设置计算结果输出间隔为100
+dyna.Set("Output_Interval 100");
+
+// 设置监测信息提取间隔为10时步
+dyna.Set("Moniter_Iter 10");
+
+// 导入GiD形式的网格（包含热传导和裂隙渗流网格）
+blkdyn.ImportGrid("GiD", "HeatSolidFrac.msh");
+
+// 设置热传导材料参数：密度、初始温度、热传导系数、比热容、体膨胀系数
+heatcd.SetPropByGroup(2700.0, 20.0, 3.125, 1000, 1e-3, 1);
+
+// 设置裂隙渗透率参数
+fracsp.SetPermeability(1e-12, 1);
+
+// 定义梯度向量
+var fArrayGrad = new Array(0.0, 0.0, 0.0);
+
+// 设置热传导边界条件：固定一侧温度为100度
+heatcd.ApplyConditionByCoord("temp", 100.0, fArrayGrad, -100, 100, -100, 100, -100, 100, true);
+
+// 设置热传导边界条件：固定另一侧温度为0度
+heatcd.ApplyConditionByCoord("temp", 0.0, fArrayGrad, -100, 100, -100, 100, -100, 100, false);
+
+// 设置裂隙渗流边界条件：左侧压力为1e6 Pa
+fracsp.ApplyConditionByCoord("pressure", 1e6, fArrayGrad, -100, 100, -100, 100, -100, 100, true);
+
+// 设置裂隙渗流边界条件：右侧压力为0 Pa
+fracsp.ApplyConditionByCoord("pressure", 0.0, fArrayGrad, -100, 100, -100, 100, -100, 100, false);
+
+// 设置计算步长为1秒
+dyna.Set("Time_Step 1.0");
+
+// 设置最大迭代步数为5000
+var maxSteps = 5000;
+
+// 设置收敛精度
+var tolerance = 1e-6;
+
+// 打印提示信息
+print("Starting HeatSolidFrac Coupling Simulation...");
+
+// 进入自定义求解循环
+dyna.BeforeCal();
+for (var i = 0; i < maxSteps; i++) {
+    // 计算热传导核心求解器
+    var unbalTemp = heatcd.Solver();
+    
+    // 计算裂隙渗流核心求解器
+    var unbalPress = fracsp.Solver();
+    
+    // 计算裂隙渗流单元与固体单元的耦合
+    fracsp.CalIntSolid();
+    
+    // 计算节点温度增量
+    var tempIncrement = heatcd.CalNodeTemperature();
+    
+    // 计算单元热流速
+    heatcd.CalElemHeatTransfer();
+    
+    // 计算接触面间的热量透传
+    heatcd.CalContactHeatTransfer();
+    
+    // 监测计算稳定性
+    if (i % 100 == 0) {
+        var str = "Iter = " + i + " TempUnbal = " + unbalTemp + " PressUnbal = " + unbalPress;
+        print(str);
+        
+        // 检查是否达到收敛标准
+        if (unbalTemp < tolerance && unbalPress < tolerance) {
+            print("Convergence achieved at step " + i);
+            break;
+        }
+        
+        // 输出中间结果
+        dyna.PutStep();
+    }
+}
+
+// 打印完成提示
+print("Solution Finished");
+
+// 保存最终结果
+dyna.Save("HeatSolidFrac_result.sav");
+```
+
+## Ground Truth
+```javascript
+//设置当前工作路径为JavaScript脚本文件所在路径
+setCurDir(getSrcDir());
+
+//打开力学计算开关
+dyna.Set("Mechanic_Cal 1");
+
+//设置三个方向的重力加速度，均为0
+dyna.Set("Gravity 0 0 0");
+
+//关闭大变形计算开关
+dyna.Set("Large_Displace 0");
+
+//设置计算结果的输出间隔为500步
+dyna.Set("Output_Interval 500");
+
+//打开虚质量计算开关
+dyna.Set("If_Virtural_Mass 1");
+
+//设置虚拟质量时步
+dyna.Set("Virtural_Step 0.5");
+
+//关闭接触更新计算开关
+dyna.Set("If_Renew_Contact 0");
+
+//设置接触容差为1mm
+dyna.Set("Contact_Detect_Tol 0.0");
+
+//包含热传导计算模块，开辟相应内存
+dyna.Set("Config_Heat 1");
+
+//打开热传导计算开关
+dyna.Set("Heat_Cal 1");
+
+//从当前文件夹下导入gmsh格式的网格文件
+blkdyn.ImportGrid("gmsh", "rock.msh");
+
+//对组号为1的单元进行接触面切割生成
+blkdyn.CrtIFace(1);
+
+//更新接触面网格
+blkdyn.UpdateIFaceMesh();
+
+//设定所有单元的本构为线弹性本构
+blkdyn.SetModel("linear");
+
+//设定组号为1-100之间的材料参数
+blkdyn.SetMat(2500, 3e10, 0.25, 3e6, 1e6, 35.0, 15.0, 1, 100);
+
+//设定所有接触面的本构为脆性断裂的Mohr-Coulomb本构
+blkdyn.SetIModel("brittleMC");
+
+//接触面刚度从单元中获取
+blkdyn.SetIStiffByElem(10.0);
+
+//接触面强度从单元中获取
+blkdyn.SetIStrengthByElem();
+
+//设定全部节点的局部阻尼系数为0.1
+blkdyn.SetLocalDamp(0.1);
+
+//设置热传导材料参数，依次为固体密度、初始温度、热传导系数、比热容、体膨胀系数
+heatcd.SetPropByGroup (2500.0, 100.0, 3.125, 1000, 3e-5, 1);
+
+//定义梯度
+var fArrayGrad = new Array(0.0, 0.0, 0.0);
+
+//固定模型四周的温度为-20°
+heatcd.ApplyConditionByCoord("temp", -20.0, fArrayGrad, -10, 0.0001,-100, 100, -100, 100, true);
+heatcd.ApplyConditionByCoord("temp", -20.0, fArrayGrad, 0.0999, 11,-100, 100, -100, 100, true);
+heatcd.ApplyConditionByCoord("temp", -20.0, fArrayGrad, -100, 100, -10, 0.0001,-100, 100, true);
+heatcd.ApplyConditionByCoord("temp", -20.0, fArrayGrad, -100, 100, 0.0999, 11,-100, 100, true);
+
+//打开接触面透传热量开关，设置透传刚度因子为4.0
+dyna.Set("If_Contact_Transf_Heat 1 4.0")
+
+//设置热传导计算步长为0.03s
+dyna.Set("Time_Step 0.03");
+
+//计算1万步
+dyna.Solve(20000);
+
+//打印提示信息
+print("Solution Finished");
+
+```
+
+## Unified Diff
+```diff
+--- 案例库-CDyna案例-块体模块案例-基本案例-HeatSolidFrac-HeatSolidFrac.js (ground_truth)
++++ 案例库-CDyna案例-块体模块案例-基本案例-HeatSolidFrac-HeatSolidFrac.js (generated)
+@@ -1,83 +1,105 @@
+-//设置当前工作路径为JavaScript脚本文件所在路径
+ setCurDir(getSrcDir());
+ 
+-//打开力学计算开关
+-dyna.Set("Mechanic_Cal 1");
++// 清理旧数据
++dyna.Clear();
++doc.clearResult();
+ 
+-//设置三个方向的重力加速度，均为0
+-dyna.Set("Gravity 0 0 0");
++// 关闭力学计算开关
++dyna.Set("Mechanic_Cal 0");
+ 
+-//关闭大变形计算开关
+-dyna.Set("Large_Displace 0");
+-
+-//设置计算结果的输出间隔为500步
+-dyna.Set("Output_Interval 500");
+-
+-//打开虚质量计算开关
+-dyna.Set("If_Virtural_Mass 1");
+-
+-//设置虚拟质量时步
+-dyna.Set("Virtural_Step 0.5");
+-
+-//关闭接触更新计算开关
+-dyna.Set("If_Renew_Contact 0");
+-
+-//设置接触容差为1mm
+-dyna.Set("Contact_Detect_Tol 0.0");
+-
+-//包含热传导计算模块，开辟相应内存
++// 包含热传导计算模块，开辟相应内存
+ dyna.Set("Config_Heat 1");
+ 
+-//打开热传导计算开关
++// 包含裂隙渗流计算模块，开辟相应内存
++dyna.Set("Config_FracSP 1");
++
++// 打开热传导计算开关
+ dyna.Set("Heat_Cal 1");
+ 
+-//从当前文件夹下导入gmsh格式的网格文件
+-blkdyn.ImportGrid("gmsh", "rock.msh");
++// 打开裂隙渗流计算开关
++dyna.Set("FracSP_Cal 1");
+ 
+-//对组号为1的单元进行接触面切割生成
+-blkdyn.CrtIFace(1);
++// 设置计算结果输出间隔为100
++dyna.Set("Output_Interval 100");
+ 
+-//更新接触面网格
+-blkdyn.UpdateIFaceMesh();
++// 设置监测信息提取间隔为10时步
++dyna.Set("Moniter_Iter 10");
+ 
+-//设定所有单元的本构为线弹性本构
+-blkdyn.SetModel("linear");
++// 导入GiD形式的网格（包含热传导和裂隙渗流网格）
++blkdyn.ImportGrid("GiD", "HeatSolidFrac.msh");
+ 
+-//设定组号为1-100之间的材料参数
+-blkdyn.SetMat(2500, 3e10, 0.25, 3e6, 1e6, 35.0, 15.0, 1, 100);
++// 设置热传导材料参数：密度、初始温度、热传导系数、比热容、体膨胀系数
++heatcd.SetPropByGroup(2700.0, 20.0, 3.125, 1000, 1e-3, 1);
+ 
+-//设定所有接触面的本构为脆性断裂的Mohr-Coulomb本构
+-blkdyn.SetIModel("brittleMC");
++// 设置裂隙渗透率参数
++fracsp.SetPermeability(1e-12, 1);
+ 
+-//接触面刚度从单元中获取
+-blkdyn.SetIStiffByElem(10.0);
+-
+-//接触面强度从单元中获取
+-blkdyn.SetIStrengthByElem();
+-
+-//设定全部节点的局部阻尼系数为0.1
+-blkdyn.SetLocalDamp(0.1);
+-
+-//设置热传导材料参数，依次为固体密度、初始温度、热传导系数、比热容、体膨胀系数
+-heatcd.SetPropByGroup (2500.0, 100.0, 3.125, 1000, 3e-5, 1);
+-
+-//定义梯度
++// 定义梯度向量
+ var fArrayGrad = new Array(0.0, 0.0, 0.0);
+ 
+-//固定模型四周的温度为-20°
+-heatcd.ApplyConditionByCoord("temp", -20.0, fArrayGrad, -10, 0.0001,-100, 100, -100, 100, true);
+-heatcd.ApplyConditionByCoord("temp", -20.0, fArrayGrad, 0.0999, 11,-100, 100, -100, 100, true);
+-heatcd.ApplyConditionByCoord("temp", -20.0, fArrayGrad, -100, 100, -10, 0.0001,-100, 100, true);
+-heatcd.ApplyConditionByCoord("temp", -20.0, fArrayGrad, -100, 100, 0.0999, 11,-100, 100, true);
++// 设置热传导边界条件：固定一侧温度为100度
++heatcd.ApplyConditionByCoord("temp", 100.0, fArrayGrad, -100, 100, -100, 100, -100, 100, true);
+ 
+-//打开接触面透传热量开关，设置透传刚度因子为4.0
+-dyna.Set("If_Contact_Transf_Heat 1 4.0")
++// 设置热传导边界条件：固定另一侧温度为0度
++heatcd.ApplyConditionByCoord("temp", 0.0, fArrayGrad, -100, 100, -100, 100, -100, 100, false);
+ 
+-//设置热传导计算步长为0.03s
+-dyna.Set("Time_Step 0.03");
++// 设置裂隙渗流边界条件：左侧压力为1e6 Pa
++fracsp.ApplyConditionByCoord("pressure", 1e6, fArrayGrad, -100, 100, -100, 100, -100, 100, true);
+ 
+-//计算1万步
+-dyna.Solve(20000);
++// 设置裂隙渗流边界条件：右侧压力为0 Pa
++fracsp.ApplyConditionByCoord("pressure", 0.0, fArrayGrad, -100, 100, -100, 100, -100, 100, false);
+ 
+-//打印提示信息
++// 设置计算步长为1秒
++dyna.Set("Time_Step 1.0");
++
++// 设置最大迭代步数为5000
++var maxSteps = 5000;
++
++// 设置收敛精度
++var tolerance = 1e-6;
++
++// 打印提示信息
++print("Starting HeatSolidFrac Coupling Simulation...");
++
++// 进入自定义求解循环
++dyna.BeforeCal();
++for (var i = 0; i < maxSteps; i++) {
++    // 计算热传导核心求解器
++    var unbalTemp = heatcd.Solver();
++    
++    // 计算裂隙渗流核心求解器
++    var unbalPress = fracsp.Solver();
++    
++    // 计算裂隙渗流单元与固体单元的耦合
++    fracsp.CalIntSolid();
++    
++    // 计算节点温度增量
++    var tempIncrement = heatcd.CalNodeTemperature();
++    
++    // 计算单元热流速
++    heatcd.CalElemHeatTransfer();
++    
++    // 计算接触面间的热量透传
++    heatcd.CalContactHeatTransfer();
++    
++    // 监测计算稳定性
++    if (i % 100 == 0) {
++        var str = "Iter = " + i + " TempUnbal = " + unbalTemp + " PressUnbal = " + unbalPress;
++        print(str);
++        
++        // 检查是否达到收敛标准
++        if (unbalTemp < tolerance && unbalPress < tolerance) {
++            print("Convergence achieved at step " + i);
++            break;
++        }
++        
++        // 输出中间结果
++        dyna.PutStep();
++    }
++}
++
++// 打印完成提示
+ print("Solution Finished");
++
++// 保存最终结果
++dyna.Save("HeatSolidFrac_result.sav");
+```

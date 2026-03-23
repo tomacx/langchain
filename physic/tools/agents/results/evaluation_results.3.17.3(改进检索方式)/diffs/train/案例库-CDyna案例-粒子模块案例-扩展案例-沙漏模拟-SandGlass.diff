@@ -1,0 +1,61 @@
+--- 案例库-CDyna案例-粒子模块案例-扩展案例-沙漏模拟-SandGlass.js (ground_truth)
++++ 案例库-CDyna案例-粒子模块案例-扩展案例-沙漏模拟-SandGlass.js (generated)
+@@ -1,33 +1,44 @@
+-//设置当前路径为JavaScript脚本所在的路径
+ setCurDir(getSrcDir());
+ 
+-
+-//设置输出的间隔为500步
++// 设置输出间隔为500步
+ dyna.Set("Output_Interval 500");
+ 
+-//关闭虚质量计算开关
++// 关闭虚质量计算开关
+ dyna.Set("If_Virtural_Mass 0");
+ 
+-//设置三个方向的重力加速度
++// 设置三个方向的重力加速度
+ dyna.Set("Gravity 0.0 -9.8 0.0");
+ 
+-//设置接触容差为0
++// 设置接触容差为0
+ dyna.Set("Contact_Detect_Tol 0.0");
+ 
+-//导入gid格式的刚性面边界
+-rdface.Import(2,"sandBound.msh");
++// 设置沙漏阻尼因子（根据技术手册，动态真实质量问题取0.05-0.15）
++dyna.Set("HourGlass_Damp_Factor 0.1");
+ 
+-//导入gid格式的颗粒
+-pdyna.Import("pdyna","pdyna.dat");
++// 调用 imeshing.genSurfMesh 生成沙漏容器表面网格
++// 参数：组名、点云文件、X方向网格数、Y方向网格数、单元类型、插值方法
++imeshing.genSurfMesh("sandglass", "sandglass_pointcloud.txt", 100, 100, "tri", "invdist1");
+ 
+-//设置颗粒模型为脆性断裂模型
++// 导入gid格式的刚性面边界
++rdface.Import(2, "sandBound.msh");
++
++// 导入gid格式的颗粒
++pdyna.Import("pdyna", "pdyna.dat");
++
++// 设置颗粒模型为脆性断裂模型
+ pdyna.SetModel("brittleMC");
+ 
+-//设置颗粒的材料参数，依次为密度、弹性模量、泊松比、抗拉强度、粘聚力、内摩擦角、局部阻尼、粘性阻尼系数（临界阻尼比）
++// 设置颗粒的材料参数，依次为密度、弹性模量、泊松比、抗拉强度、粘聚力、内摩擦角、局部阻尼、粘性阻尼系数
+ pdyna.SetMat(2500, 1e6, 0.25, 0.0, 0.0, 25, 0.0, 0.3);
+ 
+-//自动计算时步，安全因子0.8
++// 配置地面统计输出
++// 参数：圆心坐标(x,y,z)、起始半径、半径步长、环数、颗粒组号下限、颗粒组号上限
++pfly.ExportGroundStatiInfo(0.0, 0.0, 0.0, 0.0, 0.1, 50, 1, 10);
++
++// 自动计算时步，安全因子0.8
+ dyna.TimeStepCorrect(0.8);
+ 
+-//迭代2万步
++// 迭代2万步
+ dyna.Solve(20000);
++
++// 计算完成后，GroundStatiInfo.dat文件已自动生成在当前目录下

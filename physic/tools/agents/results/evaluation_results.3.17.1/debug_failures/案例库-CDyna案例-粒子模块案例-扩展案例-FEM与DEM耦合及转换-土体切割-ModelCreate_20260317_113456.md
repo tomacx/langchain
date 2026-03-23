@@ -1,0 +1,296 @@
+# Failure Analysis: 案例库-CDyna案例-粒子模块案例-扩展案例-FEM与DEM耦合及转换-土体切割-ModelCreate.js
+
+## Query
+请编写一个CDyna仿真脚本，实现FEM与DEM耦合及转换-土体切割-ModelCreate，并输出必要的结果与监测。
+
+## Generated Code
+```javascript
+setCurDir(getSrcDir());
+
+// 清除GDEM-Pdyna计算核心中的内存数据
+dyna.Clear();
+
+// 清除GDEM-Env中的结果数据
+doc.clearResult();
+
+// ==================== 1. 初始化全局计算参数 ====================
+// 设置结果的输出间隔为500步
+dyna.Set("Output_Interval 500");
+
+// 打开虚拟质量开关（提高显式动力学稳定性）
+dyna.Set("If_Virtural_Mass 1");
+dyna.Set("Virtural_Step 0.3");
+
+// 设置三个方向的全局重力加速度
+dyna.Set("Gravity 0.0 -9.8 0.0");
+
+// 打开单元大变形计算开关
+dyna.Set("Large_Displace 1");
+
+// 打开单元接触更新开关
+dyna.Set("If_Renew_Contact 1");
+
+// 设置接触容差
+dyna.Set("Contact_Detect_Tol 1e-3");
+
+// 设置计算时步
+dyna.Set("Time_Step 4e-5");
+
+// 开启FEM-DEM演化计算开关（关键：单元转粒子转换）
+dyna.Set("If_Cal_FEM_DEM_Evolvement 1");
+
+// ==================== 2. 创建三维FEM土体块网格 ====================
+// 创建长宽高分别为2m×1m×0.5m的土体块，网格划分100×50×10
+blkdyn.GenBrick3D(2.0, 1.0, 0.5, 100, 50, 10, 1);
+
+// ==================== 3. 设置FEM单元本构模型与材料参数 ====================
+// 设置单元模型为软化Mohr-Coulomb模型（适合岩土材料）
+blkdyn.SetModel("SoftenMC");
+
+// 设置单元材料参数：密度、弹性模量、泊松比、粘聚力、抗拉强度、内摩擦角、剪胀角
+blkdyn.SetMat(2500, 1e8, 0.25, 3e5, 3e5, 25, 15);
+
+// 设置单元的局部阻尼
+blkdyn.SetLocalDamp(0.8);
+
+// 设置底部边界条件（固定y方向位移）
+blkdyn.FixV("xyz", 0, "y", -0.05, 0.05);
+
+// 设置两侧边界条件（固定x方向位移）
+blkdyn.FixV("xyz", 0, "x", 1.95, 2.05);
+
+// ==================== 4. 创建FEM-DEM耦合颗粒系统 ====================
+// 从FEM块体创建DEM颗粒（用于单元失效后的破碎模拟）
+pdyna.CreateFromBlock(2, 1, 11);
+
+// 设置颗粒模型为脆性断裂模型
+pdyna.SetModel("brittleMC");
+
+// 设置颗粒材料参数：密度、弹性模量、泊松比、抗拉强度、粘聚力、内摩擦角、局部阻尼、粘性阻尼系数
+pdyna.SetMat(2500, 1e8, 0.25, 3e5, 3e5, 25, 0.8, 0.0);
+
+// 设置颗粒边界条件（与FEM一致）
+pdyna.FixV("xyz", 0, "y", -0.05, 0.05);
+pdyna.FixV("xyz", 0, "x", 1.95, 2.05);
+
+// ==================== 5. 创建刚性切割工具面 ====================
+// 创建切割刀片刚性面（刃口角度约30度）
+var fCoord = new Array();
+fCoord[0] = new Array(0.0, 0.6, 0.0);      // 刀片尖端
+fCoord[1] = new Array(-0.8, 0.5, 0.0);     // 刀片后部
+rdface.Create(2, 1, 2, fCoord);
+
+// 创建第二个切割刀片（形成楔形切割）
+var fCoord2 = new Array();
+fCoord2[0] = new Array(0.0, 0.6, 0.0);
+fCoord2[1] = new Array(-0.8, 1.2, 0.0);
+rdface.Create(2, 2, 2, fCoord2);
+
+// 设置刚性面模型类型（0=刚体，1=柔性）
+rdface.SetModelByGroup(0, 1, 11);
+
+// ==================== 6. 设置切割工具运动学边界条件 ====================
+// 定义切割速度向量（向左下方推进）
+var FixV = [-1.0, -0.5, 0.0];
+
+// 对第一个刚性面施加平动速度
+rdface.ApplyVelocityByGroup(FixV, 1, 5);
+
+// 对第二个刚性面施加平动速度
+rdface.ApplyVelocityByGroup(FixV, 2, 5);
+
+// ==================== 7. 配置输出控制 ====================
+// 设置输出文件前缀
+dyna.Set("Output_Prefix soil_cutting");
+
+// 启用应力应变输出
+dyna.Set("Output_Stress 1");
+
+// 启用应变输出
+dyna.Set("Output_Strain 1");
+
+// 启用DEM粒子位置输出
+dyna.Set("Output_Particle_Pos 1");
+
+// ==================== 8. 启动动态求解器 ====================
+// 求解2万步（根据实际切割过程调整）
+dyna.Solve(20000);
+
+// ==================== 9. 提取仿真结果 ====================
+// 打印求解完成信息
+print("Solution is ok!");
+
+// 获取统计信息
+var totalParticles = pdyna.GetParticleCount();
+var convertedElements = blkdyn.GetConvertedElementCount();
+
+// 输出转换效率指标
+print("Total DEM particles: " + totalParticles);
+print("Converted FEM elements: " + convertedElements);
+
+if (convertedElements > 0) {
+    var conversionRate = (convertedElements / (100 * 50 * 10)) * 100;
+    print("FEM-to-DEM conversion rate: " + conversionRate.toFixed(2) + "%");
+}
+
+// 保存最终结果
+doc.saveResult();
+```
+
+## Ground Truth
+```javascript
+setCurDir(getSrcDir());
+
+igeo.genRectS(0,0,0,2,1,0,0.025,1);
+
+imeshing.genMeshByGmsh(2,"soil-fem");
+
+blkdyn.GetMesh(imeshing);
+
+
+pdyna.CreateFromBlock(2, 1,11);
+
+pdyna.Export("soil-dem.dat");
+```
+
+## Unified Diff
+```diff
+--- 案例库-CDyna案例-粒子模块案例-扩展案例-FEM与DEM耦合及转换-土体切割-ModelCreate.js (ground_truth)
++++ 案例库-CDyna案例-粒子模块案例-扩展案例-FEM与DEM耦合及转换-土体切割-ModelCreate.js (generated)
+@@ -1,12 +1,130 @@
+ setCurDir(getSrcDir());
+ 
+-igeo.genRectS(0,0,0,2,1,0,0.025,1);
++// 清除GDEM-Pdyna计算核心中的内存数据
++dyna.Clear();
+ 
+-imeshing.genMeshByGmsh(2,"soil-fem");
++// 清除GDEM-Env中的结果数据
++doc.clearResult();
+ 
+-blkdyn.GetMesh(imeshing);
++// ==================== 1. 初始化全局计算参数 ====================
++// 设置结果的输出间隔为500步
++dyna.Set("Output_Interval 500");
+ 
++// 打开虚拟质量开关（提高显式动力学稳定性）
++dyna.Set("If_Virtural_Mass 1");
++dyna.Set("Virtural_Step 0.3");
+ 
+-pdyna.CreateFromBlock(2, 1,11);
++// 设置三个方向的全局重力加速度
++dyna.Set("Gravity 0.0 -9.8 0.0");
+ 
+-pdyna.Export("soil-dem.dat");
++// 打开单元大变形计算开关
++dyna.Set("Large_Displace 1");
++
++// 打开单元接触更新开关
++dyna.Set("If_Renew_Contact 1");
++
++// 设置接触容差
++dyna.Set("Contact_Detect_Tol 1e-3");
++
++// 设置计算时步
++dyna.Set("Time_Step 4e-5");
++
++// 开启FEM-DEM演化计算开关（关键：单元转粒子转换）
++dyna.Set("If_Cal_FEM_DEM_Evolvement 1");
++
++// ==================== 2. 创建三维FEM土体块网格 ====================
++// 创建长宽高分别为2m×1m×0.5m的土体块，网格划分100×50×10
++blkdyn.GenBrick3D(2.0, 1.0, 0.5, 100, 50, 10, 1);
++
++// ==================== 3. 设置FEM单元本构模型与材料参数 ====================
++// 设置单元模型为软化Mohr-Coulomb模型（适合岩土材料）
++blkdyn.SetModel("SoftenMC");
++
++// 设置单元材料参数：密度、弹性模量、泊松比、粘聚力、抗拉强度、内摩擦角、剪胀角
++blkdyn.SetMat(2500, 1e8, 0.25, 3e5, 3e5, 25, 15);
++
++// 设置单元的局部阻尼
++blkdyn.SetLocalDamp(0.8);
++
++// 设置底部边界条件（固定y方向位移）
++blkdyn.FixV("xyz", 0, "y", -0.05, 0.05);
++
++// 设置两侧边界条件（固定x方向位移）
++blkdyn.FixV("xyz", 0, "x", 1.95, 2.05);
++
++// ==================== 4. 创建FEM-DEM耦合颗粒系统 ====================
++// 从FEM块体创建DEM颗粒（用于单元失效后的破碎模拟）
++pdyna.CreateFromBlock(2, 1, 11);
++
++// 设置颗粒模型为脆性断裂模型
++pdyna.SetModel("brittleMC");
++
++// 设置颗粒材料参数：密度、弹性模量、泊松比、抗拉强度、粘聚力、内摩擦角、局部阻尼、粘性阻尼系数
++pdyna.SetMat(2500, 1e8, 0.25, 3e5, 3e5, 25, 0.8, 0.0);
++
++// 设置颗粒边界条件（与FEM一致）
++pdyna.FixV("xyz", 0, "y", -0.05, 0.05);
++pdyna.FixV("xyz", 0, "x", 1.95, 2.05);
++
++// ==================== 5. 创建刚性切割工具面 ====================
++// 创建切割刀片刚性面（刃口角度约30度）
++var fCoord = new Array();
++fCoord[0] = new Array(0.0, 0.6, 0.0);      // 刀片尖端
++fCoord[1] = new Array(-0.8, 0.5, 0.0);     // 刀片后部
++rdface.Create(2, 1, 2, fCoord);
++
++// 创建第二个切割刀片（形成楔形切割）
++var fCoord2 = new Array();
++fCoord2[0] = new Array(0.0, 0.6, 0.0);
++fCoord2[1] = new Array(-0.8, 1.2, 0.0);
++rdface.Create(2, 2, 2, fCoord2);
++
++// 设置刚性面模型类型（0=刚体，1=柔性）
++rdface.SetModelByGroup(0, 1, 11);
++
++// ==================== 6. 设置切割工具运动学边界条件 ====================
++// 定义切割速度向量（向左下方推进）
++var FixV = [-1.0, -0.5, 0.0];
++
++// 对第一个刚性面施加平动速度
++rdface.ApplyVelocityByGroup(FixV, 1, 5);
++
++// 对第二个刚性面施加平动速度
++rdface.ApplyVelocityByGroup(FixV, 2, 5);
++
++// ==================== 7. 配置输出控制 ====================
++// 设置输出文件前缀
++dyna.Set("Output_Prefix soil_cutting");
++
++// 启用应力应变输出
++dyna.Set("Output_Stress 1");
++
++// 启用应变输出
++dyna.Set("Output_Strain 1");
++
++// 启用DEM粒子位置输出
++dyna.Set("Output_Particle_Pos 1");
++
++// ==================== 8. 启动动态求解器 ====================
++// 求解2万步（根据实际切割过程调整）
++dyna.Solve(20000);
++
++// ==================== 9. 提取仿真结果 ====================
++// 打印求解完成信息
++print("Solution is ok!");
++
++// 获取统计信息
++var totalParticles = pdyna.GetParticleCount();
++var convertedElements = blkdyn.GetConvertedElementCount();
++
++// 输出转换效率指标
++print("Total DEM particles: " + totalParticles);
++print("Converted FEM elements: " + convertedElements);
++
++if (convertedElements > 0) {
++    var conversionRate = (convertedElements / (100 * 50 * 10)) * 100;
++    print("FEM-to-DEM conversion rate: " + conversionRate.toFixed(2) + "%");
++}
++
++// 保存最终结果
++doc.saveResult();
+```

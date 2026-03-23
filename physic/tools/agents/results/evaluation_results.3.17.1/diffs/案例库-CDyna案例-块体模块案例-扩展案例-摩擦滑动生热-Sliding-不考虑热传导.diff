@@ -1,0 +1,139 @@
+--- 案例库-CDyna案例-块体模块案例-扩展案例-摩擦滑动生热-Sliding-不考虑热传导.js (ground_truth)
++++ 案例库-CDyna案例-块体模块案例-扩展案例-摩擦滑动生热-Sliding-不考虑热传导.js (generated)
+@@ -1,56 +1,120 @@
+ setCurDir(getSrcDir());
+ 
++// 清空现有模型
+ dyna.Clear();
+ 
++// ==================== 1. 基础参数配置 ====================
++// 设置重力加速度 (m/s²)
++dyna.Set("Gravity 0.0 -9.8 0.0");
+ 
+-//设置三个方向的重力加速度值
+-dyna.Set("Gravity  9.8 -9.8 0.0");
+-
+-//打开大变形计算开关
++// 打开大变形计算开关
+ dyna.Set("Large_Displace 1");
+ 
++// 开启接触更新
+ dyna.Set("If_Renew_Contact 1");
+ 
+-//设置云图输出间隔为500
+-dyna.Set("Output_Interval 500");
++// 设置云图输出间隔
++dyna.Set("Output_Interval 100");
+ 
+-//设置监测信息提取间隔为10时步
++// 设置监测信息提取间隔
+ dyna.Set("Moniter_Iter 10");
+ 
+-//打开虚质量计算开关
++// 关闭虚质量计算
+ dyna.Set("If_Virtural_Mass 0");
+ 
++// ==================== 2. 禁用热传导计算 ====================
++// 不包含热传导计算模型 (0-不包含, 1-包含)
++dyna.Set("Config_Heat 0");
++
++// 关闭热传导计算开关
++dyna.Set("Heat_Cal 0");
++
++// ==================== 3. 导入网格 ====================
++// 导入滑动体网格 (假设已有slidbody.msh文件)
+ blkdyn.ImportGrid("gid", "slidbody.msh");
+ 
+-
+-blkdyn.CrtIFaceByCoord(-1e5, 1e5, 0.099,0.101, -1e5, 1e5);
++// ==================== 4. 创建接触面 ====================
++// 创建接触面坐标范围
++blkdyn.CrtIFaceByCoord(-1e5, 1e5, 0.099, 0.101, -1e5, 1e5);
+ blkdyn.UpdateIFaceMesh();
+ 
++// ==================== 5. 设置材料模型 ====================
++// 设置块体为线弹性模型
+ blkdyn.SetModel("linear");
+ 
++// 设置材料参数: 密度(kg/m³), 杨氏模量(Pa), 泊松比, 拉伸强度(Pa), 压缩强度(Pa), 内摩擦角(°), 粘聚力(Pa)
+ blkdyn.SetMat(2500, 3e8, 0.22, 8e6, 5e6, 35, 10);
+ 
++// 设置界面模型为Mohr-Coulomb脆性断裂模型
+ blkdyn.SetIModel("brittleMC");
+-blkdyn.SetIMat(1e9, 1e9, 20.0, 0 ,0);
++blkdyn.SetIMat(1e9, 1e9, 20.0, 0, 0);
+ 
++// 设置局部阻尼
+ blkdyn.SetLocalDamp(0.01);
+ 
+-
++// ==================== 6. 设置边界条件 ====================
++// 固定下表面Y方向速度
+ blkdyn.FixV("xyz", 0.0, "y", -0.001, 0.001);
+ 
+-
++// ==================== 7. 时步校正 ====================
+ dyna.TimeStepCorrect(0.5);
+ 
++// ==================== 8. 设置监测目标 ====================
++// 监测块体X方向位移
++dyna.Monitor("block", "xdis", 0.15, 0.15, 0);
+ 
+-dyna.Monitor("block", "xdis", 0.15, 0.15, 0);
+-dyna.Monitor("block", "sxx",  0.15, 0.15, 0);
++// 监测块体应力分量sxx
++dyna.Monitor("block", "sxx", 0.15, 0.15, 0);
+ 
++// 监测接触面法向应力
++dyna.Monitor("spring", "sp_nstress", 0.15, 0.15, 0);
+ 
+-dyna.DynaCycle(10);
++// 监测接触面切向应力
++dyna.Monitor("spring", "sp_s1stress", 0.15, 0.15, 0);
+ 
++// 监测接触面切向位移
++dyna.Monitor("spring", "sp_s1dis", 0.15, 0.15, 0);
+ 
++// ==================== 9. 求解器循环 ====================
++var totalSteps = 1000;
++var fUnBal = 0;
++
++// 计算前初始化
++dyna.BeforeCal();
++
++print("开始摩擦滑动生热仿真...");
++print("总步数: " + totalSteps);
++
++for (var i = 0; i < totalSteps; i++) {
++    // 执行单步求解
++    fUnBal = dyna.Solver();
++    
++    // 每100步输出一次进度
++    if (i % 100 == 0) {
++        var str = "Iter = " + i + "  UnBal = " + fUnBal;
++        print(str);
++        dyna.PutStep();
++    }
++}
++
++// ==================== 10. 结果输出与验证 ====================
+ print("**********************求解完毕**********************");
+ 
++// 获取最终不平衡力
++var finalUnBal = dyna.GetValue("UnBal_Force");
++print("最终不平衡力: " + finalUnBal);
+ 
++// 检查是否收敛
++if (finalUnBal < 1e-6) {
++    print("仿真收敛成功!");
++} else {
++    print("警告: 仿真可能未完全收敛");
++}
+ 
++// 输出温度场信息 (虽然无热传导，但可查询温度值)
++var tempInfo = dyna.GetValue("Temperature");
++print("当前温度场信息: " + tempInfo);
+ 
++// 保存结果到文件
++doc.SaveResult("friction_sliding_no_heatcond.res");
++print("结果已保存至: friction_sliding_no_heatcond.res");

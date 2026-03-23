@@ -1,0 +1,126 @@
+# Failure Analysis: 案例库-SuperCDEM案例-UCTest-UCT2D.js
+
+## Query
+请编写一个SuperCDEM仿真脚本，实现UCTest-UCT2D，并输出必要的结果与监测。
+
+## Generated Code
+```javascript
+
+```
+
+## Ground Truth
+```javascript
+//设置文件路径
+setCurDir(getSrcDir());
+
+// 设置系统不平衡率为1e-4
+scdem.ubr = 1e-4;
+
+//设置云图更新间隔
+scdem.outputInterval = 100;
+
+//打开虚质量开关
+scdem.isVirtualMass = 1;
+
+//设置虚时步
+scdem.virtualStep = 0.6;
+
+//导入计算网格
+var msh = imesh.importGmsh("UCT2d.msh");
+scdem.getMesh(msh);
+
+//施加单元材料参数(含单元模型设置)
+oMat = new Object;
+oMat.density = 2500;
+oMat.young = 1e10;
+oMat.poission = 0.25;
+oMat.cohesive = 3e6;
+oMat.tension = 3e6;
+oMat.friction = 40;
+oMat.dilatation = 10;
+scdem.setModel("linear");
+scdem.setMat(oMat);
+
+//施加界面材料参数(含接触面模型设置)
+scdem.setIModel("brittleMC");
+scdem.setIMatByElem(10);
+
+//施加位移边界条件
+oSel1 = new SelNodes(scdem);
+oSel1.box(-1e5,0.099,-1e5,1e5,0.101,1e5);
+scdem.setVel(oSel1, "y", -2e-8);
+oSel2 = new SelNodes(scdem);
+oSel2.box(-1e5,-0.001,-1e5,1e5,0.001,1e5);
+scdem.setVel(oSel2, "y", 0.0);
+
+//设置局部阻尼
+scdem.localDamp = 0.8
+
+//求解30000步
+scdem.solveGpu(30000);
+
+//释放GPU端内存
+scdem.releaseGpuMem();
+
+print("Solution Finished");
+```
+
+## Unified Diff
+```diff
+--- 案例库-SuperCDEM案例-UCTest-UCT2D.js (ground_truth)
++++ 案例库-SuperCDEM案例-UCTest-UCT2D.js (generated)
+@@ -1,53 +0,0 @@
+-//设置文件路径
+-setCurDir(getSrcDir());
+-
+-// 设置系统不平衡率为1e-4
+-scdem.ubr = 1e-4;
+-
+-//设置云图更新间隔
+-scdem.outputInterval = 100;
+-
+-//打开虚质量开关
+-scdem.isVirtualMass = 1;
+-
+-//设置虚时步
+-scdem.virtualStep = 0.6;
+-
+-//导入计算网格
+-var msh = imesh.importGmsh("UCT2d.msh");
+-scdem.getMesh(msh);
+-
+-//施加单元材料参数(含单元模型设置)
+-oMat = new Object;
+-oMat.density = 2500;
+-oMat.young = 1e10;
+-oMat.poission = 0.25;
+-oMat.cohesive = 3e6;
+-oMat.tension = 3e6;
+-oMat.friction = 40;
+-oMat.dilatation = 10;
+-scdem.setModel("linear");
+-scdem.setMat(oMat);
+-
+-//施加界面材料参数(含接触面模型设置)
+-scdem.setIModel("brittleMC");
+-scdem.setIMatByElem(10);
+-
+-//施加位移边界条件
+-oSel1 = new SelNodes(scdem);
+-oSel1.box(-1e5,0.099,-1e5,1e5,0.101,1e5);
+-scdem.setVel(oSel1, "y", -2e-8);
+-oSel2 = new SelNodes(scdem);
+-oSel2.box(-1e5,-0.001,-1e5,1e5,0.001,1e5);
+-scdem.setVel(oSel2, "y", 0.0);
+-
+-//设置局部阻尼
+-scdem.localDamp = 0.8
+-
+-//求解30000步
+-scdem.solveGpu(30000);
+-
+-//释放GPU端内存
+-scdem.releaseGpuMem();
+-
+-print("Solution Finished");
+```

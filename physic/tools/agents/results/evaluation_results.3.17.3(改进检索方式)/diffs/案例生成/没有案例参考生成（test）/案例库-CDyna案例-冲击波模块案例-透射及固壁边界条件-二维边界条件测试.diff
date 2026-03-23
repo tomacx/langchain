@@ -1,0 +1,54 @@
+--- 案例库-CDyna案例-冲击波模块案例-透射及固壁边界条件-二维边界条件测试.js (ground_truth)
++++ 案例库-CDyna案例-冲击波模块案例-透射及固壁边界条件-二维边界条件测试.js (generated)
+@@ -1,29 +1,34 @@
+ setCurDir(getSrcDir());
+ 
++// 1. 设置全局时间步长与结果输出间隔
+ dyna.Set("Time_Step 1e-6");
+ dyna.Set("Output_Interval 100");
+ 
+-dyna.Set("Tecplot_Out 1");
++// 2. 定义二维冲击波计算网格的节点数与物理域范围
++skwave.DefMesh(2, [100, 100], [10, 10]);
+ 
+-skwave.DefMesh(2, [10, 10], [200, 200]);
++// 3. 初始化冲击波源的起爆位置及初始压力密度值
++// 第一个InitBySphere: 环境空气状态 (低压低密度)
++skwave.InitBySphere(1.01e5, 1.02, [0, 0, 0], [0, 0, 0], 100.0);
++// 第二个InitBySphere: 爆炸冲击波源 (高压高密度)
++skwave.InitBySphere(1e9, 100, [0, 0, 0], [1, 1, 0], 0.5);
+ 
+-skwave.InitBySphere(1.01e5, 1.02, [0,0,0], [0,0, 0], 100.0);
++// 4. 设定计算区域边界的透射条件与固壁反射条件
++// SetBound(iBX1, iBX2, iBY1, iBY2 [,iBZ1, iBZ2])
++// 0 = 透射条件, 1 = 固壁条件
++// X方向两侧固壁, Y方向两侧透射
++skwave.SetBound(1, 1, 0, 0);
+ 
+-skwave.InitBySphere(1e9, 100, [0,0,0], [5, 5, 0], 0.5);
++// 5. 配置流体压力、流速及能量密度的监测点信息
++dyna.Monitor("skwave", "sw_pp", 2, 2, 0);   // 压力监测点1
++dyna.Monitor("skwave", "sw_pp", 4, 4, 0);   // 压力监测点2
++dyna.Monitor("skwave", "sw_dens", 2, 2, 0); // 密度监测点1
++dyna.Monitor("skwave", "sw_dens", 4, 4, 0); // 密度监测点2
++dyna.Monitor("skwave", "sw_xvel", 2, 2, 0); // X方向速度监测点1
++dyna.Monitor("skwave", "sw_yvel", 2, 2, 0); // Y方向速度监测点1
++dyna.Monitor("skwave", "sw_e", 2, 2, 0);    // 能量密度监测点1
+ 
+-
+-//skwave.SetBound(<iBX1, iBX2, iBY1, iBY2 [,iBZ1, iBZ2]>);
+-//0 为透射条件，1 为固壁条件
+-skwave.SetBound(1,1,1,0);
+-
+-dyna.Monitor("skwave","sw_dens", 1, 5, 0);
+-dyna.Monitor("skwave","sw_dens", 2, 5, 0);
+-dyna.Monitor("skwave","sw_dens", 3, 5, 0);
+-
+-dyna.Monitor("skwave","sw_pp", 1, 5, 0);
+-dyna.Monitor("skwave","sw_pp", 2, 5, 0);
+-dyna.Monitor("skwave","sw_pp", 3, 5, 0);
+-
++// 6. 调用求解器接口启动冲击波传播过程计算
+ dyna.DynaCycle(1e-2);
+ 
+ print("求解完成");

@@ -1,0 +1,93 @@
+--- 案例库-CDyna案例-块体模块案例-扩展案例-一维热传导-Heat1D.js (ground_truth)
++++ 案例库-CDyna案例-块体模块案例-扩展案例-一维热传导-Heat1D.js (generated)
+@@ -1,47 +1,69 @@
+ setCurDir(getSrcDir());
+ 
++// 关闭力学计算，仅进行热传导分析
+ dyna.Set("Mechanic_Cal 0");
+ 
++// 启用热传导计算模型
++dyna.Set("Config_Heat 1");
+ 
+-dyna.Set("Config_Heat 1");
++// 开启热传导计算开关
+ dyna.Set("Heat_Cal 1");
+ 
++// 设置接触面热量传递开关（离散网格间热量传递）
++dyna.Set("If_Contact_Transf_Heat 1");
++
++// 设置热传导系数放大因子（罚函数因子）
++dyna.Set("Contact_Heat_Factor 100.0");
++
++// 设置结果输出间隔
+ dyna.Set("Output_Interval 1000");
+ 
+-
+-dyna.Set("GiD_Out 0");
+-
+-dyna.Set("Msr_Out 0");
+-
+-dyna.Set("Moniter_Iter 100");
+-
+-
++// 导入一维热传导网格
+ blkdyn.ImportGrid("GiD", "OneDHeat.msh");
+ 
++// 设置热传导材料参数：密度、初始温度、热传导系数、比热容、体膨胀系数
++heatcd.SetPropByGroup(2700.0, 20.0, 3.125, 1000.0, 1e-3, 1);
+ 
+-
++// 定义温度梯度向量
+ var fArrayGrad = new Array(0.0, 0.0, 0.0);
+ 
++// 初始化初始温度分布（一维方向）
++heatcd.InitConditionByCoord("temp", 20.0, fArrayGrad, -100, 100, -100, 100, -100, 100);
+ 
+-
+-heatcd.SetPropByGroup (1000.0, 0.0, 1.6, 0.2, 1e-3, 1);
+-
++// 左边界固定温度（热源端）
+ heatcd.ApplyConditionByCoord("temp", 100.0, fArrayGrad, -0.01, 0.001, -100, 100, -100, 100, true);
+ 
++// 右边界固定温度（冷源端）
++heatcd.ApplyConditionByCoord("temp", 0.0, fArrayGrad, 0.999, 1.001, -100, 100, -100, 100, true);
+ 
+-heatcd.ApplyConditionByCoord("temp", 0.0, fArrayGrad, 0.999, 11, -100, 100, -100, 100, true);
++// 设置时间步长
++dyna.Set("Time_Step 0.002");
+ 
+-
+-
++// 设置监测点（沿一维方向不同位置）
+ dyna.Monitor("block", "temperature", 0.2, 0, 0);
+ dyna.Monitor("block", "temperature", 0.5, 0, 0);
+ dyna.Monitor("block", "temperature", 0.8, 0, 0);
+ 
+-dyna.Set("Time_Step 0.002");
++// 进入求解前准备
++dyna.BeforeCal();
+ 
+-dyna.Solve(50000);
++// 主求解循环
++for (var i = 0; i < 50000; i++) {
++    // 计算节点温度不平衡量
++    var fUnBal = heatcd.CalNodeTemperature();
++    
++    // 计算单元热流速
++    heatcd.CalElemHeatTransfer();
++    
++    // 每100步输出一次进度信息
++    if (i % 100 == 0) {
++        print("Iter = " + i + "  UnBal = " + fUnBal);
++        dyna.PutStep();
++    }
++}
+ 
++// 打印完成提示
++print("Solution Finished");
+ 
+-
+-
+-print("Solution Finished");
++// 清理动态库资源
++dyna.FreeUDF();

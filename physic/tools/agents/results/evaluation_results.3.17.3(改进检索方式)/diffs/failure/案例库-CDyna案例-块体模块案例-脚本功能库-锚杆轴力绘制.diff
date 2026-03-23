@@ -1,0 +1,136 @@
+--- 案例库-CDyna案例-块体模块案例-脚本功能库-锚杆轴力绘制.js (ground_truth)
++++ 案例库-CDyna案例-块体模块案例-脚本功能库-锚杆轴力绘制.js (generated)
+@@ -1,133 +0,0 @@
+-setCurDir(getSrcDir());
+-
+-draw.clear();
+-draw.commit();
+-
+-var TotalBar = Math.round(dyna.GetValue("Total_Bar_Num"));
+-
+-////最大力处的宽度
+-var MaxWidth = 0.3;
+-
+-var MaxForce = -1e20;
+-
+-/////找到力的最大值
+-for(var ibar = 1; ibar <= TotalBar; ibar++)
+-{
+-var TotalSeg = Math.round( bar.GetBarInfo(ibar,"TotalSeg") );
+-
+-for(var iseg = 1; iseg <= TotalSeg ; iseg++)
+-{
+-var LocalForce = Math.abs(  bar.GetSegValue(ibar,iseg,"LocalForce", 3) );
+-
+-if(LocalForce > MaxForce)
+-{
+-MaxForce = LocalForce;
+-}
+-}
+-}
+-/////////////////////////////////////
+-
+-for(var ibar = 1; ibar <= TotalBar; ibar++)
+-{
+-var TotalSeg = Math.round( bar.GetBarInfo(ibar,"TotalSeg") );
+-
+-for(var iseg = 1; iseg <= TotalSeg ; iseg++)
+-{
+-var failtype = bar.GetSegValue(ibar,iseg,"FailType");
+-
+-var LocalForce = bar.GetSegValue(ibar,iseg,"LocalForce", 3);
+-
+-var DeltL = MaxWidth * Math.abs(LocalForce) / MaxForce;
+-
+-if(LocalForce > 0.0)
+-{
+-draw.SetColor(255,0,0);
+-}
+-else
+-{
+-draw.SetColor(0,0,0);
+-}
+-
+-//if(failtype > 0.0001)  ///发生破坏
+-{
+-var PC1= new Array(3);
+-var PC2= new Array(3);
+-var PC3= new Array(3);
+-var PC4= new Array(3);
+-
+-var Coord1x = bar.GetNodeValue (ibar, iseg, "Coord",1);
+-var Coord1y = bar.GetNodeValue (ibar, iseg, "Coord",2);
+-var Coord1z = 0.2;
+-
+-
+-var Coord2x = bar.GetNodeValue (ibar, iseg+1, "Coord",1);
+-var Coord2y = bar.GetNodeValue (ibar, iseg+1, "Coord",2);
+-var Coord2z = 0.2;
+-
+-
+-PC1[2] = PC2[2] = PC3[2] = PC4[2] = 0.1;
+-
+-var DeltX = Coord2x  -  Coord1x;
+-var DeltY = Coord2y  -  Coord1y;
+-
+-
+-if(Math.abs(DeltX) < 1e-3)
+-{
+-PC1[0] = Coord1x - DeltL;
+-PC1[1] = Coord1y;
+-
+-PC2[0] = Coord1x + DeltL;
+-PC2[1] = Coord1y;
+-
+-PC3[0] = Coord2x + DeltL;
+-PC3[1] = Coord2y;
+-
+-PC4[0] = Coord2x - DeltL;
+-PC4[1] = Coord2y;
+-}
+-else if(Math.abs(DeltY) < 1e-3)
+-{
+-PC1[0] = Coord1x;
+-PC1[1] = Coord1y - DeltL;
+-
+-PC2[0] = Coord1x;
+-PC2[1] = Coord1y + DeltL;
+-
+-PC3[0] = Coord2x;
+-PC3[1] = Coord2y + DeltL;
+-
+-PC4[0] = Coord2x;
+-PC4[1] = Coord2y - DeltL;
+-}
+-else
+-{
+-var diak = DeltY / DeltX;
+-var diak2 = -1.0 / diak;
+-var sita1 = Math.atan(diak2);
+-var sita2 = sita1 + Math.PI;
+-
+-PC1[0] = Coord1x + Math.cos(sita1) * DeltL;
+-PC1[1] = Coord1y + Math.sin(sita1) * DeltL;
+-
+-PC2[0] = Coord1x + Math.cos(sita2) * DeltL;
+-PC2[1] = Coord1y + Math.sin(sita2) * DeltL;
+-
+-PC3[0] = Coord2x + Math.cos(sita2) * DeltL;
+-PC3[1] = Coord2y + Math.sin(sita2) * DeltL;
+-
+-PC4[0] = Coord2x + Math.cos(sita1) * DeltL;
+-PC4[1] = Coord2y + Math.sin(sita1) * DeltL;
+-
+-}
+-
+-
+-draw.polygon(PC1[0],  PC1[1], PC1[2],   PC2[0],  PC2[1], PC2[2],    PC3[0],  PC3[1], PC3[2],   PC4[0],  PC4[1], PC4[2] );
+-
+-}
+-
+-}
+-}
+-
+-draw.commit();
+-
+-

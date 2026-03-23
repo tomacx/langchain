@@ -1,0 +1,159 @@
+--- 案例库-SuperCDEM案例-地质体爆破漏斗-3DBlast.js (ground_truth)
++++ 案例库-SuperCDEM案例-地质体爆破漏斗-3DBlast.js (generated)
+@@ -1,56 +1,126 @@
+ setCurDir(getSrcDir());
+ 
++// ==================== 求解器参数设置 ====================
+ scdem.outputInterval = 1000;
++scdem.monitorIter = 100;
++scdem.isVirtualMass = 0;
++scdem.set("isLargeDisplace", 1);
++scdem.set("RayleighDamp", 5e-7, 0);
++scdem.timeStep = 1e-7;
+ 
+-scdem.isVirtualMass = 0;
++// ==================== 三维地质体网格生成 ====================
++// 地质体尺寸：长×宽×高 = 5m × 5m × 3m
++// 网格划分：50×50×30 = 75000个单元
++imeshing.genBrick3D("rock", 5.0, 5.0, 3.0, 50, 50, 30, 0, 0, 0);
+ 
+-scdem.set("isLargeDisplace", 1);
++// ==================== 材料参数设置 ====================
++// 岩石材料参数：密度(kg/m³), 弹性模量(Pa), 泊松比, 抗拉强度(Pa), 抗压强度(Pa), 内摩擦角(°), 粘聚力(Pa)
++scdem.setModel("linear");
++scdem.setMat([2700, 60e9, 0.24, 28.3e6, 17.9e6, 55, 10]);
+ 
+-scdem.set("RayleighDamp", 5e-7, 0);
+-
+-var msh = imesh.importGmsh("3DBlast-20w.msh");//可更换文件中不同网格数量的网格文件
+-scdem.getMesh(msh);
+-
+-
+-scdem.setModel("linear");
+-scdem.setMat([2700, 70e9, 0.24, 28.3e6, 17.9e6, 55,10]);
+-
++// 界面断裂模型参数
+ scdem.setIModel("FracE");
+ scdem.setIMatByElem(10);
+-scdem.setContactFractureEnergy(50,100);
++scdem.setContactFractureEnergy(50, 100);
+ 
+-//边界条件
++// ==================== 炸药单元布置 ====================
++// 炸药位置：中心深度2.0m处 [x, y, z]
++var blastPos = [2.5, 2.5, 2.0];
+ 
+-//动态边界
++// 设置朗道爆源参数
++// scdem.setLandauBlastSource(iID, density, E0, A, B, R1, R2, Omiga, Pcj, D, BeginTime, LastTime, pos)
++// 典型炸药参数：TNT密度1600kg/m³, 爆速6900m/s, 爆热4.2MJ/kg
++scdem.setLandauBlastSource(1, 1600, 4.2e6, 100e9, 10e9, 5.0, 1.5, 0.3, 5.0e9, 6900, 0.0, 1e-3, blastPos);
++
++// ==================== 爆生气体压力衰减设置 ====================
++// 调用SetLandauGasLeakMat设置气体逸散参数
++// fCharTime: 特征时间(s), fCharIndex: 特征指数, iIDLow/iIDUp: 爆源ID范围
++blkdyn.SetLandauGasLeakMat(5e-4, 1.2, 1, 1);
++
++// ==================== 边界条件设置 ====================
++// 四周+底部无反射边界（自由场模拟）
+ var oSel = new SelElemFaces(scdem);
+-oSel.sphere(1.5,1.5,1.6,0.044,0.046);
+-scdem.applyDynaBoundaryFromFileBySel("faceforce",true,-1,0,0,oSel,"BlastLoad.txt");
+ 
+-//四周 + 底部无反射边界
+-oSel = new SelElemFaces(scdem);
+-oSel.box(-100,-100,-0.001,100,100,0.001);
++// X方向两侧
++oSel.box(-0.001, -0.001, -0.001, 0.001, 5.0, 3.0);
+ scdem.applyNonReflectionBySel(oSel);
+ 
+-oSel = new SelElemFaces(scdem);
+-oSel.box(-100,-0.001,-100,100,0.001,100);
++oSel.box(4.999, -0.001, -0.001, 5.001, 5.0, 3.0);
+ scdem.applyNonReflectionBySel(oSel);
+ 
+-oSel = new SelElemFaces(scdem);
+-oSel.box(-100,2.99,-100,100,3.01,100);
++// Y方向两侧
++oSel.box(-0.001, -0.001, -0.001, 5.0, 0.001, 3.0);
+ scdem.applyNonReflectionBySel(oSel);
+ 
+-oSel = new SelElemFaces(scdem);
+-oSel.box(-0.001,-100,-100,0.001,100,100);
++oSel.box(-0.001, 4.999, -0.001, 5.0, 5.001, 3.0);
+ scdem.applyNonReflectionBySel(oSel);
+ 
+-oSel = new SelElemFaces(scdem);
+-oSel.box(2.99,-100,-100,3.01,100,100);
++// Z方向底部
++oSel.box(-0.001, -0.001, -0.001, 5.0, 5.0, 0.001);
+ scdem.applyNonReflectionBySel(oSel);
+ 
+-scdem.timeStep= 1e-7;
+-scdem.dynaSolveGpu(0.004);
++// ==================== 重力载荷设置 ====================
++// 重力加速度：[gx, gy, gz] = [0, 0, -9.8] m/s²
++scdem.gravity = [0, 0, -9.8];
+ 
+-//释放GPU端内存
++// ==================== 监测输出设置 ====================
++// 设置VTK输出格式
++scdem.set("isVtk", 1);
++scdem.set("specialOutputInterval", 0, 20000, 500);
++
++// 定义监测点（爆破漏斗中心区域）
++var monitorPoints = [
++    [2.5, 2.5, 2.0],   // 爆心
++    [2.5, 2.5, 1.0],   // 浅层
++    [2.5, 2.5, 0.5],   // 地表附近
++    [2.5, 2.5, 0.0]    // 地表
++];
++
++// ==================== 求解器控制参数 ====================
++// 总计算时长：0.004s (4ms)，适合爆破过程模拟
++var totalDuration = 0.004;
++
++// ==================== 运行仿真 ====================
++print("开始爆破漏斗仿真...");
++scdem.dynaSolveGpu(totalDuration);
++
++// 释放GPU端内存
+ scdem.releaseGpuMem();
+ 
++// ==================== 结果分析与报告生成 ====================
++print("仿真完成！正在生成爆破漏斗分析报告...");
++
++// 读取最终位移场数据
++var finalDisp = scdem.getFinalDisplacement();
++
++// 计算爆破漏斗几何特征
++var funnelDepth = 0;
++var funnelRadius = 0;
++var maxDisplacement = 0;
++
++for (var i = 0; i < finalDisp.length; i++) {
++    var disp = finalDisp[i];
++    var displacementMag = Math.sqrt(disp.x*disp.x + disp.y*disp.y + disp.z*disp.z);
++    
++    if (displacementMag > maxDisplacement) {
++        maxDisplacement = displacementMag;
++    }
++    
++    // 统计Z方向位移（向下为正）
++    if (disp.z > funnelDepth && disp.z < 0.5) {
++        funnelDepth = disp.z;
++    }
++}
++
++// 生成分析报告
++var report = "===== 爆破漏斗几何尺寸分析报告 =====\n";
++report += "仿真时间：" + totalDuration + " s\n";
++report += "最大位移幅值：" + maxDisplacement.toFixed(4) + " m\n";
++report += "估算漏斗深度：" + funnelDepth.toFixed(4) + " m\n";
++report += "网格数量：75000 单元\n";
++report += "材料：岩石 (ρ=2700 kg/m³, E=60 GPa)\n";
++report += "炸药类型：朗道爆源 (TNT等效)\n";
++report += "=====================================\n";
++
++print(report);
+ print("finish!");

@@ -1,0 +1,148 @@
+--- 案例库-CDyna案例-粒子模块案例-扩展案例-PCMM-流体流动-PCMM-Fluid.js (ground_truth)
++++ 案例库-CDyna案例-粒子模块案例-扩展案例-PCMM-流体流动-PCMM-Fluid.js (generated)
+@@ -1,95 +1,73 @@
+-//设置当前路径为JavaScript脚本所在的路径
+ setCurDir(getSrcDir());
+ 
+-//清除GDEM-dyna计算核心中的内存数据
++// 清除内存数据
+ dyna.Clear();
+-
+-//清除Genvi平台中的结果数据
+ doc.clearResult();
+ 
+-//设置结果的输出间隔为500步
++// ========== 1. 全局求解器设置 ==========
+ dyna.Set("Output_Interval 500");
++dyna.Set("If_Virtural_Mass 1");
++dyna.Set("Virtural_Step 0.3");
++dyna.Set("Large_Displace 1");
++dyna.Set("Gravity 0 -9.8 0");
++dyna.Set("Time_Step 1e-5");
++dyna.Set("UnBalance_Ratio 1e-3");
+ 
+-//打开虚拟质量开关
+-dyna.Set("If_Virtural_Mass 1");
+-
+-//打开大变形计算开关
+-dyna.Set("Large_Displace 1");
+-
+-//设置虚拟质量为0.3
+-dyna.Set("Virtural_Step 0.3");
+-
+-//设置3个方向重力加速度
+-dyna.Set("Gravity 0.0 -9.8 0.0");
+-
+-//设置PCMM颗粒的接触容差
++// ========== 2. PCMM模块启用 ==========
+ dyna.Set("PCMM_Elem_Tol 1e-3");
+-
+-//设置颗粒的计算模式为2-PCMM颗粒模式
+ dyna.Set("Particle_Cal_Type 2");
+ 
+-//创建左刚性面
++// ========== 3. 创建刚性边界 ==========
+ var fCoord = new Array();
+-fCoord[0]=new Array(0.0,0.0,0.0);
+-fCoord[1]=new Array(0.0,0.4,0.0);
+-rdface.Create (1, 1, 2, fCoord);
+ 
+-//创建底部刚性面
+-fCoord[0]=new Array(0.0,0.0,0.0);
+-fCoord[1]=new Array(0.2,0.0,0.0);
+-rdface.Create (1, 2, 2, fCoord);
++// 底部刚性面 (y=0)
++fCoord[0] = new Array(0, 0, 0);
++fCoord[1] = new Array(0.5, 0, 0);
++rdface.Create(1, 1, 2, fCoord);
+ 
+-//创建右部刚性面
+-fCoord[0]=new Array(0.2,0.0,0.0);
+-fCoord[1]=new Array(0.2,0.4,0.0);
+-rdface.Create (1, 3, 2, fCoord);
++// 左侧刚性面 (x=0)
++fCoord[0] = new Array(0, 0, 0);
++fCoord[1] = new Array(0, 0.3, 0);
++rdface.Create(1, 2, 2, fCoord);
+ 
+-//创建规律排布的颗粒
+-//pdyna.RegularCreateByCoord(1,1,0.1,0,10,0,10,0,0);
++// 右侧刚性面 (x=0.5)
++fCoord[0] = new Array(0.5, 0, 0);
++fCoord[1] = new Array(0.5, 0.3, 0);
++rdface.Create(1, 3, 2, fCoord);
+ 
+-//产生半径下限为0.05m，半径上限为0.1m，组号为1的10000个随机分布的颗粒
+-var x = new Array(0.01, 0.1);
+-var y = new Array(0.01, 0.1);
+-var z = new Array(0.0, 0.0);
+-//pdyna.CreateByCoord(1000, 1, 1, 0.001, 0.005, 0 ,x,y,z);
+-//pdyna. AdvCreateByCoord (<TotalNo, GroupNo, type, RandomName, pra1, pra2,embed, x[2], y[2], z[2]>);
+-//pdyna. AdvCreateByCoord (10000, 1, 1, "normal", 0.001 , 1e-4, 0.0, x, y, z);
+-pdyna. CrossCreateByCoord (1, 1, 0.001, 0.001, 0.1, 0.001, 0.1, 0.0, 0.0);
++// 顶部刚性面 (y=0.3)
++fCoord[0] = new Array(0, 0.3, 0);
++fCoord[1] = new Array(0.5, 0.3, 0);
++rdface.Create(1, 4, 2, fCoord);
+ 
+-//设置颗粒材料参数，依次为密度、弹性模量、泊松比、抗拉强度、粘聚力、内摩擦角、局部阻尼、粘性阻尼系数（临界阻尼比）
++// ========== 4. 生成流体颗粒 ==========
++// 创建规则排列的流体颗粒
++pdyna.RegularCreateByCoord(1, 1, 0.005, 0.01, 0.49, 0.01, 0.29, 0.0, 0);
+ 
+-pdyna.SetModel("brittleMC");
++// ========== 5. 设置流体材料参数 ==========
++// 参数依次为: density, young, poisson, tension, cohesion, friction, localdamp, viscdamp
++pdyna.SetMat(1000, 2.2e9, 0.49, 1e-3, 1e-3, 0.0, 0.01, 0.0);
+ 
++// ========== 6. 设置PCMM本构模型 ==========
++// 设置流体本构模型
++pcmm.SetModelByGroup("Fluid", 1, 1);
+ 
+-pdyna.SetMat(1000, 2.1e6, 0.45, 0, 0, 0, 0.8, 0.0);
++// 设置体积模量、剪切模量、动力粘度
++// KGV参数: bulk_modulus, shear_modulus, viscosity, group_no, mat_id
++pcmm.SetKGVByGroup(2.2e9, 0.0, 0.001, 1, 1);
+ 
+-//设置pcmm模型为线弹性模型
+-pcmm.SetModelByGroup("linear",1,11);
++// ========== 7. 设置边界约束 ==========
++// 固定底部颗粒
++pdyna.FixV("xyz", 1, "y", 0, 0.001);
+ 
+-//固定底部pcmm颗粒三个方向的速度
+-//pdyna.FixV("xyz",0.0, "y", -1, 0.1);
++// ========== 8. 设置监测点 ==========
++// 添加速度监测点
++dyna.Monitor("vel_x 0.25 0.15 0");
++dyna.Monitor("vel_y 0.25 0.15 0");
+ 
+-//求解至稳定
+-dyna.Solve();
++// ========== 9. 执行仿真计算 ==========
++// 计算10000步
++dyna.DynaCycle(10000);
+ 
+-//设置pcmm模型为线弹性模型
+-//pcmm.SetModelByGroup("MC",1,11);
+-
+-
+-
+-//设置pcmm模型为应变软化模型
+-pcmm.SetModelByGroup("ViscMC",1,11);
+-
+-//组号在1-11之间的颗粒设定体积模量、剪切模量及动力粘度
+-pcmm.SetKGVByGroup(2.1e6, 0.0, 1e-3, 1,11);
+-
+-//设置局部阻尼为0.01
+-pdyna.SetSingleMat("LocalDamp",0.01);
+-
+-dyna.Set("If_Virtural_Mass 0");
+-
+-dyna.TimeStepCorrect(0.5);
+-
+-
+-//求解1万步
+-dyna.Solve(150000);
++// ========== 10. 保存结果 ==========
++doc.SaveResult();

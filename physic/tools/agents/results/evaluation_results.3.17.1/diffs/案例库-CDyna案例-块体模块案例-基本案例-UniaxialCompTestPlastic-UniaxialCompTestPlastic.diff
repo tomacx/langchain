@@ -1,0 +1,109 @@
+--- 案例库-CDyna案例-块体模块案例-基本案例-UniaxialCompTestPlastic-UniaxialCompTestPlastic.js (ground_truth)
++++ 案例库-CDyna案例-块体模块案例-基本案例-UniaxialCompTestPlastic-UniaxialCompTestPlastic.js (generated)
+@@ -1,63 +1,82 @@
+-//设置当前工作路径为JavaScript脚本文件所在路径
+ setCurDir(getSrcDir());
+ 
+-//打开力学计算开关
++// 清除dyna核心模块及平台doc结果文件模块
++dyna.Clear();
++doc.clearResult();
++
++// 打开力学计算开关
+ dyna.Set("Mechanic_Cal 1");
+ 
+-//设置3个方向的重力加速度值(均为0)
++// 设置3个方向的重力加速度值(均为0)
+ dyna.Set("Gravity 0.0 0.0 0.0");
+ 
+-//关闭大变形计算开关
++// 关闭大变形计算开关
+ dyna.Set("Large_Displace 0");
+ 
+-//设置计算结果的输出间隔为5000步
++// 设置计算结果的输出间隔为5000步
+ dyna.Set("Output_Interval 5000");
+ 
+-//设置监测结果的输出时步为10步
++// 设置监测结果的输出时步为10步
+ dyna.Set("Moniter_Iter 10");
+ 
+-//打开虚质量计算开关
++// 打开虚质量计算开关
+ dyna.Set("If_Virtural_Mass 1");
+ 
+-//设置虚质量时步为0.6
++// 设置虚质量时步为0.6
+ dyna.Set("Virtural_Step 0.6");
+ 
+-//允许自动在Result文件夹下输出Save文件
++// 允许自动在Result文件夹下输出Save文件
+ dyna.Set("SaveFile_Out 1");
+ 
+-//设置单元体积膨胀断裂应变及等效剪切断裂应变
++// 设置单元体积膨胀断裂应变及等效剪切断裂应变
+ dyna.Set("Block_Soften_Value 0.001 0.003");
+ 
++// 创建长0.1m，高0.2m的二维矩形单元
++blkdyn.GenBrick2D(0.1, 0.2, 50, 100, 1);
+ 
+-//创建长0.1m，高0.2m的二维矩形单元
+-blkdyn.GenBrick2D(0.1,0.2,50,100,1);
+-
+-
+-
+-//设置所有单元为线弹性模型
++// 设置所有单元为线弹性模型
+ blkdyn.SetModel("SoftenMC");
+ 
+-//设置组1的材料参数，分别为密度，弹性模量，泊松比，粘聚力、抗拉强度、内摩擦角、剪胀角、组号
++// 设置组1的材料参数，分别为密度，弹性模量，泊松比，粘聚力、抗拉强度、内摩擦角、剪胀角、组号
+ blkdyn.SetMatByGroup(2500, 3e10, 0.25, 3e6, 3e6, 30.0, 10.0, 1);
+ 
+-//Y方向底部法向约束
++// 创建刚性压头部件（上压板）
++var aCoordTop = new Array(2);
++aCoordTop[0] = [0, 0.2, 0];
++aCoordTop[1] = [0.1, 0.2, 0];
++rdface.Create(1, 1, 2, aCoordTop);
++
++// 创建刚性底座部件（下压板）
++var aCoordBottom = new Array(2);
++aCoordBottom[0] = [0, 0, 0];
++aCoordBottom[1] = [0.1, 0, 0];
++rdface.Create(1, 2, 2, aCoordBottom);
++
++// 设置刚性压头部件密度并自动计算属性
++rdface.CalPartPropAuto(7800, 100, "test_top");
++rdface.CalPartPropAuto(7800, 100, "test_bottom");
++
++// Y方向底部法向约束
+ blkdyn.FixV("y", 0.0, "y", -0.001, 0.001);
+ 
+-//Y方向顶部施加准静态竖直向下的速度载荷
++// Y方向顶部施加准静态竖直向下的速度载荷
+ blkdyn.FixV("y", -1e-9, "y", 0.199, 0.201);
+ 
+-
+-//设置全部节点的局部阻尼为0.8
++// 设置全部节点的局部阻尼为0.8
+ blkdyn.SetLocalDamp(0.8);
+ 
++// 计算每个单元的刚度矩阵（必须在核心求解前执行）
++blkdyn.CalElemStiffMatrix();
+ 
+-//监测典型测点的y方向的应力
++// 监测典型测点的y方向的应力
+ dyna.Monitor("block", "syy", 0.05, 0.2, 0);
+ dyna.Monitor("block", "syy", 0.05, 0.1, 0);
+ 
+-//计算120000步
++// 计算120000步
+ dyna.Solve(120000);
+ 
+-//对Result文件夹内的save文件进行批处理，获取每个时刻模型的平均值
++// 对Result文件夹内的save文件进行批处理，获取每个时刻模型的平均值
+ dyna.ExportSortedDataByGroup("element", true, 5000, 5000, 24, 1, 1);
+ 
++// 输出监测数据到文件
++dyna.OutputMonitorData();

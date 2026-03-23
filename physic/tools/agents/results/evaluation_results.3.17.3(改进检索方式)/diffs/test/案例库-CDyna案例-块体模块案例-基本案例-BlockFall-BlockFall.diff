@@ -1,0 +1,118 @@
+--- 案例库-CDyna案例-块体模块案例-基本案例-BlockFall-BlockFall.js (ground_truth)
++++ 案例库-CDyna案例-块体模块案例-基本案例-BlockFall-BlockFall.js (generated)
+@@ -1,73 +1,57 @@
+-//设置当前工作路径为JavaScript脚本文件所在路径
+ setCurDir(getSrcDir());
+ 
+-//打开力学计算开关
+-dyna.Set("Mechanic_Cal 1");
++// 1. 初始化工作区 - 清除几何、网格和dyna求解数据
++igeo.clear();
++imeshing.clear();
++dyna.Clear();
++doc.clearResult();
+ 
+-//设置三个方向的重力加速度
+-dyna.Set("Gravity 0 -9.8 0");
++// 2. 设置仿真控制参数
++dyna.Set("Output_Interval 500");
++dyna.Set("Large_Displace 1");
++dyna.Set("If_Renew_Contact 1");
++dyna.Set("If_Virtural_Mass 0");
++dyna.Set("Contact_Detect_Tol 1e-1");
++dyna.Set("Gravity 0 0 -9.8");
+ 
+-//打开大变形计算开关
+-dyna.Set("Large_Displace 1");
++// 3. 导入边界表面网格文件定义目标撞击区域
++rdface.Import("ansys", "Bound.dat");
+ 
+-//设置计算结果的输出间隔为500步
+-dyna.Set("Output_Interval 500");
++// 4. 生成砖块体积单元构建掉落块体模型几何
++igeo.genBrickV(450, 450, 310, 550, 550, 400, 10, 1);
+ 
+-//关闭虚质量计算开关
+-dyna.Set("If_Virtural_Mass 0");
++// 5. 生成网格
++imeshing.genMeshByGmsh(3);
+ 
+-//打开接触更新计算开关
+-dyna.Set("If_Renew_Contact 1");
++// 6. 将网格传递给块体模块
++blkdyn.GetMesh(imeshing);
+ 
+-//设置子空间更新时步为10步
+-dyna.Set("Renew_Interval 10");
+-
+-//打开棱-棱接触检测开关
++// 7. 配置接触检测设置和能量计算
++blkdyn.CrtIFace();
++blkdyn.UpdateIFaceMesh();
+ dyna.Set("If_Cal_EE_Contact 1");
+ 
+-//设置接触容差为1mm
+-dyna.Set("Contact_Detect_Tol 2e-3");
++// 8. 设置块体材料模型和参数
++blkdyn.SetModel("linear");
++blkdyn.SetMat(2500, 5e8, 0.3, 0, 0, 15, 0);
++blkdyn.SetIModel("brittleMC");
++blkdyn.SetIMat(5e9, 5e9, 15, 0, 0);
++blkdyn.SetLocalDamp(0.02);
+ 
+-//打开save文件自动保存开关
+-dyna.Set("SaveFile_Out 0");
++// 9. 定义坐标范围触发自动块度统计曲线输出
++var x = new Array(-10, 10);
++var y = new Array(-10, 10);
++var z = new Array(-10, 10);
++blkdyn.ExportGradationCurveByCoord(x, y, z);
+ 
+-//从当前文件夹下导入patran格式的网格文件
+-blkdyn.ImportGrid("gid", "BlockSlopeFall.msh");
++// 10. 设置线基监测导出特定块体信息
++blkdyn.ExportResultDataByLine("xdis", [0, 0, 0], [0, 0, 500], 100);
+ 
+-//对组号为2的单元进行接触面切割生成
+-blkdyn.CrtIFace(2);
++// 11. 设置动态计算时步
++dyna.TimeStepCorrect(0.6);
+ 
+-//将组号为1的单元的自由面设定为接触面
+-blkdyn.CrtBoundIFaceByGroup(1);
++// 12. 执行仿真求解器
++dyna.Solve(40000);
+ 
+-//设置组号1所对应的单元为刚性单元，仅提供支撑，不计算力
+-blkdyn.SetRigidElemByGroup(1);
+-
+-//更新接触面网格
+-blkdyn.UpdateIFaceMesh();
+-
+-//设定所有单元的本构为线弹性本构
+-blkdyn.SetModel("linear");
+-
+-//设定组号为1-100之间的材料参数
+-blkdyn.SetMat(2500, 2e9, 0.25, 8e6, 2e6, 40.0, 10.0, 1, 100);
+-
+-//设定所有接触面的本构为脆性断裂的Mohr-Coulomb本构
+-blkdyn.SetIModel("brittleMC");
+-
+-//设定接触面上的材料，依次为单位面积法向刚度、单位面积切向刚度、内摩擦角、粘聚力、抗拉强度
+-blkdyn.SetIMat(3e10, 3e10, 10.0, 0.0, 0.0);
+-
+-//设定全部节点的局部阻尼系数为0.05
+-blkdyn.SetLocalDamp(0.05);
+-
+-//设置计算时步
+-dyna.Set("Time_Step 2e-4");
+-
+-//计算5万步
+-dyna.Solve(50000);
+-
+-//打印提示信息
+-print("Solution Finished");
+-
+-
++// 13. 释放加载的动态链接库确保资源清理
++dyna.FreeUDF();

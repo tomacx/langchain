@@ -1,0 +1,119 @@
+--- 案例库-建模及网格案例-复杂几何边界球形粒子快速填充案例-凳子案例-凳子.js (ground_truth)
++++ 案例库-建模及网格案例-复杂几何边界球形粒子快速填充案例-凳子案例-凳子.js (generated)
+@@ -1,8 +1,112 @@
+ setCurDir(getSrcDir());
+ 
+-var msh1 = imesh.importGid("dengzi.msh");
++// ============================================
++// 1. 构建凳子形状复杂几何边界模型并设定为刚性壁面
++// ============================================
++var msh1 = imesh.importStl("dengzi_seat.stl");
++var msh2 = imesh.importStl("dengzi_leg1.stl");
++var msh3 = imesh.importStl("dengzi_leg2.stl");
++var msh4 = imesh.importStl("dengzi_leg3.stl");
++var msh5 = imesh.importStl("dengzi_leg4.stl");
+ 
+-pargen.addBound(msh1);
++pargen.addBound(msh1, msh2, msh3, msh4, msh5);
+ 
+-///半径是1m
+-pargen.gen(1.0);
++// 清除边界面数据
++pargen.clearBound();
++
++// ============================================
++// 2. 初始化三维计算域并调用 DefMesh 设置流体网格
++// ============================================
++skwave.DefMesh(3, [2.0, 2.0, 2.0], [100, 100, 100], [0, 0, 0]);
++
++// ============================================
++// 3. 生成指定半径范围的球形颗粒并赋予初始随机位置
++// ============================================
++// 设置优化选项，加速粒子填充
++pargen.setValue("OptiPosOption", 1);
++
++// 生成半径为0.01m的球形颗粒
++var parmsh = pargen.gen(0.01);
++
++// ============================================
++// 4. 配置颗粒材料属性及 UserDefParameters 自定义参数列表
++// ============================================
++// 设置颗粒密度 (kg/m³)
++dyna.Set("Particle_Density", 2500.0);
++
++// 设置颗粒弹性模量 (Pa)
++dyna.Set("Particle_ElasticModulus", 1e9);
++
++// 设置颗粒泊松比
++dyna.Set("Particle_PoissonRatio", 0.3);
++
++// 设置颗粒摩擦系数
++dyna.Set("Particle_FrictionCoefficient", 0.5);
++
++// 设置用户自定义参数列表（用于CustomModel_Particle）
++dyna.Set("SetUserDefValue", [1e9, 0.3, 0.5, 1000000.0, 0.0, 0.0]);
++
++// ============================================
++// 5. 调用 CellMapping 函数初始化背景格子接触检测
++// ============================================
++pdyna.CellMapping();
++
++// ============================================
++// 6. 加载 CustomModel_Particle 模块实现颗粒间接触本构关系
++// ============================================
++// 启用颗粒模块
++dyna.Set("Particle_Cal_Type", 1);
++
++// 设置接触模型为CustomModel_Particle
++dyna.Set("Contact_Model", "CustomModel_Particle");
++
++// ============================================
++// 7. 设置重力场方向及数值以驱动颗粒快速填充过程
++// ============================================
++// 设置重力加速度 (m/s²)，沿Z轴负方向
++dyna.Set("Gravity", [0, 0, -9.81]);
++
++// ============================================
++// 8. 配置监测点记录局部力链 UDM_P 及接触破坏标记
++// ============================================
++// 设置监测点位置
++dyna.Set("MonitorPoint", [[0.5, 0.5, 0.5], [1.0, 1.0, 1.0]]);
++
++// 启用UDM_P输出
++dyna.Set("Output_UDM_P", 1);
++
++// 启用接触破坏标记输出
++dyna.Set("Output_FailureFlag", 1);
++
++// ============================================
++// 9. 运行仿真脚本直至颗粒堆积形态达到静态平衡
++// ============================================
++// 设置时间步长
++dyna.Set("TimeStep", 1e-6);
++
++// 设置总计算步数
++dyna.Set("TotalSteps", 50000);
++
++// 设置输出间隔
++dyna.Set("OutputInterval", 1000);
++
++// 启动求解器
++dyna.Run();
++
++// ============================================
++// 10. 导出最终颗粒坐标、速度场及接触力分布结果文件
++// ============================================
++// 导出颗粒坐标
++dyna.Export("ParticleCoordinate", "output/particle_coord.dat");
++
++// 导出速度场
++dyna.Export("VelocityField", "output/velocity_field.dat");
++
++// 导出接触力分布
++dyna.Export("ContactForce", "output/contact_force.dat");
++
++// 导出UDM_P数据
++dyna.Export("UDM_P", "output/udm_p.dat");
++
++// 导出接触破坏标记
++dyna.Export("FailureFlag", "output/failure_flag.dat");

@@ -1,0 +1,146 @@
+--- 案例库-CDyna案例-其他模块案例-刚体动力学案例-立方体part与块体单元的接触碰撞-立方体part与块体单元的接触碰撞.js (ground_truth)
++++ 案例库-CDyna案例-其他模块案例-刚体动力学案例-立方体part与块体单元的接触碰撞-立方体part与块体单元的接触碰撞.js (generated)
+@@ -1,70 +1,91 @@
+ setCurDir(getSrcDir());
+ 
++// 清空环境
+ dyna.Clear();
+ imeshing.clear();
+ 
++// ========== 1. 初始化求解器环境 ==========
++dyna.Set("Mechanic_Cal 1");
++dyna.Set("Time_Step 1e-4");
++dyna.Set("Output_Interval 100");
++dyna.Set("Moniter_Iter 100");
++dyna.Set("If_Virtural_Mass 0");
++dyna.Set("Large_Displace 1");
++dyna.Set("If_Renew_Contact 1");
++dyna.Set("Renew_Interval 10");
++dyna.Set("Contact_Detect_Tol 1e-3");
++dyna.Set("SaveFile_Out 1");
++dyna.Set("Gravity 0 -9.8 0");
+ 
+-dyna.Set("Time_Step 1e-3");
++// ========== 2. 创建块体单元网格 ==========
++// 创建1m×1m×1m的块体网格，网格尺寸0.1m
++blkdyn.GenBrick3D(10, 10, 10, 0, 0, 0, 1, 1, 1);
+ 
+-dyna.Set("If_Virtural_Mass 0");
++// 将底部区域设为固定边界
++var x = new Array(-1e10, 1e10);
++var y = new Array(-1e10, 0.1);
++var z = new Array(-1e10, 1e10);
++blkdyn.SetGroupByCoord(1, x[0], x[1], y[0], y[1], z[0], z[1]);
+ 
+-dyna.Set("Output_Interval 200");
++// 生成接触面
++blkdyn.CrtBoundIFaceByGroup(2);
++blkdyn.UpdateIFaceMesh();
+ 
+-dyna.Set("Large_Displace 1");
++// ========== 3. 设置块体材料参数 ==========
++// 线弹性本构
++blkdyn.SetModel("linear");
++// 密度=2500kg/m³, 弹性模量=1e9Pa, 泊松比=0.25, 粘聚力=1e6Pa, 抗拉强度=1e6Pa, 内摩擦角=30°, 剪胀角=10°
++blkdyn.SetMat(2500, 1e9, 0.25, 1e6, 1e6, 30, 10);
+ 
+-dyna.Set("If_Renew_Contact 1");
++// 接触面本构为脆性断裂Mohr-Coulomb
++blkdyn.SetIModel("brittleMC");
++// 单位面积法向刚度=1e10Pa/m, 切向刚度=1e10Pa/m, 内摩擦角=25°, 粘聚力=0, 抗拉强度=0
++blkdyn.SetIMat(1e10, 1e10, 25.0, 0.0, 0.0);
+ 
+-dyna.Set("Renew_Interval 10");
++// 设置块体局部阻尼
++blkdyn.SetLocalDamp(0.01);
+ 
+-dyna.Set("Block_Rdface_Contact_Scheme 3");
++// 固定底部节点x,y方向速度
++blkdyn.FixV("xy", 0.0, "y", -1e10, 0.1);
+ 
++// ========== 4. 创建刚体立方体Part ==========
++// 导入刚性面模型（或使用内置方法创建）
++rdface.Import("ansys", "rdface-cube.dat");
++
++// 创建刚体部件
++var partId = rdface.CrtPart("cube_part");
++
++// 设置刚体属性：密度=7800kg/m³, 质心位置=[0.5, 0.5, 1.5], 转动惯量矩阵
++rdface.SetPartProp(7800, [0.5, 0.5, 1.5], [100, 100, 100, 0, 0, 0], "cube_part");
++
++// ========== 5. 设置刚体局部阻尼 ==========
++// 平动局部阻尼=0.02, 转动局部阻尼=0.05
++rdface.SetPartLocalDamp(0.02, 0.05, "cube_part");
++
++// ========== 6. 配置接触方案 ==========
++dyna.Set("Block_Rdface_Contact_Scheme 1");
+ dyna.Set("If_Cal_EE_Contact 1");
+ 
++// ========== 7. 添加监测指令 ==========
++// 监测刚体质心Z方向位移
++dyna.Monitor("rdface", "rg_PartDisZ", 1, 0, 0);
++// 监测刚体质心Z方向速度
++dyna.Monitor("rdface", "rg_PartVelZ", 1, 0, 0);
++// 监测系统总动能
++dyna.Monitor("gvalue", "gv_block_kinetic_energy");
++// 监测系统总应变能
++dyna.Monitor("gvalue", "gv_block_strain_energy");
++// 监测接触面变形能
++dyna.Monitor("gvalue", "gv_contact_strain_energy");
++// 监测块体破坏度
++dyna.Monitor("gvalue", "gv_block_broken_ratio");
+ 
+-imeshing.genBrick3D("1", 10, 1, 10, 1, 1,1, -5, -2, -5);
++// ========== 8. 时步校正 ==========
++dyna.TimeStepCorrect(0.2);
+ 
+-blkdyn.GetMesh(imeshing);
++// ========== 9. 执行求解 ==========
++// 计算100000个时步
++dyna.Solve(100000);
+ 
+-
+-//blkdyn.RotateGrid(20, [0,0,0], [0,0,1], 1,11);
+-
+-
+-
+-
+-blkdyn.CrtBoundIFaceByGroup(1);
+-
+-blkdyn.UpdateIFaceMesh();
+-
+-blkdyn.SetModel("linear");
+-blkdyn.SetMat(1500, 1e8, 0.25, 1e6, 1e6, 15, 10);
+-
+-blkdyn.SetIModel("brittleMC");
+-
+-blkdyn.SetIStiffByElem(2.0);
+-blkdyn.SetIStrengthByElem(10);
+-
+-blkdyn.SetLocalDamp(0.01);
+-
+-blkdyn.FixV("xyz", 0.0, "x", -6,  -4.999);
+-blkdyn.FixV("xyz", 0.0, "x", 4.999, 6);
+-
+-blkdyn.FixV("xyz",0,"x",-100,100);
+-
+-rdface.Import("gid","bound.msh");
+-
+-rdface.CrtPart("feng");
+-
+-rdface.SetPartProp(8.004000e+03, [-4.022659e-01,3.281506e+00,1.000000e+00], [5.337557e+03, 5.337187e+03, 5.338744e+03, 8.808287e-01, -5.656059e-12,-2.879643e-13 ], "feng");
+-
+-
+-//rdface.SetPartVel([0,-5,0],[0,0,0]);
+-
+-//rdface.SetPartRotaVel([0,1.0,0],[0,1,0])
+-
+-
+-rdface.SetPartLocalDamp(0.1, 0.1);
+-
+-
+-dyna.TimeStepCorrect(0.02);
+-
+-dyna.Solve(100000);
++// ========== 10. 结果输出完成 ==========
++// 脚本执行完毕，结果已自动保存至当前目录

@@ -1,0 +1,99 @@
+--- 案例库-CDyna案例-块体模块案例-扩展案例-摩擦滑动生热-Sliding-不考虑热传导.js (ground_truth)
++++ 案例库-CDyna案例-块体模块案例-扩展案例-摩擦滑动生热-Sliding-不考虑热传导.js (generated)
+@@ -1,56 +1,77 @@
+ setCurDir(getSrcDir());
+ 
++// 清空当前模型
+ dyna.Clear();
+ 
++// 设置重力加速度 (m/s²)
++dyna.Set("Gravity 0.0 9.8 0.0");
+ 
+-//设置三个方向的重力加速度值
+-dyna.Set("Gravity  9.8 -9.8 0.0");
+-
+-//打开大变形计算开关
++// 打开大变形计算开关
+ dyna.Set("Large_Displace 1");
+ 
++// 打开接触更新开关
+ dyna.Set("If_Renew_Contact 1");
+ 
+-//设置云图输出间隔为500
+-dyna.Set("Output_Interval 500");
++// 设置云图输出间隔
++dyna.Set("Output_Interval 100");
+ 
+-//设置监测信息提取间隔为10时步
++// 设置监测信息提取间隔
+ dyna.Set("Moniter_Iter 10");
+ 
+-//打开虚质量计算开关
++// 关闭虚质量计算
+ dyna.Set("If_Virtural_Mass 0");
+ 
++// 禁用热传导计算模块 (Config_Heat = 0)
++dyna.Set("Config_Heat 0");
++
++// 导入滑体网格
+ blkdyn.ImportGrid("gid", "slidbody.msh");
+ 
+-
+-blkdyn.CrtIFaceByCoord(-1e5, 1e5, 0.099,0.101, -1e5, 1e5);
++// 创建接触面 (x: -1e5~1e5, y: 0.099~0.101, z: -1e5~1e5)
++blkdyn.CrtIFaceByCoord(-1e5, 1e5, 0.099, 0.101, -1e5, 1e5);
+ blkdyn.UpdateIFaceMesh();
+ 
++// 设置块体材料模型为线弹性
+ blkdyn.SetModel("linear");
+ 
++// 设置材料参数: 密度(kg/m³), 杨氏模量(Pa), 泊松比, 拉伸强度(Pa), 剪切强度(Pa), 摩擦角(°), 粘聚力(Pa)
+ blkdyn.SetMat(2500, 3e8, 0.22, 8e6, 5e6, 35, 10);
+ 
++// 设置内部接触模型为Mohr-Coulomb脆性断裂
+ blkdyn.SetIModel("brittleMC");
+-blkdyn.SetIMat(1e9, 1e9, 20.0, 0 ,0);
++blkdyn.SetIMat(1e9, 1e9, 20.0, 0, 0);
+ 
++// 设置局部阻尼系数
+ blkdyn.SetLocalDamp(0.01);
+ 
+-
++// 固定边界条件: x方向固定, y方向速度约束在[-0.001, 0.001]之间, z方向固定
+ blkdyn.FixV("xyz", 0.0, "y", -0.001, 0.001);
+ 
+-
++// 自动校正时间步长
+ dyna.TimeStepCorrect(0.5);
+ 
++// 初始化节点温度及内能等热力学状态变量
++dyna.BeforeCal();
+ 
++// 设置监测: 监测指定位置的位移和应力
+ dyna.Monitor("block", "xdis", 0.15, 0.15, 0);
+-dyna.Monitor("block", "sxx",  0.15, 0.15, 0);
++dyna.Monitor("block", "sxx", 0.15, 0.15, 0);
+ 
++// 设置监测输出频率
++dyna.OutputMonitorData(10);
+ 
+-dyna.DynaCycle(10);
++// 执行时间步进求解 (10个时步)
++for (var i = 0; i < 10; i++) {
++    dyna.Solver();
++}
+ 
++// 获取特定单元的温度值 (假设单元ID为1)
++var elemTemp = blkdyn.GetElemValue(1, "temp");
++print("单元温度: " + elemTemp);
+ 
++// 获取特定单元的摩擦功值
++var elemFrictionWork = blkdyn.GetElemValue(1, "fric_work");
++print("摩擦功: " + elemFrictionWork);
++
++// 打印提示信息
+ print("**********************求解完毕**********************");
+-
+-
+-
+-

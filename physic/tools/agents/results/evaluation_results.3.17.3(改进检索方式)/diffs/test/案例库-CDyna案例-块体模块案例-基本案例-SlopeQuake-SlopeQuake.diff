@@ -1,0 +1,214 @@
+--- 案例库-CDyna案例-块体模块案例-基本案例-SlopeQuake-SlopeQuake.js (ground_truth)
++++ 案例库-CDyna案例-块体模块案例-基本案例-SlopeQuake-SlopeQuake.js (generated)
+@@ -1,148 +1,94 @@
+-//设置当前工作路径为JavaScript脚本文件所在路径
+ setCurDir(getSrcDir());
+ 
+-//打开力学计算开关
++// 清除之前的计算数据
++dyna.Clear();
++doc.clearResult();
++
++// 打开力学计算开关
+ dyna.Set("Mechanic_Cal 1");
+ 
+-//设置不平衡率为1e-5
++// 设置不平衡率
+ dyna.Set("UnBalance_Ratio 1e-5");
+ 
+-//设置三个方向的重力加速度值
+-dyna.Set("Gravity 0.0 -9.8 0.0");
++// 设置重力加速度
++dyna.Set("Gravity 0 -9.8 0");
+ 
+-//打开大变形计算开关
++// 打开大变形计算开关
+ dyna.Set("Large_Displace 1");
+ 
+-//设置云图输出间隔为5000
+-dyna.Set("Output_Interval 5000");
++// 设置云图输出间隔
++dyna.Set("Output_Interval 500");
+ 
+-//设置监测信息提取间隔为10时步
+-dyna.Set("Moniter_Iter 10");
++// 设置监测信息提取间隔
++dyna.Set("Moniter_Iter 100");
+ 
+-//打开虚质量计算开关
++// 打开虚质量计算开关
+ dyna.Set("If_Virtural_Mass 1");
+ 
+-//设置虚质量计算时步
++// 设置虚拟时步
+ dyna.Set("Virtural_Step 0.6");
+ 
+-//设置单元体积膨胀断裂应变及等效剪切断裂应变
+-dyna.Set("Block_Soften_Value 0.01 0.03");
++// 创建边坡几何（使用igeo.rotate旋转拉伸）
++var aSurface = [1];
++var Ope = igeo.rotate("surface", aSurface, 0, 0, 0, 0, 0, 1, 30, 1, 0.5);
+ 
+-//导入ansys格式的网格
+-blkdyn.ImportGrid("ansys", "ansys.dat");
++// 导入边坡网格文件
++blkdyn.ImportGrid("GiD", "SlopeQuake.msh");
+ 
+-//设置单元模型为线弹性模型
++// 设置所有单元的组号为1
++blkdyn.SetGroupByCoord(1, -1e10, 1e10, -1e10, 1e10, -1e10, 1e10);
++
++// 设置单元模型为线弹性模型
+ blkdyn.SetModel("linear");
+ 
+-//设置组号为1的单元材料，基岩
+-blkdyn.SetMat(2550, 1e10, 0.22, 1e7, 1e7, 55, 10, 1);
++// 设置材料参数（密度、弹性模量、泊松比、粘聚力、抗拉强度、内摩擦角、剪胀角、组号）
++blkdyn.SetMatByGroup(2000, 3e8, 0.33, 1e3, 3e2, 20.0, 10.0, 1);
+ 
+-//设置组号为2的单元材料，覆盖层
+-blkdyn.SetMat(2000, 6e7, 0.25, 6e4, 3e4, 30, 10, 2);
++// 设置边界条件
++// X方向左侧法向约束
++blkdyn.FixVByCoord("x", 0.0, -1e10, -9.99, -1e10, 1e10, -1e10, 1e10);
+ 
+-//设置所有节点的局部阻尼0.8
++// X方向右侧法向约束
++blkdyn.FixVByCoord("x", 0.0, 29.99, 31, -1e10, 1e10, -1e10, 1e10);
++
++// Y方向底部法向约束
++blkdyn.FixVByCoord("y", 0.0, -1e10, 1e10, -1e10, 0.001, -1e10, 1e10);
++
++// Z方向后侧法向约束
++blkdyn.FixVByCoord("z", 0.0, -1e10, 1e10, -1e10, 1e10, -1e10, 0.001);
++
++// Z方向前侧法向约束
++blkdyn.FixVByCoord("z", 0.0, -1e10, 1e10, -1e10, 1e10, 9.99, 10.01);
++
++// 设置全部节点的局部阻尼
+ blkdyn.SetLocalDamp(0.8);
+ 
+-//对模型左右两侧及底部进行法向约束
+-blkdyn.FixV("y", 0.0, "y", -0.001, 0.001);
+-blkdyn.FixV("x", 0.0, "x", -0.001, 0.001);
+-blkdyn.FixV("x", 0.0, "x", 74.5, 74.7);
++// 关闭虚质量计算开关（动力计算时）
++dyna.Set("If_Virtural_Mass 0");
+ 
+-//施加重力
+-blkdyn.ApplyGravity();
++// 设置当前时间为0
++dyna.Set("Time_Now 0");
+ 
+-//监测典型位置的水平及竖直方向位移
+-dyna.Monitor("block", "xdis", 6, 40, 0);
+-dyna.Monitor("block", "ydis", 6, 40, 0);
+-dyna.Monitor("block", "xdis", 20, 10, 0);
+-dyna.Monitor("block", "ydis", 20, 10, 0);
++// 设置动力计算时步
++dyna.Set("Time_Step 1e-5");
+ 
+-//监测基岩中水平及竖直方向的速度
+-dyna.Monitor("block", "xvel", 30, 2, 0);
+-dyna.Monitor("block", "yvel", 30, 2, 0);
++// 模型底部施加无反射边界条件
++blkdyn.SetQuietBoundByCoord(-2000, 2000, -20-0.001, -20+0.001, -2000, 2000);
+ 
+-//求解至稳定
++// 监测典型测点的x方向位移
++dyna.Monitor("block", "xdis", 0, 10, 0);
++dyna.Monitor("block", "xdis", 12.5, 15, 0);
++dyna.Monitor("block", "xdis", 15, 20, 0);
++
++// 弹性计算
+ dyna.Solve();
+ 
+-//设置模型为Mohr-Coulomb应变软化模型
+-blkdyn.SetModel("SoftenMC");
++// 定义观察点坐标
++var coord = new Array(10.0, 10.0, 0.0);
+ 
+-//求解至稳定
+-dyna.Solve();
++// 通过位移准则求解安全系数
++var fos = dyna.SolveFosByCriDisp(6000, 1e-3, coord, "static.sav");
++print(fos);
+ 
+-//保持save文件
+-dyna.Save("Plastic.sav");
+-
+-//**************************************************初始化位移
+-//定义三个方向基础值
+-var values = new Array(0.0,0.0, 0);
+-
+-//定义变化梯度
+-var gradient = new Array(0, 0, 0, 0, 0, 0, 0, 0, 0);
+-
+-//将控制范围内的位移清零
+-blkdyn.InitConditionByCoord("displace", values, gradient, -1e5, 1e5, -1e5, 1e5, -1e5, 1e5);
+-//**************************************************初始化位移
+-
+-
+-///////////////////////////////////以下为动力计算
+-
+-//设置所有节点的局部阻尼0.0
+-blkdyn.SetLocalDamp(0.0);
+-
+-//关闭虚质量计算开关
+-dyna.Set("If_Virtural_Mass 0");
+-
+-//设置当前时间为0
+-dyna.Set("Time_Now 0");
+-
+-//设置动力计算时步
+-dyna.Set("Time_Step 1e-4");
+-
+-//计算时步自动修正
+-//blkdyn.TimeStepCorrect();
+-
+-//对模型左右两侧及底部的约束进行解除
+-blkdyn.FreeV("y", "y", -0.001, 0.001);
+-blkdyn.FreeV("x", "x", -0.001, 0.001);
+-blkdyn.FreeV("x", "x", 74.5, 74.7);
+-
+-//模型左右两侧施加自由场边界
+-blkdyn.SetFreeFieldBound("x", -0.01, 0.01);
+-blkdyn.SetFreeFieldBound("x", 74.5,  74.7);
+-
+-//模型底部施加无反射边界条件
+-blkdyn.SetQuietBoundByCoord(-2000,2000,-0.001,0.001,-2000,2000);
+-
+-
+-
+-
+-//**************************************************施加地震应力
+-//指定三个方向的载荷系数
+-var coeff1= new Array(6.4e6, 0, 0);
+-
+-//指定三个方向的载荷系数
+-var coeff2= new Array(0, 10.8e6, 0);
+-
+-//x方向下限及上限
+-var x= new Array(-1000,1000);
+-
+-//y方向下限及上限
+-var y= new Array(-0.001, 0.001);
+-
+-//z方向下限及上限
+-var z= new Array(-1000,1000);
+-
+-//水平方向地震应力-从文件中读入振动速度时程曲线
+-blkdyn.ApplyDynaVarFromFileByCoord ("face_force", false,coeff1,"nor-7-lef-hori.txt", x, y, z);
+-
+-//竖直方向地震应力-从文件中读入-从文件中读入振动速度时程曲线
+-blkdyn.ApplyDynaVarFromFileByCoord ("face_force", false,coeff2,"nor-7-lef-ver.txt", x, y, z);
+-//**************************************************施加地震应力
+-
+-
+-//动态求解22s
+-dyna.DynaCycle(22.0);
+-
+-//打印提示信息
+-print("Solution Finished");
++// 保存结果文件
++dyna.Save("SlopeQuake_result.sav");

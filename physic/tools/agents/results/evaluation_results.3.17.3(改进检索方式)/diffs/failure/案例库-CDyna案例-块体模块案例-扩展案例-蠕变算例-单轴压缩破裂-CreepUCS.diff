@@ -1,0 +1,90 @@
+--- 案例库-CDyna案例-块体模块案例-扩展案例-蠕变算例-单轴压缩破裂-CreepUCS.js (ground_truth)
++++ 案例库-CDyna案例-块体模块案例-扩展案例-蠕变算例-单轴压缩破裂-CreepUCS.js (generated)
+@@ -1,87 +0,0 @@
+-setCurDir(getSrcDir());
+-
+-igeo.clear();
+-imeshing.clear();
+-
+-doc.clearResult();
+-dyna.Clear();
+-
+-igeo.genRectS(0,0,0,0.1,0.2,0,0.02,1);
+-
+-imeshing.genMeshByGmsh(2);
+-
+-
+-dyna.Set("Creep_Cal 1");
+-
+-dyna.Set("Creep_G_Inherit 1");
+-
+-dyna.Set("Auto_Creep_Time 0");
+-
+-dyna.Set("Elem_Plastic_Cal_Creep 0");
+-
+-dyna.Set("Output_Interval 500");
+-
+-dyna.Set("Gravity 0 0 0");
+-
+-dyna.Set("Large_Displace 0");
+-
+-//将平台网格读入dyna内核
+-blkdyn.GetMesh(imeshing);
+-
+-blkdyn.CrtIFace();
+-blkdyn.UpdateIFaceMesh();
+-
+-blkdyn.SetModel("burger");
+-
+-blkdyn.SetMat(2000,3e10, 0.3, 3e6, 1e6, 30, 10);
+-
+-blkdyn.SetCreepMat(1, 3e15, 3e9, 3e15, 3e9);
+-
+-blkdyn.BindCreepMat(1, 1, 1);
+-
+-
+-blkdyn.SetIModel("brittleMC");
+-blkdyn.SetIMat(1e12, 1e12, 30, 2e5, 2e5);
+-
+-
+-blkdyn.FixV("y",0.0, "y", -0.01, 0.001);
+-blkdyn.FixV("y",-2e-9, "y", 0.199,0.201);
+-
+-
+-
+-dyna.Monitor("block","ydis", 0.00, 0.2, 0);
+-dyna.Monitor("block","ydis", 0.02, 0.2, 0);
+-dyna.Monitor("block","ydis", 0.04, 0.2, 0);
+-dyna.Monitor("block","ydis", 0.06, 0.2, 0);
+-dyna.Monitor("block","ydis", 0.08, 0.2, 0);
+-dyna.Monitor("block","ydis", 0.08, 0.2, 0);
+-dyna.Monitor("block","ydis", 0.10, 0.2, 0);
+-
+-
+-dyna.Monitor("block","syy", 0.00, 0.2, 0);
+-dyna.Monitor("block","syy", 0.02, 0.2, 0);
+-dyna.Monitor("block","syy", 0.04, 0.2, 0);
+-dyna.Monitor("block","syy", 0.06, 0.2, 0);
+-dyna.Monitor("block","syy", 0.08, 0.2, 0);
+-dyna.Monitor("block","syy", 0.08, 0.2, 0);
+-dyna.Monitor("block","syy", 0.10, 0.2, 0);
+-
+-dyna.Monitor("block","ydis", 0.05, 0.05, 0);
+-dyna.Monitor("block","ydis", 0.05, 0.10, 0);
+-dyna.Monitor("block","ydis", 0.05, 0.15, 0);
+-dyna.Monitor("block","ydis", 0.05, 0.20, 0);
+-
+-
+-dyna.Monitor("block","syy", 0.05, 0.05, 0);
+-dyna.Monitor("block","syy", 0.05, 0.10, 0);
+-dyna.Monitor("block","syy", 0.05, 0.15, 0);
+-dyna.Monitor("block","syy", 0.05, 0.20, 0);
+-
+-
+-dyna.Set("Time_Step 36.0")
+-
+-
+-dyna.Solve(50000);
+-
+-
+-

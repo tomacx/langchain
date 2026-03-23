@@ -1,0 +1,10 @@
+--- 案例库-建模及网格案例-复杂几何边界球形粒子快速填充案例-球体案例-Test.js (ground_truth)
++++ 案例库-建模及网格案例-复杂几何边界球形粒子快速填充案例-球体案例-Test.js (generated)
+@@ -1,7 +0,0 @@
+-setCurDir(getSrcDir());
+-
+-var msh1 = imesh.importGid("ball.msh");
+-
+-pargen.addBound(msh1);
+-
+-pargen.gen(0.1, -15.05,15.05,-15.05,15.05,-15.05,15.05, 1);

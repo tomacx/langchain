@@ -530,8 +530,14 @@ class ToolConstructionModule:
         keywords = self._extract_keywords(q)
         modules = self._extract_modules(q)
 
+        # 针对 API 形式的 token，追加“全字段检索”变体，确保检索到说明/参数/范例
+        api_expanded = []
+        for m in api_like:
+            api_expanded.append(f"{m} 说明 格式定义 参数 备注 范例")
+
         variants: List[str] = []
-        for v in [q, " ".join(api_like) if api_like else "", keywords, " ".join(modules) if modules else ""]:
+        candidates = [q] + api_expanded + [" ".join(api_like) if api_like else "", keywords, " ".join(modules) if modules else ""]
+        for v in candidates:
             v = (v or "").strip()
             if v and v not in variants:
                 variants.append(v)
@@ -545,7 +551,7 @@ class ToolConstructionModule:
             "要求：\n"
             "1) 只输出 3~6 条检索短语；每条尽量短（建议 2~10 个词/字）。\n"
             "2) 优先包含可区分的动作/对象/现象/边界/结果（例如 旋转、接触、爆破、渗流、投影拉伸、非球形颗粒）。\n"
-            "3) 如能推断到模块/API英文关键词，可加入 1~2 个（例如 RotateGrid, Import, SetMat），但不要编造不存在的API。\n"
+            "3) 如能推断到模块/API英文关键词，务必加入具体API名称（例如 RotateGrid, Import, SetMat），并尝试组合 '参数'、'范例'、'说明' 等词（例如 'RotateGrid 参数'）。\n"
             "4) 严禁只给泛词：例如 案例/脚本/模拟/生成/CDyna/CDEM。\n"
         )
         user = {"query": q, "hints": {"api_like": api_like, "keywords": keywords, "modules": modules}}
@@ -631,7 +637,7 @@ class ToolConstructionModule:
 
         parts: List[str] = ["【知识库检索结果】"]
 
-        def render(title: str, docs_group: List[Any], label: str, max_n: int):
+        def render(title: str, docs_group: List[Any], label: str, max_n: int, hide_content: bool = False):
             if not docs_group:
                 return
             parts.append(f"\n【{title}】")
@@ -639,13 +645,18 @@ class ToolConstructionModule:
                 meta = doc.metadata or {}
                 source = meta.get("source") or meta.get("path") or meta.get("doc_id") or "unknown"
                 st = meta.get("source_type") or "unknown"
+                
+                if hide_content:
+                    parts.append(f"--- {label}{i} ({st}; {source}) ---\n(内容已隐藏，仅供参考来源)")
+                    continue
+                    
                 content = clip(getattr(doc, "page_content", "") or "", per_doc_chars)
                 if not content:
                     continue
                 parts.append(f"--- {label}{i} ({st}; {source}) ---\n{content}")
 
         render("技术手册 / API（优先依据）", api_docs + manual_docs, "手册/接口", max_n=max_manual_n)
-        render("案例参考（仅供结构与参数范围参考，禁止逐行抄写）", case_docs, "案例", max_n=max_case_n)
+        render("案例参考（仅供结构与参数范围参考，禁止逐行抄写）", case_docs, "案例", max_n=max_case_n, hide_content=True)
         render("其他补充", other_docs, "补充", max_n=max_other_n)
         return "\n".join(parts).strip()
 
@@ -928,8 +939,15 @@ class AgentConstructionModule:
             if len(api_like_tokens) > 8:
                 api_like_tokens = api_like_tokens[:8]
             
+            # 针对 API 形式的 token，追加“全字段检索”变体，确保检索到说明/参数/范例
+            api_expanded_queries = []
+            for token in api_like_tokens:
+                api_expanded_queries.append(f"{token} 说明 格式定义 参数 备注 范例")
+
             query_variants: List[str] = []
-            for qv in [query, keywords, " ".join(module_tokens) if module_tokens else "", " ".join(api_like_tokens) if api_like_tokens else ""]:
+            candidates = [query] + api_expanded_queries + [keywords, " ".join(module_tokens) if module_tokens else "", " ".join(api_like_tokens) if api_like_tokens else ""]
+            
+            for qv in candidates:
                 qv = (qv or "").strip()
                 if qv and qv not in query_variants:
                     query_variants.append(qv)
@@ -1314,7 +1332,62 @@ class AgentConstructionModule:
 
             if verbose:
                 print(f"RAG: {retrieved_count} chunks")
+                print("\n【参考文档内容】")
+                print(reference_context)
+                print("【参考文档结束】\n")
+            
+            # --- 意图识别与分支 ---
+            # 简单启发式：如果包含“脚本”、“生成”、“代码”、“case”、“example”且不包含“问”、“什么”、“解释”，则倾向于生成脚本
+            # 否则如果是纯疑问句，倾向于 QA
+            
+            is_coding_task = True
+            q_lower = query.lower()
+            qa_triggers = ["如何", "怎么", "什么", "解释", "含义", "介绍", "which", "what", "how", "explain", "meaning", "？", "?"]
+            code_triggers = ["脚本", "代码", "生成", "写一个", "实现", "script", "code", "generate", "implement"]
+            
+            # 1. 优先判定 Coding Task
+            if any(t in q_lower for t in code_triggers):
+                is_coding_task = True
+            # 2. 如果包含 QA 触发词，且不包含明确的代码生成指令，则判定为 QA
+            elif any(t in q_lower for t in qa_triggers):
+                is_coding_task = False
+            
+            if not is_coding_task:
+                if verbose:
+                    print("🔍 识别为 QA 问答任务")
+                
+                qa_prompt = (
+                    "【角色设定】\n"
+                    "你是 CDEM 物理仿真软件的技术支持专家。请基于参考资料回答用户问题。\n\n"
+                    "【用户问题】\n"
+                    f"{query}\n\n"
+                    "【参考资料】\n"
+                    f"{reference_context}\n\n"
+                    "【回答要求】\n"
+                    "1. 必须基于参考资料回答，不要编造。\n"
+                    "2. 如果资料中没有相关信息，请直接说明“资料不足”。\n"
+                    "3. 如果涉及 API 用法，请给出简短的代码示例（使用 ```javascript ... ```）。\n"
+                    "4. 回答要简洁明了，使用中文。\n"
+                )
+                
+                qa_resp, _, _ = run_once(qa_prompt)
+                
+                self.last_run_metrics = {
+                    "task_type": "qa",
+                    "retrieved_docs_count": int(retrieved_count),
+                    "duration_s": 0.0, 
+                }
+                
+                if verbose:
+                    print("\n【QA 回答】")
+                    print(qa_resp)
+                    print("【QA 回答结束】\n")
+                    
+                return qa_resp, time.time() - start_time, retrieved_count
 
+            if verbose:
+                print("💻 识别为 脚本生成任务")
+            
             steps = self._build_task_steps(query=query, reference_context=reference_context)
             if verbose:
                 print("任务拆解:")
@@ -1342,6 +1415,11 @@ class AgentConstructionModule:
             generated_text, retrieved_once, dur_once = run_once(base_prompt)
             retrieved_count = max(retrieved_count, retrieved_once)
             generated_code = self._extract_code(generated_text)
+            
+            if verbose:
+                print("\n【生成脚本】")
+                print(generated_code)
+                print("【生成脚本结束】\n")
             
             # 检测是否输出了 JSON 格式的伪代码
             is_json_output = generated_code.strip().startswith("{") and '"name":' in generated_code

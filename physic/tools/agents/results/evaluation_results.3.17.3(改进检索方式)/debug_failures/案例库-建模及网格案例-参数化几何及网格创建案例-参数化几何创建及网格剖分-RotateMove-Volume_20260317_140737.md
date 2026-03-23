@@ -1,0 +1,60 @@
+# Failure Analysis: 案例库-建模及网格案例-参数化几何及网格创建案例-参数化几何创建及网格剖分-RotateMove-Volume.js
+
+## Query
+请编写一个CDEM仿真脚本，实现参数化几何创建及网格剖分-RotateMove-Volume，并输出必要的结果与监测。
+
+## Generated Code
+```javascript
+
+```
+
+## Ground Truth
+```javascript
+setCurDir(getSrcDir());
+
+
+var Volume1 = igeo.genCylinderV(0, 0, 0, 0, 5, 0, 0, 5, 0, 1, 1);
+var Volume2 = igeo.genCylinderV(0, 5, 0, 0, 10, 0, 0, 5, 0, 1, 2);
+var Volume3 = igeo.genCylinderV(0, 10, 0, 0, 15, 0, 0, 4, 0, 0.5, 3);
+
+var Volume4 = igeo.genEllipSoidV(20, 0, 0, 5, 3, 2, 0.5, 4, 0, 0, 0);
+
+var Volume5 = igeo.genBrickV(40, 0, 0, 45, 10, 5, 1, 5);
+var Volume6 = igeo.genBrickV(45, 0, 0, 60, 10, 5, 1, 6);
+var Volume7 = igeo.genBrickV(60, 0, 0, 70, 15, 8, 1.5, 7);
+
+
+var aVolume1 = [Volume1, Volume2, Volume3, Volume4, Volume5, Volume6, Volume7];
+var Ope1 = igeo.rotaMove("Volume", aVolume1, -20, -10, 0, -30, 0, 5, 60);
+
+imeshing.genMeshByGmsh(3);
+
+print("Finished");
+```
+
+## Unified Diff
+```diff
+--- 案例库-建模及网格案例-参数化几何及网格创建案例-参数化几何创建及网格剖分-RotateMove-Volume.js (ground_truth)
++++ 案例库-建模及网格案例-参数化几何及网格创建案例-参数化几何创建及网格剖分-RotateMove-Volume.js (generated)
+@@ -1,20 +0,0 @@
+-setCurDir(getSrcDir());
+-
+-
+-var Volume1 = igeo.genCylinderV(0, 0, 0, 0, 5, 0, 0, 5, 0, 1, 1);
+-var Volume2 = igeo.genCylinderV(0, 5, 0, 0, 10, 0, 0, 5, 0, 1, 2);
+-var Volume3 = igeo.genCylinderV(0, 10, 0, 0, 15, 0, 0, 4, 0, 0.5, 3);
+-
+-var Volume4 = igeo.genEllipSoidV(20, 0, 0, 5, 3, 2, 0.5, 4, 0, 0, 0);
+-
+-var Volume5 = igeo.genBrickV(40, 0, 0, 45, 10, 5, 1, 5);
+-var Volume6 = igeo.genBrickV(45, 0, 0, 60, 10, 5, 1, 6);
+-var Volume7 = igeo.genBrickV(60, 0, 0, 70, 15, 8, 1.5, 7);
+-
+-
+-var aVolume1 = [Volume1, Volume2, Volume3, Volume4, Volume5, Volume6, Volume7];
+-var Ope1 = igeo.rotaMove("Volume", aVolume1, -20, -10, 0, -30, 0, 5, 60);
+-
+-imeshing.genMeshByGmsh(3);
+-
+-print("Finished");
+```

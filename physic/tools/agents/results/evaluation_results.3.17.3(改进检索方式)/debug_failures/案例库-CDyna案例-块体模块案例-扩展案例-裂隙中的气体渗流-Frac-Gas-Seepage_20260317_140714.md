@@ -1,0 +1,105 @@
+# Failure Analysis: 案例库-CDyna案例-块体模块案例-扩展案例-裂隙中的气体渗流-Frac-Gas-Seepage.js
+
+## Query
+请编写一个CDyna仿真脚本，实现Frac-Gas-Seepage，并输出必要的结果与监测。
+
+## Generated Code
+```javascript
+
+```
+
+## Ground Truth
+```javascript
+//设置当前工作路径为JavaScript脚本文件所在路径
+setCurDir(getSrcDir());
+
+//关闭力学计算开关
+dyna.Set("Mechanic_Cal 0");
+
+//包含裂隙计算模块，开辟相应内存
+dyna.Set("Config_FracSeepage 1");
+
+dyna.Set("Seepage_Mode 2");
+
+//打开裂隙渗流计算开关
+dyna.Set("FracSeepage_Cal 1");
+
+//设置3个方向的重力加速度
+dyna.Set("Gravity 0.0 0.0 0.0");
+
+//设置结果输出时步
+dyna.Set("Output_Interval 1000");
+
+//导入GiD格式的裂隙渗流网格
+fracsp.ImportGrid("gid", "Frac-Gas-Seepage.msh");
+
+//设置裂隙渗流参数，fDensity, fBulk, fScK, fInitCrackWid, fFrictionL, fFrictionU
+//对于气体渗流模式，体积模量不起作用
+fracsp.SetPropByGroup(1.293,1e7,7e-3,1e-3,1,11);
+
+//初始化压力
+fracsp.InitConditionByCoord("pp", 1e5, [0,0,0], -1e6, 1e6, -1e6, 1e6, -1e6, 1e6);
+
+
+//抽气，设置为0压力
+fracsp.ApplyConditionByCoord("pp", 0,  [0.0, 0.0, 0.0], -0.314923, -0.314921, 0.04452, 0.04453, -1, 1);
+
+//自动计算时步
+dyna.TimeStepCorrect();
+
+//求解20万步
+dyna.Solve(200000);
+
+//打印提示信息
+print("Solution Finished");
+
+```
+
+## Unified Diff
+```diff
+--- 案例库-CDyna案例-块体模块案例-扩展案例-裂隙中的气体渗流-Frac-Gas-Seepage.js (ground_truth)
++++ 案例库-CDyna案例-块体模块案例-扩展案例-裂隙中的气体渗流-Frac-Gas-Seepage.js (generated)
+@@ -1,42 +0,0 @@
+-//设置当前工作路径为JavaScript脚本文件所在路径
+-setCurDir(getSrcDir());
+-
+-//关闭力学计算开关
+-dyna.Set("Mechanic_Cal 0");
+-
+-//包含裂隙计算模块，开辟相应内存
+-dyna.Set("Config_FracSeepage 1");
+-
+-dyna.Set("Seepage_Mode 2");
+-
+-//打开裂隙渗流计算开关
+-dyna.Set("FracSeepage_Cal 1");
+-
+-//设置3个方向的重力加速度
+-dyna.Set("Gravity 0.0 0.0 0.0");
+-
+-//设置结果输出时步
+-dyna.Set("Output_Interval 1000");
+-
+-//导入GiD格式的裂隙渗流网格
+-fracsp.ImportGrid("gid", "Frac-Gas-Seepage.msh");
+-
+-//设置裂隙渗流参数，fDensity, fBulk, fScK, fInitCrackWid, fFrictionL, fFrictionU
+-//对于气体渗流模式，体积模量不起作用
+-fracsp.SetPropByGroup(1.293,1e7,7e-3,1e-3,1,11);
+-
+-//初始化压力
+-fracsp.InitConditionByCoord("pp", 1e5, [0,0,0], -1e6, 1e6, -1e6, 1e6, -1e6, 1e6);
+-
+-
+-//抽气，设置为0压力
+-fracsp.ApplyConditionByCoord("pp", 0,  [0.0, 0.0, 0.0], -0.314923, -0.314921, 0.04452, 0.04453, -1, 1);
+-
+-//自动计算时步
+-dyna.TimeStepCorrect();
+-
+-//求解20万步
+-dyna.Solve(200000);
+-
+-//打印提示信息
+-print("Solution Finished");
+```

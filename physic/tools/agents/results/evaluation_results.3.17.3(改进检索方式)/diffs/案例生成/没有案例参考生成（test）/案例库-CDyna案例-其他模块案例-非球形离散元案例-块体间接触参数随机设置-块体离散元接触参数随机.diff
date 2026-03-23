@@ -1,0 +1,82 @@
+--- 案例库-CDyna案例-其他模块案例-非球形离散元案例-块体间接触参数随机设置-块体离散元接触参数随机.js (ground_truth)
++++ 案例库-CDyna案例-其他模块案例-非球形离散元案例-块体间接触参数随机设置-块体离散元接触参数随机.js (generated)
+@@ -1,29 +1,65 @@
+-//设置当前路径为JavaScript脚本所在的路径
+ setCurDir(getSrcDir());
+ 
+-//导入genvi格式的多边形数据
+-pdyna.ImportPartGenvi("brick2d.gvx");
++// 设置结果的输出间隔为1000步
++dyna.Set("Output_Interval 1000");
+ 
+-pdyna.RandomizePartMat("density", "uniform", 1900, 2400, 1,11);
++// 关闭虚拟质量开关
++dyna.Set("If_Virtural_Mass 0");
+ 
+-pdyna.RandomizePartMat("young", "normal", 3e9, 3e8, 1,11);
++// 设置重力加速度方向为Z轴负向
++dyna.Set("Gravity 0.0 0.0 -9.8");
+ 
+-pdyna.RandomizePartMat("poisson", "normal", 0.3, 0.05, 1,11);
++// 设置接触检测容差
++dyna.Set("Contact_Detect_Tol 0.0");
+ 
+-pdyna.RandomizePartMat("cohesion", "weibull", 1.4, 1e6, 1,11);
++// 启用GiD格式输出
++dyna.Set("GiD_Out 1");
+ 
+-pdyna.RandomizePartMat("tension", "weibull", 0.9, 1e6, 1,11);
++// 设置底部刚性面边界
++var fCoord = [-1.0, 0.0, 0.0, 2.0, 0.0, 0.0];
++rdface.Create(1, 1, 2, fCoord);
++var fCoord2 = [-1.0, 0.0, 0.0, -1.0, 2.0, 0.0];
++var fCoord3 = [2.0, 0.0, 0.0, 2.0, 2.0, 0.0];
++rdface.Create(1, 1, 2, fCoord2);
++rdface.Create(1, 1, 2, fCoord3);
+ 
+-pdyna.RandomizePartMat("friction", "uniform", 10,30, 1,11);
++// 导入pdyna格式的颗粒并创建多边形块体
++// 参数说明：文件名, 半径分布模式, 下限, 上限, 角度分布模式, 下限, 上限, 边数下限, 边数上限, 厚度, 组号
++pdyna.CrtPolygonPartFromFile("block-particle.dat", "uniform", 0.8, 1.2, "uniform", 0.0, 360.0, 3, 6, 0.5, 1);
+ 
+-pdyna.RandomizePartMat("localdamp", "uniform",0.1, 0.2, 1,11);
++// 设置颗粒的基础材料参数
++pdyna.SetPartMat(2500, 5e7, 0.25, 0.0, 0.0, 30, 0.01, 0.1, 0.1);
+ 
+-pdyna.RandomizePartMat("viscdamp", "uniform",0.1, 0.2, 1,11);
++// 设置颗粒接触模型为考虑应变软化的Mohr-Coulomb模型
++pdyna.SetModel("brittleMC");
+ 
+-pdyna.RandomizePartMat("localdamprota", "uniform",0.05, 0.1, 1,11);
++// 定义颗粒分组范围：组号下限1，组号上限1
++var groupL = 1;
++var groupU = 1;
+ 
+-pdyna.ExportPartInfo("pdyna_part_info");
++// 随机化内摩擦角参数 (均匀分布，范围25-35度)
++pdyna.RandomizePartMat("friction", "uniform", 25, 35, groupL, groupU);
+ 
+-print("颗粒part信息输出完毕!");
++// 随机化平动局部阻尼参数 (正态分布，期望0.01，标准差0.005)
++pdyna.RandomizePartMat("localdamp", "normal", 0.01, 0.005, groupL, groupU);
+ 
++// 设置动态计算时步为1e-5秒
++dyna.Set("Time_Step 1e-5");
+ 
++// 自动优化计算时间步长
++dyna.TimeStepCorrect(0.5);
++
++// 启用系统能量监测
++dyna.Set("Energy_Output 1");
++
++// 启用应力监测
++dyna.Set("Stress_Output 1");
++
++// 启用破裂度监测
++dyna.Set("Damage_Output 1");
++
++// 执行仿真计算，计算5万步
++dyna.Solve(50000);
++
++// 导出计算结果文件
++dyna.Set("Output_Finish 1");

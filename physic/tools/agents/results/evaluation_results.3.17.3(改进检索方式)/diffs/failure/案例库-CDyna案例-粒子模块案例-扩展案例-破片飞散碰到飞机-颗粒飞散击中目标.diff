@@ -1,0 +1,119 @@
+--- 案例库-CDyna案例-粒子模块案例-扩展案例-破片飞散碰到飞机-颗粒飞散击中目标.js (ground_truth)
++++ 案例库-CDyna案例-粒子模块案例-扩展案例-破片飞散碰到飞机-颗粒飞散击中目标.js (generated)
+@@ -1,116 +0,0 @@
+-setCurDir(getSrcDir());
+-
+-////////////////////////////////////////////////////网格导入
+-//重力方向必须Y轴负半轴，Y方向为重力方向
+-dyna.Set("Gravity 0 -9.8 0");
+-
+-dyna.Set("Large_Displace 1");
+-
+-
+-dyna.Set("If_Virtural_Mass 0");
+-
+-dyna.Set("If_Renew_Contact 1");
+-
+-dyna.Set("Contact_Detect_Tol 2.0e-3");
+-
+-dyna.Set("Output_Interval 500");
+-
+-dyna.Set("Block_Soften_Value 0.2 0.2");
+-
+-dyna.Set("If_Cal_Particle 0");
+-
+-
+-rdface.Import("gid","SinglePlaneBound.msh");
+-
+-
+-blkdyn.ImportGrid("gid", "WH.msh");
+-
+-
+-////////////////////////////////////////////////////////////////块体、界面信息栏
+-//设置单元本构模型为线弹性模型
+-blkdyn.SetModel("linear");
+-//设置炸药参数density young poisson cohesion tension friction dilation
+-blkdyn.SetMat(1800, 3e9, 0.24, 3e5, 1e5, 0, 0, 2);
+-//设置侧壁破片参数（钢）-等效层
+-blkdyn.SetMat(9000, 4e11, 0.3, 800e5, 800e5, 0, 0, 1);
+-
+-
+-////600m/s初速度
+-//定义三个方向基础值
+-
+-var Vel = 600.0;
+-var sita = 60.0 / 180.0 * 3.1415926;
+-
+-var VelX = Vel * Math.cos(sita);
+-var VelY = -Vel * Math.sin(sita);
+-
+-
+-var values = new Array(VelX , VelY, 0);
+-//定义变化梯度
+-var gradient = new Array(0, 0, 0, 0, 0, 0, 0, 0, 0);
+-//将组号1到3范围内的节点速度初始化为设定值
+-blkdyn.InitConditionByGroup("velocity", values, gradient, 1, 3);
+-
+-
+-//设置阻尼为0
+-blkdyn.SetLocalDamp(0.01);
+-
+-//施加重力
+-blkdyn.ApplyGravity();
+-
+-
+-//设置炸药参数
+-blkdyn.SetLandauSource(1, 1800, 8070, 5.67e6, 3.0, 1.3333, 36.7e9, [5,20,-7.5], 0.0, 100);
+-//将各组号单元与对应的的Landau爆源模型序号绑定
+-blkdyn.BindLandauSource(1, 2, 2);
+-
+-
+-////////////////////////////////////////////////////////////////颗粒(破片)网格导入
+-pdyna.Import("pdyna", "Particles.dat");
+-
+-
+-////////////////////////////////////////////////////////////////颗粒信息栏
+-//脆断模型
+-pdyna.SetModel("brittleMC");
+-//密度 弹模 泊松比 抗拉强度 粘聚力 内摩擦角 局部阻尼系数 粘性阻尼系数
+-pdyna.SetMat(16930, 4.1e11, 0.2, 0, 0, 30, 0.0, 0.0);
+-
+-
+-////////////////////////////////////////////////////
+-///////////////////////起爆计算，速度进入平台期
+-dyna.Set("Time_Step 1e-7");
+-
+-blkdyn.SetModel("SoftenMC");
+-blkdyn.SetModel("Landau", 2);
+-pdyna. SetModel("none");
+-
+-dyna.Solve(5000);
+-
+-dyna.Save("blast.sav");
+-
+-////////////////////////////////////////////////
+-
+-
+-
+-/////////////////////////////////////////////////
+-///////////飞行计算
+-dyna.Set("Output_Interval 100");
+-pdyna.InheritInfoFromBlock(1,15);
+-
+-blkdyn.SetModel("none");
+-pdyna.SetModel("brittleMC");
+-
+-dyna.Set("Mechanic_Cal 0");
+-
+-dyna.Set("If_Cal_Particle 1");
+-//1-传统颗粒流； 2-PCMM 颗粒； 3-带阻力的飞行颗粒（不进行接触更新计算）
+-dyna.Set("Particle_Cal_Type 3");
+-
+-//设置飞行参数，空气密度，地面高程，空气阻力模式（1-常阻力，2-马赫阻力，3-雷诺阻力），阻力参数（1时为阻力系数，2为声速，3为动力粘度）
+-pfly.SetFlyPara( 1.069, 0.0, 2, 340.0);
+-
+-dyna.Set("Time_Step 1e-5");
+-
+-dyna.Solve(5000);
+-
+-dyna.Save("Fly.sav");
