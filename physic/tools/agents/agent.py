@@ -4,7 +4,7 @@ import time
 import difflib
 import re
 import importlib.util
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import List, Dict, Any, Optional
 from dataclasses import dataclass, asdict, field
 from datetime import datetime
@@ -24,10 +24,6 @@ try:
 except Exception:
     lc_tool = None
 from langchain_ollama import ChatOllama, OllamaEmbeddings
-try:
-    from langchain_openai import ChatOpenAI
-except Exception:
-    ChatOpenAI = None
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 from langchain.agents import create_agent
 from langchain_core.callbacks import StreamingStdOutCallbackHandler
@@ -84,6 +80,10 @@ class EvaluationResult:
     # 对比信息
     diff_unified: str = ""
     diff_file: str = ""
+
+    dataset_split: str = ""
+    saved_generated_script: str = ""
+    saved_ground_truth_script: str = ""
 
     task_steps: List[str] = field(default_factory=list)
     
@@ -1531,6 +1531,98 @@ class EvaluationModule:
                 print(f"⚠️ 无法加载查询数据集 {query_dataset_json}: {e}")
                 self.query_map = {}
 
+    def _normalize_script_content(self, text: str) -> str:
+        if text is None:
+            return ""
+        t = str(text)
+        t = t.replace("\r\n", "\n").replace("\r", "\n")
+        t = t.strip()
+        if not t:
+            return ""
+        if "```" in t:
+            pattern = r"```(?:javascript|js)?\s*\n(.*?)```"
+            matches = re.findall(pattern, t, re.DOTALL | re.IGNORECASE)
+            if matches:
+                t = (matches[0] or "").strip()
+        t = re.sub(r"[ \t]+\n", "\n", t)
+        if not t.endswith("\n"):
+            t += "\n"
+        return t
+
+    def _safe_relpath(self, filename: str) -> Path:
+        raw = (filename or "").strip()
+        if not raw:
+            return Path("unknown.js")
+        if Path(raw).is_absolute():
+            raw = Path(raw).name
+        p = PurePosixPath(raw.replace("\\", "/"))
+        parts = [x for x in p.parts if x not in {"", ".", ".."}]
+        if not parts:
+            return Path("unknown.js")
+        safe_parts = []
+        for x in parts:
+            x2 = re.sub(r'[<>:"/\\|?*\x00-\x1F]+', "_", x).strip()
+            safe_parts.append(x2 or "_")
+        return Path(*safe_parts)
+
+    def _append_jsonl(self, path: Path, obj: Dict[str, Any]) -> None:
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with open(path, "a", encoding="utf-8") as f:
+                f.write(json.dumps(obj, ensure_ascii=False) + "\n")
+        except Exception:
+            return
+
+    def _organize_case_outputs(self, dataset_split: str, filename: str, query: str, ground_truth: str, generated: str) -> Dict[str, str]:
+        enabled = (os.environ.get("CDEM_EVAL_ORGANIZE_SCRIPTS") or "1").strip().lower() not in {"0", "false", "off", "no"}
+        if not enabled:
+            return {"generated": "", "ground_truth": ""}
+
+        split = (dataset_split or "").strip().lower()
+        if split not in {"train", "test"}:
+            split = "other"
+
+        base_dir = Path((os.environ.get("CDEM_EVAL_SCRIPTS_DIR") or "").strip())
+        if not base_dir:
+            base_dir = self.output_dir / "scripts"
+        if not base_dir.is_absolute():
+            base_dir = (self.output_dir / base_dir).resolve()
+
+        rel = self._safe_relpath(filename)
+        generated_path = (base_dir / split / "generated" / rel).with_suffix(".js")
+        ground_truth_path = (base_dir / split / "ground_truth" / rel).with_suffix(".js")
+        manifest_path = base_dir / split / "manifest.jsonl"
+
+        gen_text = self._normalize_script_content(generated)
+        gt_text = self._normalize_script_content(ground_truth)
+
+        try:
+            generated_path.parent.mkdir(parents=True, exist_ok=True)
+            generated_path.write_text(gen_text, encoding="utf-8")
+        except Exception:
+            generated_path = Path("")
+
+        try:
+            ground_truth_path.parent.mkdir(parents=True, exist_ok=True)
+            ground_truth_path.write_text(gt_text, encoding="utf-8")
+        except Exception:
+            ground_truth_path = Path("")
+
+        self._append_jsonl(
+            manifest_path,
+            {
+                "filename": filename,
+                "query": query,
+                "generated_script": str(generated_path) if str(generated_path) else "",
+                "ground_truth_script": str(ground_truth_path) if str(ground_truth_path) else "",
+                "saved_at": datetime.now().isoformat(),
+            },
+        )
+        return {
+            "generated": str(generated_path) if str(generated_path) else "",
+            "ground_truth": str(ground_truth_path) if str(ground_truth_path) else "",
+        }
+
     def _read_case_text(self, file_path: Path) -> tuple[str, str]:
         data = file_path.read_bytes()
         encodings = ["utf-8", "utf-8-sig", "gb18030", "gbk", "cp936"]
@@ -1541,7 +1633,7 @@ class EvaluationModule:
                 continue
         return data.decode("utf-8", errors="replace"), "utf-8(replace)"
 
-    def evaluate_single_case(self, filename: str, ground_truth_code: str, verbose: bool = False) -> EvaluationResult:
+    def evaluate_single_case(self, filename: str, ground_truth_code: str, verbose: bool = False, dataset_split: Optional[str] = None) -> EvaluationResult:
         """评估单个测试案例"""
         if os.environ.get("CDEM_EVAL_RESET_MEMORY_PER_CASE", "1").strip() in {"1", "true", "True"}:
             try:
@@ -1593,6 +1685,9 @@ class EvaluationModule:
         diff_file = self._save_diff_file(filename=filename, diff_text=diff_unified)
 
         category = self._determine_category(filename)
+        saved = {"generated": "", "ground_truth": ""}
+        if dataset_split:
+            saved = self._organize_case_outputs(dataset_split=dataset_split, filename=filename, query=query, ground_truth=ground_truth_code, generated=generated_code)
         
         result = EvaluationResult(
             test_id=f"T{len(self.results)+1:03d}",
@@ -1609,6 +1704,9 @@ class EvaluationModule:
             retrieval_quality=retrieval_quality,
             diff_unified=diff_unified[:12000] if diff_unified else "",
             diff_file=str(diff_file) if diff_file else "",
+            dataset_split=str(dataset_split or ""),
+            saved_generated_script=saved.get("generated") or "",
+            saved_ground_truth_script=saved.get("ground_truth") or "",
             task_steps=[str(x).strip() for x in (extra.get("task_steps") or []) if str(x).strip()],
             evaluation_time=datetime.now().isoformat(),
             last_run_metrics=dict(extra),
@@ -1818,7 +1916,7 @@ class EvaluationModule:
                 print(f"  ❌ 无法读取文件: {e}")
                 continue
             
-            result = self.evaluate_single_case(filename, ground_truth, verbose=verbose)
+            result = self.evaluate_single_case(filename, ground_truth, verbose=verbose, dataset_split="train")
             result.last_run_metrics["ground_truth_encoding"] = used_enc
             self.results.append(result)
             
@@ -1853,7 +1951,7 @@ class EvaluationModule:
                 print(f"  ❌ 无法读取文件: {e}")
                 continue
             
-            result = self.evaluate_single_case(filename, ground_truth, verbose=verbose)
+            result = self.evaluate_single_case(filename, ground_truth, verbose=verbose, dataset_split="test")
             result.last_run_metrics["ground_truth_encoding"] = used_enc
             self.results.append(result)
             print(f"  ✓ 相似度: {result.similarity_score:.3f} | 质量: {result.code_quality_score:.1f}/10 | 功能: {result.functionality_score:.1f}/10")
