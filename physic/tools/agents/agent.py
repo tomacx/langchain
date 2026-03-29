@@ -5,7 +5,7 @@ import difflib
 import re
 import importlib.util
 from pathlib import Path, PurePosixPath
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple, Sequence, Protocol
 from dataclasses import dataclass, asdict, field
 from datetime import datetime
 
@@ -24,6 +24,10 @@ try:
 except Exception:
     lc_tool = None
 from langchain_ollama import ChatOllama, OllamaEmbeddings
+try:
+    from langchain_openai import ChatOpenAI
+except Exception:
+    ChatOpenAI = None
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 from langchain.agents import create_agent
 from langchain_core.callbacks import StreamingStdOutCallbackHandler
@@ -92,6 +96,113 @@ class EvaluationResult:
     notes: str = ""
     evaluation_time: str = ""
     last_run_metrics: Dict[str, Any] = field(default_factory=dict)
+
+
+def _env_flag(key: str, default: bool) -> bool:
+    raw = (os.environ.get(key) or "").strip().lower()
+    if not raw:
+        return bool(default)
+    if raw in {"1", "true", "yes", "y", "on"}:
+        return True
+    if raw in {"0", "false", "no", "n", "off"}:
+        return False
+    return bool(default)
+
+
+@dataclass
+class AgentFeatureFlags:
+    enable_vector_kb: bool = True
+    enable_tools: bool = True
+    enable_tool_query_rewrite: bool = True
+    enable_rag: bool = True
+    enable_rag_fallback: bool = True
+    enable_task_steps: bool = True
+    enable_generation_memory: bool = True
+    enable_strict_retry: bool = True
+    enable_prompt_optimizer: bool = True
+    prompt_optimizer: str = "textgrad"
+
+    @staticmethod
+    def from_env() -> "AgentFeatureFlags":
+        return AgentFeatureFlags(
+            enable_vector_kb=_env_flag("CDEM_ENABLE_VECTOR_KB", True),
+            enable_tools=_env_flag("CDEM_ENABLE_TOOLS", True),
+            enable_tool_query_rewrite=_env_flag("CDEM_ENABLE_TOOL_QUERY_REWRITE", True),
+            enable_rag=_env_flag("CDEM_ENABLE_RAG", True),
+            enable_rag_fallback=_env_flag("CDEM_ENABLE_RAG_FALLBACK", True),
+            enable_task_steps=_env_flag("CDEM_ENABLE_TASK_STEPS", True),
+            enable_generation_memory=_env_flag("CDEM_ENABLE_GENERATION_MEMORY", True),
+            enable_strict_retry=_env_flag("CDEM_ENABLE_STRICT_RETRY", True),
+            enable_prompt_optimizer=_env_flag("CDEM_ENABLE_PROMPT_OPTIMIZER", True),
+            prompt_optimizer=(os.environ.get("CDEM_PROMPT_OPTIMIZER") or "textgrad").strip().lower() or "textgrad",
+        )
+
+
+UtilityVector = Tuple[float, float, float]
+
+
+class PromptOptimizer(Protocol):
+    def optimize_retry_prompt(self, issues: Sequence[str], query: str) -> str: ...
+
+
+class TextGradPromptOptimizer:
+    def __init__(self, llm: Any):
+        self.llm = llm
+
+    def optimize_retry_prompt(self, issues: Sequence[str], query: str) -> str:
+        base = "拟合度优先：确保脚本可直接运行，补全缺失模块调用与求解入口，禁止输出 JSON/工具名。物理合规性优先：强调收敛与能量监测（若 API 支持）。"
+        candidates = [base]
+
+        if "json_output" in issues:
+            candidates.append(base + " 严禁输出 JSON；只允许输出 ```javascript 代码块```。")
+        if "tool_leak" in issues:
+            candidates.append(base + " 严禁在代码中出现 search_physics_knowledge；不要写任何检索函数。")
+        if "missing_modules" in issues:
+            candidates.append(base + " 必须补齐必要模块调用；不要省略初始化与求解入口。")
+        if "too_short" in issues:
+            candidates.append(base + " 生成完整脚本，不要输出片段或伪代码。")
+
+        allow_llm = _env_flag("CDEM_PROMPT_OPTIMIZER_USE_LLM", True)
+        if allow_llm and self.llm is not None:
+            sys = (
+                "你是提示词优化器。给定失败信号(issues)与用户需求(query)，输出一条更强的【动态优化指令】。\n"
+                "要求：必须短（<=120字）；必须包含“物理合规性优先”；必须明确禁止 JSON 与工具名；不要输出解释。"
+            )
+            user = {"issues": list(issues), "query": query}
+            try:
+                resp = self.llm.invoke([SystemMessage(content=sys), HumanMessage(content=json.dumps(user, ensure_ascii=False))])
+                text = (getattr(resp, "content", "") or "").strip()
+                if text:
+                    candidates.append(text)
+            except Exception:
+                pass
+
+        best = max(candidates, key=lambda x: self._score_prompt(x, issues))
+        return best
+
+    def _score_prompt(self, prompt: str, issues: Sequence[str]) -> float:
+        s = 0.0
+        p = prompt.lower()
+        if "物理合规" in prompt:
+            s += 3.0
+        if "禁止" in prompt and ("json" in p or "工具" in prompt):
+            s += 2.0
+        if "search_physics_knowledge" in p:
+            s += 1.0
+        if "收敛" in prompt or "能量" in prompt:
+            s += 1.0
+        if "```javascript" in p:
+            s += 0.5
+        for it in issues:
+            if it == "missing_modules" and ("模块" in prompt or "补齐" in prompt):
+                s += 1.0
+            if it == "json_output" and "json" in p:
+                s += 1.0
+            if it == "tool_leak" and "search_physics_knowledge" in p:
+                s += 1.0
+            if it == "too_short" and ("完整" in prompt or "不要输出片段" in prompt):
+                s += 1.0
+        return s
 
 
 class VectorKnowledgeBaseModule:
@@ -469,10 +580,13 @@ class QueryPreprocessor:
 
 class ToolConstructionModule:
     """工具构造模块：负责创建智能体所需的工具"""
-    def __init__(self, model_name: Optional[str] = None):
+    def __init__(self, model_name: Optional[str] = None, feature_flags: Optional[AgentFeatureFlags] = None):
         self.model_name = (model_name or os.environ.get("CDEM_TOOL_LLM_MODEL") or os.environ.get("CDEM_LLM_MODEL") or "qwen3.5-flash").strip()
         self.provider = (os.environ.get("CDEM_TOOL_LLM_PROVIDER") or os.environ.get("CDEM_LLM_PROVIDER") or "bailian").strip().lower()
-        self.enable_query_rewrite = (os.environ.get("CDEM_TOOL_QUERY_REWRITE") or "1").strip() not in {"0", "false", "off", "no"}
+        if feature_flags is not None:
+            self.enable_query_rewrite = bool(feature_flags.enable_tool_query_rewrite)
+        else:
+            self.enable_query_rewrite = (os.environ.get("CDEM_TOOL_QUERY_REWRITE") or "1").strip() not in {"0", "false", "off", "no"}
         self.debug = (os.environ.get("CDEM_TOOL_DEBUG") or "").strip() in {"1", "true", "on", "yes"}
         self._llm = self._build_llm() if self.enable_query_rewrite else None
 
@@ -726,13 +840,19 @@ class AgentConstructionModule:
         model_name: str = "llama3.1:latest",
         enable_preprocessing: bool = True,
         vectorstore: Optional[Any] = None,
+        feature_flags: Optional[AgentFeatureFlags] = None,
+        prompt_optimizer: Optional[PromptOptimizer] = None,
     ):
         self.tools = tools
         self.model_name = model_name
         self.enable_preprocessing = enable_preprocessing
         self.vectorstore = vectorstore
+        self.feature_flags = feature_flags or AgentFeatureFlags.from_env()
+        self.prompt_optimizer = prompt_optimizer
         self.last_run_metrics: Dict[str, Any] = {}
         self._build_agent()
+        if self.prompt_optimizer is None and self.feature_flags.enable_prompt_optimizer:
+            self.prompt_optimizer = TextGradPromptOptimizer(llm=getattr(self, "llm", None))
         
         self.preprocessor = None
         self.reset_generation_memory()
@@ -850,13 +970,16 @@ class AgentConstructionModule:
         
         self.system_prompt = system_prompt
         
-        # 4. 使用 LangChain 构建 AgentExecutor（必须走工具链）
-        self.agent_executor = create_agent(
-            model=self.llm,
-            tools=self.tools,
-            system_prompt=system_prompt
-        )
-        print("✅ 智能体构建完成（LangChain Agent 模式）")
+        self.agent_executor = None
+        if self.tools:
+            self.agent_executor = create_agent(
+                model=self.llm,
+                tools=self.tools,
+                system_prompt=system_prompt
+            )
+            print("✅ 智能体构建完成（LangChain Agent 模式）")
+        else:
+            print("✅ 智能体构建完成（直连模型模式，无工具）")
 
     def _determine_category(self, query: str) -> str:
         """从查询中推断目标类别，用于过滤检索结果"""
@@ -1127,6 +1250,7 @@ class AgentConstructionModule:
         start_time = time.time()
         retrieved_count = 0
         self.last_run_metrics = {}
+        flags = getattr(self, "feature_flags", None) or AgentFeatureFlags.from_env()
         
         max_recursion_limit = int(os.environ.get("CDEM_AGENT_RECURSION_LIMIT", "25"))
         max_tool_calls = int(os.environ.get("CDEM_AGENT_MAX_TOOL_CALLS", "6"))
@@ -1135,7 +1259,7 @@ class AgentConstructionModule:
         max_repeat_signature = int(os.environ.get("CDEM_AGENT_MAX_REPEAT_SIGNATURE", "6"))
         max_chunks = int(os.environ.get("CDEM_AGENT_MAX_CHUNKS", str(max_recursion_limit * 4)))
 
-        if os.environ.get("CDEM_RESET_MEMORY_EACH_CALL", "0").strip() in {"1", "true", "True"}:
+        if flags.enable_generation_memory and os.environ.get("CDEM_RESET_MEMORY_EACH_CALL", "0").strip() in {"1", "true", "True"}:
             self.reset_generation_memory()
         
         if not hasattr(self, "_generation_memory"):
@@ -1146,6 +1270,8 @@ class AgentConstructionModule:
             }
         
         def build_memory_prompt() -> str:
+            if not flags.enable_generation_memory:
+                return ""
             parts: List[str] = []
             last_feedback = (self._generation_memory.get("last_feedback") or "").strip()
             if last_feedback:
@@ -1164,7 +1290,7 @@ class AgentConstructionModule:
             
             input_messages = [HumanMessage(content=prompt_text)]
             memory_prompt = build_memory_prompt()
-            if memory_prompt:
+            if memory_prompt and flags.enable_generation_memory:
                 input_messages.insert(0, SystemMessage(content=memory_prompt))
             if dynamic_sys_prompt:
                 input_messages.insert(0, SystemMessage(content=f"【动态优化指令】\n{dynamic_sys_prompt}"))
@@ -1174,6 +1300,14 @@ class AgentConstructionModule:
             # 兼容性处理：如果 executor 期待 list，传入 list；如果期待 dict，传入 dict
             # 标准 create_agent 生成的 executor 通常接受 {"messages": ...}
             
+            if not getattr(self, "agent_executor", None):
+                try:
+                    resp = self.llm.invoke(input_messages)
+                    local_generated = getattr(resp, "content", "") or ""
+                except Exception:
+                    local_generated = ""
+                return local_generated, 0, time.time() - t0
+
             step = 0
             tool_calls = 0
             hit_limit = False
@@ -1295,11 +1429,14 @@ class AgentConstructionModule:
             search_hints: List[str] = []
 
             retrieval_query = query
-            reference_context, system_retrieved_count = self._build_reference_context(retrieval_query, search_hints=search_hints)
-            retrieved_count = max(retrieved_count, system_retrieved_count)
+            reference_context = ""
+            system_retrieved_count = 0
+            if flags.enable_rag:
+                reference_context, system_retrieved_count = self._build_reference_context(retrieval_query, search_hints=search_hints)
+                retrieved_count = max(retrieved_count, system_retrieved_count)
             
             # 增强检索逻辑：如果检索结果为空，或者第一轮检索质量可能不佳，尝试混合策略
-            if system_retrieved_count == 0:
+            if flags.enable_rag and flags.enable_rag_fallback and system_retrieved_count == 0:
                 if verbose:
                     print("RAG: 0 chunks, trying fallback...")
                 
@@ -1388,7 +1525,15 @@ class AgentConstructionModule:
             if verbose:
                 print("💻 识别为 脚本生成任务")
             
-            steps = self._build_task_steps(query=query, reference_context=reference_context)
+            if flags.enable_task_steps:
+                steps = self._build_task_steps(query=query, reference_context=reference_context)
+            else:
+                steps = [
+                    "解析需求并确定目标模块与物理过程",
+                    "确认关键 API 与参数约束",
+                    "搭建初始化、边界、载荷与求解设置",
+                    "输出可运行脚本并包含监测与输出",
+                ]
             if verbose:
                 print("任务拆解:")
                 for i, s in enumerate(steps, 1):
@@ -1431,7 +1576,7 @@ class AgentConstructionModule:
             used_strict_retry = False
             
             # 移除 retrieved_once == 0 的检查，因为我们采用了 Pre-retrieval 模式
-            if ("search_physics_knowledge" in generated_code) or len(normalized.splitlines()) < 10 or is_json_output or missing_modules:
+            if flags.enable_strict_retry and (("search_physics_knowledge" in generated_code) or len(normalized.splitlines()) < 10 or is_json_output or missing_modules):
                 used_strict_retry = True
                 if verbose:
                     print("⚠️ 首轮生成不符合要求，将触发一次严格重试...")
@@ -1454,7 +1599,24 @@ class AgentConstructionModule:
                     "1. 参考上文提供的检索结果。\n"
                     "2. 只输出 JavaScript 代码块，不要 JSON，不要包含 `search_physics_knowledge`。"
                 )
-                generated_text_strict, retrieved_retry, dur_retry = run_once(strict_prompt, dyn_prompt="拟合度优先：确保脚本可直接运行，补全缺失模块调用与求解入口，禁止输出 JSON/工具名。")
+                issues: List[str] = []
+                if is_json_output:
+                    issues.append("json_output")
+                if "search_physics_knowledge" in generated_code:
+                    issues.append("tool_leak")
+                if len(normalized.splitlines()) < 10:
+                    issues.append("too_short")
+                if missing_modules:
+                    issues.append("missing_modules")
+
+                dyn = "拟合度优先：确保脚本可直接运行，补全缺失模块调用与求解入口，禁止输出 JSON/工具名。"
+                if flags.enable_prompt_optimizer and self.prompt_optimizer is not None:
+                    try:
+                        dyn = self.prompt_optimizer.optimize_retry_prompt(issues=issues, query=query)
+                    except Exception:
+                        pass
+
+                generated_text_strict, retrieved_retry, dur_retry = run_once(strict_prompt, dyn_prompt=dyn)
                 if generated_text_strict:
                     generated_code = self._extract_code(generated_text_strict)
                     retrieved_count = max(retrieved_count, retrieved_retry, retrieved_count)
@@ -1476,15 +1638,16 @@ class AgentConstructionModule:
             
             feedback_items = self._build_feedback_items(generated_code, required_modules)
             
-            if feedback_items:
-                self._generation_memory["last_query"] = query
-                self._generation_memory["last_feedback"] = "\n".join(f"- {x}" for x in feedback_items)
-                for item in feedback_items:
-                    if item not in self._generation_memory["global_feedback"]:
-                        self._generation_memory["global_feedback"].append(item)
-            else:
-                self._generation_memory["last_query"] = query
-                self._generation_memory["last_feedback"] = ""
+            if flags.enable_generation_memory:
+                if feedback_items:
+                    self._generation_memory["last_query"] = query
+                    self._generation_memory["last_feedback"] = "\n".join(f"- {x}" for x in feedback_items)
+                    for item in feedback_items:
+                        if item not in self._generation_memory["global_feedback"]:
+                            self._generation_memory["global_feedback"].append(item)
+                else:
+                    self._generation_memory["last_query"] = query
+                    self._generation_memory["last_feedback"] = ""
 
             elapsed_time = time.time() - start_time
             return generated_code, elapsed_time, retrieved_count
@@ -2057,21 +2220,28 @@ class CDEMAgentEvaluator:
         enable_preprocessing: bool = True,
         query_dataset_json: Optional[str] = None,
         vector_db_collection: Optional[str] = None,
+        feature_flags: Optional[AgentFeatureFlags] = None,
     ):
-        # 1. 向量库模块
-        collection = (vector_db_collection or os.environ.get("CDEM_VECTOR_DB_COLLECTION") or "new_db_cdem").strip()
-        self.vector_module = VectorKnowledgeBaseModule.connect(vector_db_path, collection_name=collection)
+        self.feature_flags = feature_flags or AgentFeatureFlags.from_env()
+
+        self.vector_module = None
+        if self.feature_flags.enable_vector_kb:
+            collection = (vector_db_collection or os.environ.get("CDEM_VECTOR_DB_COLLECTION") or "new_db_cdem").strip()
+            self.vector_module = VectorKnowledgeBaseModule.connect(vector_db_path, collection_name=collection)
         
-        # 2. 工具构造模块
-        self.tool_module = ToolConstructionModule(model_name=model_name)
-        physics_tool = self.tool_module.build_physics_search_tool(self.vector_module)
+        self.tool_module = None
+        tools: List[Any] = []
+        if self.feature_flags.enable_tools and self.vector_module is not None:
+            self.tool_module = ToolConstructionModule(model_name=model_name, feature_flags=self.feature_flags)
+            physics_tool = self.tool_module.build_physics_search_tool(self.vector_module)
+            tools = [physics_tool]
         
-        # 3. 智能体构造模块
         self.agent_module = AgentConstructionModule(
-            tools=[physics_tool],
+            tools=tools,
             model_name=model_name,
             enable_preprocessing=enable_preprocessing,
-            vectorstore=self.vector_module,
+            vectorstore=self.vector_module if self.feature_flags.enable_rag else None,
+            feature_flags=self.feature_flags,
         )
         
         self.eval_module = EvaluationModule(
