@@ -1,0 +1,69 @@
+--- 案例库-SuperCDEM案例-裂隙流案例-交叉裂隙面液体流动-FracS-water.js (ground_truth)
++++ 案例库-SuperCDEM案例-裂隙流案例-交叉裂隙面液体流动-FracS-water.js (generated)
+@@ -1,27 +1,54 @@
+ setCurDir(getSrcDir());
+ 
+-//包含裂隙计算模块，开辟相应内存
++// 初始化仿真环境并开启裂隙渗流计算模块配置
+ scdem.set("Config_FracSeepage", 1);
++scdem.set("FracSeepage_Cal", 1);
++scdem.set("Seepage_Mode", 2); // 2-液体流动模式
++scdem.set("Mechanic_Cal", 1); // 开启固体力学计算（流固耦合）
+ 
+-scdem.set("FracSeepage_Cal", 1);
++// 导入或创建包含交叉裂隙的网格模型文件
++var msh = imesh.importGmsh("CrossFracture.msh");
++scdem.getMesh(msh);
+ 
+-scdem.set("Mechanic_Cal", 0);
++// 设置重力场
++scdem.gravity = [0.0, -9.81, 0.0];
+ 
+-scdem.set("gravity",[0.0,-10.0,0.0]);
++// 配置输出与监测参数
++scdem.outputInterval = 100;
++scdem.monitorIter = 10;
+ 
+-scdem.outputInterval = 1000;
++// 创建裂隙渗流网络结构（将所有单元的边界面设定为裂隙网络）
++SFracsp.createGridFromBlock(1);
+ 
+-scdem.set("Seepage_Mode", 1);
++// 连接相互交叉但不共节点的裂隙单元
++SFracsp.ElemConnection();
+ 
+-SFracsp.importGrid("gid", "fracurenet.msh");
++// 设置水介质物理参数
++var waterDensity = 1000.0; // kg/m³
++var waterBulk = 2.2e9;     // Pa (水的体积模量)
++var initCrackWid = 1e-4;   // m (初始裂隙开度)
+ 
+-SFracsp.setPropByCoord([1000.0,1e7,1e-12,1e-6], -1e5, 1e5, -1e5, 1e5, -1e5, 1e5);
++// 为指定坐标范围内的裂隙单元施加流体属性（整个模型范围）
++SFracsp.setPropByCoord([waterDensity, waterBulk, 1.2e-13, initCrackWid], 
++                       -50.0, 50.0, -50.0, 50.0, -50.0, 50.0);
+ 
+-SFracsp.applyConditionByCoord("pp", 1e6, 0,0,0, -1e5, 1e5, -0.001, 0.001, -1e5, 1e5)
++// 设定裂隙网络内的初始压力条件（初始压力为大气压）
++SFracsp.initConditionByCoord("pp", 101325.0, 
++                             -50.0, 50.0, -50.0, 50.0, -50.0, 50.0);
+ 
++// 在特定区域施加边界压力条件（左侧注入高压水）
++SFracsp.applyConditionByCoord("source", 1e7, 
++                              -50.0, 50.0, -50.0, 50.0, -49.9, -49.9, -49.9, 49.9);
+ 
+-scdem.timeStep = 100;
+-scdem.solveGpu(1000000);
++// 在另一侧施加排水边界条件（低压）
++SFracsp.applyConditionByCoord("drain", 1e5, 
++                              -50.0, 50.0, -50.0, 50.0, 49.9, 49.9, 49.9, 50.0);
+ 
+-print("finish");
++// 设置时间步长
++scdem.timeStep = 1e-6;
+ 
++// 执行求解器运行仿真
++scdem.dynaSolveGpu(10000);
++
++// 打印完成状态信息
++print("FracS-water simulation finished successfully");

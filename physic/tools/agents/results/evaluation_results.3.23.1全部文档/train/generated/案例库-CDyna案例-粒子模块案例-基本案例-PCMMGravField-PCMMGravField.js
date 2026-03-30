@@ -1,0 +1,63 @@
+setCurDir(getSrcDir());
+
+// 清除GDEM-Pdyna计算核心中的内存数据
+dyna.Clear();
+// 清除GDEM-Env中的结果数据
+doc.clearResult();
+
+// 设置结果的输出间隔为500步
+dyna.Set("Output_Interval 500");
+
+// 打开虚拟质量开关
+dyna.Set("If_Virtural_Mass 1");
+
+// 打开大变形计算开关
+dyna.Set("Large_Displace 1");
+
+// 设置虚拟质量为0.3
+dyna.Set("Virtural_Step 0.3");
+
+// 设置3个方向重力加速度
+dyna.Set("Gravity 0.0 -9.8 0.0");
+
+// 设置PCMM颗粒的接触容差
+dyna.Set("PCMM_Elem_Tol 0.5");
+
+// 设置颗粒的计算模式为2-PCMM颗粒模式
+dyna.Set("Particle_Cal_Type 2");
+
+// 创建规律排布的颗粒（1m×1m，间距0.1m）
+pdyna.RegularCreateByCoord(1, 1, 0.1, 0, 1, 0, 1, 0, 0);
+
+// 设置颗粒材料参数：密度、弹性模量、泊松比、抗拉强度、粘聚力、内摩擦角、局部阻尼、粘性阻尼系数
+pdyna.SetMat(2500, 1e10, 0.25, 1e3, 5e3, 30, 0.8, 0.0);
+
+// 设置pcmm模型为线弹性模型（组号1，起始ID=1）
+pcmm.SetModelByGroup("linear", 1, 1);
+
+// 使用ApplyQuietBoundByCoord在底部施加静态无反射边界条件（y=-1处）
+ApplyQuietBoundByCoord("y", -1.0, "xyz");
+
+// 设置监测点位置（在颗粒区域中心附近）
+DrawMonitorPos(0.5, 0.5, 0.5);
+
+// 配置结果输出选项：保存单元属性、材料信息及应力位移等结果信息
+dyna.Set("Output_Elem_Attribute 1");
+dyna.Set("Output_Mat_Info 1");
+dyna.Set("Output_Stress 1");
+dyna.Set("Output_Displacement 1");
+
+// 设置计算时步为1e-4秒
+dyna.Set("Time_Step 1e-4");
+
+// 求解至稳定（约5000步）
+dyna.Solve(5000);
+
+// 输出监测数据文件
+OutputMonitorData();
+
+// 输出模型结果到Result文件夹
+OutputModelResult();
+
+// 绘制应力云图
+Plot("Stress", "1");

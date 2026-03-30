@@ -1,0 +1,66 @@
+--- 案例库-CDyna案例-块体模块案例-扩展案例-裂隙渗流-宾汉体-理论解对比-三角形-宾汉流测试.js (ground_truth)
++++ 案例库-CDyna案例-块体模块案例-扩展案例-裂隙渗流-宾汉体-理论解对比-三角形-宾汉流测试.js (generated)
+@@ -1,14 +1,12 @@
+ //设置当前工作路径为JavaScript脚本文件所在路径
+ setCurDir(getSrcDir());
+ 
+-
++//初始化
+ igeo.clear();
+ imeshing.clear();
+ 
+ dyna.Clear();
+ doc.clearResult();
+-
+-
+ 
+ //关闭力学计算开关
+ dyna.Set("Mechanic_Cal 0");
+@@ -25,18 +23,19 @@
+ //设置结果输出时步
+ dyna.Set("Output_Interval 500");
+ 
+-///2--宾汉流
++//2--宾汉流
+ dyna.Set("Liquid_Seepage_Law 2");
+ 
+-
++//设置渗流模式
+ dyna.Set("Seepage_Mode 1");
+ 
+-
++//设置监测时步
+ dyna.Set("Monitor_Iter 100");
+ 
+-
++//导入三角形网格
+ fracsp.ImportGrid("ansys","feng-tri.dat");
+ 
++//设置参数
+ var fwidth = 1e-3;
+ var fvisc  = 1e-2;
+ 
+@@ -44,19 +43,19 @@
+ 
+ fracsp.SetSinglePropByGroup ("Strength", 1.0, 1, 11);
+ 
+-
++//设置条件
+ var grad = new Array(0, 0, 0); 
+ fracsp.ApplyConditionByCoord("pp", 1e4, grad, -0.01,0.01,-100,100,-100,100);
+ 
+-
++//设置时步
+ dyna.Set("Time_Step 0.7");
+ 
+-
+-//理论线
++//绘制理论线
+ draw.setColor(125,125,125);
+ draw.line3d(5,-1,0, 5,11, 0);
+ draw.commit();
+ 
++//运行仿真
+ dyna.DynaCycle(1e5);
+ 
+ //打印提示信息

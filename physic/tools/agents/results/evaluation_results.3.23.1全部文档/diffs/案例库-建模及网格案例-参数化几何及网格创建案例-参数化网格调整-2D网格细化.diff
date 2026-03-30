@@ -1,0 +1,101 @@
+--- 案例库-建模及网格案例-参数化几何及网格创建案例-参数化网格调整-2D网格细化.js (ground_truth)
++++ 案例库-建模及网格案例-参数化几何及网格创建案例-参数化网格调整-2D网格细化.js (generated)
+@@ -1,32 +1,77 @@
+ setCurDir(getSrcDir());
+ 
++// 1. 初始化环境 - 清除之前的几何和网格信息
++igeo.clear();
++imeshing.clear();
+ 
+-igeo.genRectS(-1,-1, 0,1,1, 0, 0.3, 1);
++// 2. 创建二维计算域基础网格 (使用DefMesh创建正交流体计算域)
++// 参数: nDim=2, afLength=[10.0, 10.0], anDiv=[50, 50]
++skwave.DefMesh(2, [10.0, 10.0], [50, 50]);
+ 
+-imeshing.genMeshByGmsh(2);
++// 3. 定义参数化网格细化区域 - 使用ZoomGrid对特定区域进行网格缩放细化
++// 缩放中心点: (5, 5), 缩放比例: x方向2倍, y方向2倍
++imeshing.zoomAndTorsion(1, 5, 5, 2, 2, 0, 0, 0, 0, 0);
+ 
++// 4. 根据坐标位置将网格划分为不同组 (SetGroupByCoord)
+ var Sel1 = new SelElems(imeshing);
+-var n1 = Sel1.box(-0.8, -0.8, 0, 0.8, 0.8, 0);
+-imeshing.refine(Sel1);
+-sleep(1000);
+ 
+-var Sel1 = new SelElems(imeshing);
+-var n1 = Sel1.box(-0.6, -0.6, 0, 0.6, 0.6, 0);
+-imeshing.refine(Sel1);
+-sleep(1000);
++// 划分区域1: x < 5 的区域
++var n1 = Sel1.box(-10, -10, 0, 5, 10, 0);
++var grp1 = "Group_Left";
++imeshing.setGroup(grp1, n1);
+ 
+-var Sel1 = new SelElems(imeshing);
+-var n1 = Sel1.box(-0.4, -0.4, 0, 0.4, 0.4, 0);
+-imeshing.refine(Sel1);
+-sleep(1000);
++// 划分区域2: x >= 5 的区域
++var n2 = Sel1.box(5, -10, 0, 10, 10, 0);
++var grp2 = "Group_Right";
++imeshing.setGroup(grp2, n2);
+ 
++// 5. 分配物理材料属性及密度参数给不同网格组
++// 区域1: 左侧区域 - 流体材料 (密度=1000 kg/m³)
++dyna.SetUDFValue([grp1, "density", 1000.0]);
++dyna.SetUDFValue([grp1, "viscosity", 0.001]);
+ 
+-var Sel1 = new SelElems(imeshing);
+-var n1 = Sel1.box(-0.2, -0.2, 0, 0.2, 0.2, 0);
+-imeshing.refine(Sel1);
+-sleep(1000);
++// 区域2: 右侧区域 - 不同流体材料 (密度=800 kg/m³)
++dyna.SetUDFValue([grp2, "density", 800.0]);
++dyna.SetUDFValue([grp2, "viscosity", 0.0008]);
+ 
+-var Sel1 = new SelElems(imeshing);
+-var n1 = Sel1.box(-0.1, -0.1, 0, 0.1, 0.1, 0);
+-imeshing.refine(Sel1);
+-sleep(1000);
++// 6. 设置边界条件 - 固定约束 (左侧边界x=0处固定)
++var SelBC = new SelElems(imeshing);
++var nBC = SelBC.box(-10, -10, 0, 0, 10, 0);
++dyna.SetBoundary(nBC, "fixed");
++
++// 7. 设置初始流体速度场 (右侧区域向右流动)
++dyna.SetUDFValue([grp2, "initialVelocityX", 5.0]);
++dyna.SetUDFValue([grp2, "initialVelocityY", 0.0]);
++
++// 8. 配置求解器输出监测点 - 记录压力与速度随时间的变化
++var SelMonitor = new SelElems(imeshing);
++var nMon1 = SelMonitor.point(5, 5, 0); // 中心监测点
++var nMon2 = SelMonitor.point(7.5, 5, 0); // 右侧监测点
++
++// 设置监测输出 (压力、速度分量)
++dyna.SetUDFValue([nMon1, "monitorType", "pressureVelocity"]);
++dyna.SetUDFValue([nMon2, "monitorType", "pressureVelocity"]);
++
++// 9. 执行仿真计算并监控求解过程状态
++var solver = new Solver();
++solver.setMaterial(imeshing);
++solver.setBoundary(solver);
++solver.setOutputMonitor(solver);
++
++// 设置求解参数
++solver.setTimeStep(1e-6); // 时步大小
++solver.setMaxTime(0.5);   // 最大仿真时间 (秒)
++solver.setNumCpu(4);      // 使用4个CPU核心并行计算
++
++// 执行求解
++var result = solver.solve();
++
++// 输出求解状态信息
++console.log("求解完成，迭代次数: " + result.iterationCount);
++console.log("收敛状态: " + (result.converged ? "收敛成功" : "未收敛"));
++
++// 10. 导出计算结果文件并生成可视化报告
++imesh.exportPDyna(imeshing, "simulation_result.dat");
++dyna.ExportMonitorData(result.monitorData, "monitor_data.csv");
++
++console.log("结果已导出到当前目录: simulation_result.dat, monitor_data.csv");

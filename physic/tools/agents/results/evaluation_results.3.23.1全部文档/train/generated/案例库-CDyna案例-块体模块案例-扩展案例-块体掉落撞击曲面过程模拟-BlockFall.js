@@ -1,0 +1,64 @@
+setCurDir(getSrcDir());
+
+// 清除旧数据
+igeo.clear();
+imeshing.clear();
+dyna.Clear();
+doc.clearResult();
+
+// ========== 1. 全局参数设置 ==========
+dyna.Set("Gravity 0 0 -9.8");
+dyna.Set("Large_Displace 1");
+dyna.Set("If_Renew_Contact 1");
+dyna.Set("Output_Interval 500");
+dyna.Set("Contact_Detect_Tol 1e-1");
+dyna.Set("If_Virtural_Mass 0");
+
+// ========== 2. 网格导入/生成 ==========
+// 导入曲面边界网格数据
+rdface.Import("ansys", "Bound.dat");
+
+// 生成块体单元（长方体）
+igeo.genBrickV(450, 450, 310, 550, 550, 400, 10, 1);
+
+// 导入曲面网格
+imeshing.genMeshByGmsh(3);
+
+// ========== 3. 块体单元模型设置 ==========
+blkdyn.GetMesh(imeshing);
+
+// 设置单元模型为线性弹性
+blkdyn.SetModel("linear");
+
+// 设置块体材料属性：密度、弹性模量、泊松比、屈服强度等
+blkdyn.SetMat(2500, 5e8, 0.3, 0, 0, 15, 0);
+
+// 设置界面模型为脆性断裂模型
+blkdyn.SetIModel("brittleMC");
+
+// 设置界面材料参数：法向/切向刚度、强度等
+blkdyn.SetIMat(5e9, 5e9, 15, 0, 0);
+
+// ========== 4. 接触面定义与更新 ==========
+blkdyn.CrtIFace();
+blkdyn.UpdateIFaceMesh();
+
+// 设置接触计算选项
+dyna.Set("If_Cal_EE_Contact 1");
+
+// ========== 5. 阻尼设置 ==========
+blkdyn.SetLocalDamp(0.02);
+
+// ========== 6. 初始条件设置 ==========
+// 给块体施加向下的初始速度（模拟掉落）
+var initialVelocity = new Array(0, 0, -10);
+blkdyn.InitConditionByGroup("velocity", initialVelocity, [0, 0, 0, 0, 0, 0, 0, 0, 0], 1, 1);
+
+// ========== 7. 时步控制 ==========
+dyna.TimeStepCorrect(0.6);
+
+// ========== 8. 执行求解 ==========
+blkdyn.Solve(40000);
+
+// ========== 9. 结果输出 ==========
+print("Simulation completed successfully!");

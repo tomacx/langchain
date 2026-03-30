@@ -1,0 +1,27 @@
+setCurDir(getSrcDir());
+
+// 配置仿真时间步长和输出间隔参数
+dyna.Set("Time_Step 1e-6");
+dyna.Set("Output_Interval 100");
+
+// 定义二维计算网格域，坐标范围[10,10]，分辨率[200,200]
+skwave.DefMesh(2, [10, 10], [200, 200]);
+
+// 初始化冲击波气体属性：初始压力1.01e5 Pa，绝热指数1.02，爆炸点坐标[0,0,0]
+skwave.InitBySphere(1.01e5, 1.02, [0, 0, 0], [0, 0, 0], 100.0);
+
+// 设置边界条件：X轴和Y轴方向均为固壁条件(1)，Z轴透射条件(0)
+skwave.SetBound(1, 1, 0);
+
+// 配置监测变量追踪流体压力
+dyna.Monitor("skwave", "sw_pp", 1, 5, 0);
+dyna.Monitor("skwave", "sw_pp", 2, 5, 0);
+
+// 配置监测变量追踪流体密度
+dyna.Monitor("skwave", "sw_dens", 1, 5, 0);
+dyna.Monitor("skwave", "sw_dens", 2, 5, 0);
+
+// 执行仿真计算过程生成时间历史数据
+dyna.DynaCycle(1e-2);
+
+print("求解完成");

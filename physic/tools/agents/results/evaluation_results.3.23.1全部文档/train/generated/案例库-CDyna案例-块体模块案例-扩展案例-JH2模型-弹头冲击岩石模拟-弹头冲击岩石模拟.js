@@ -1,0 +1,91 @@
+setCurDir(getSrcDir());
+
+// 初始化仿真环境
+dyna.Clear();
+doc.clearResult();
+
+// 设置全局计算参数
+dyna.Set("Mechanic_Cal 1");
+dyna.Set("Gravity 0 0 0");
+dyna.Set("Large_Displace 1");
+dyna.Set("If_Renew_Contact 1");
+dyna.Set("Contact_Detect_Tol 1e-4");
+dyna.Set("Output_Interval 200");
+dyna.Set("Elem_Kill_Option 1 0.5 0.5 2 2");
+dyna.Set("If_Virtural_Mass 0");
+
+// 导入岩石靶体网格
+blkdyn.ImportGrid("gid", "rock_target.msh");
+
+// 创建接触面（可选，根据实际几何调整）
+blkdyn.CrtBoundIFaceByGroup(1);
+blkdyn.UpdateIFaceMesh();
+
+// ==================== 岩石材料设置 (JH2损伤模型) ====================
+blkdyn.SetModel("JH2");
+
+// JH2参数: [E, nu, K, G, sigma_c, sigma_t, alpha, beta, gamma, delta, epsilon, A, B, C, D, E0, F]
+var rockJH2Params = [
+    8e10,      // 弹性模量 (Pa)
+    0.3,       // 泊松比
+    -1.5e11,   // K (体积模量相关)
+    2.0e11,    // G (剪切模量相关)
+    5e9,       // 抗压强度 (Pa)
+    1e10,      // 抗拉强度 (Pa)
+    1.01,      // alpha
+    0.83,      // beta
+    0.68,      // gamma
+    0.76,      // delta
+    0.005,     // epsilon
+    3.5e7,     // A (损伤参数)
+    0.01,      // B
+    0.9,       // C
+    1.0,       // D
+    7.0,       // E0
+    1.0        // F
+];
+
+blkdyn.SetJH2Mat(1, rockJH2Params);
+blkdyn.BindJH2Mat(1, 2, 2); // 将JH2材料绑定到组2的单元
+
+// ==================== 弹头材料设置 (线弹性) ====================
+blkdyn.SetModel("linear", 1); // 组1使用线弹性模型
+
+var steelParams = [
+    7800,      // 密度 (kg/m^3)
+    2.1e11,    // 弹性模量 (Pa)
+    0.3,       // 泊松比
+    8e8,       // 屈服强度 (Pa)
+    8e8,       // 抗拉强度 (Pa)
+    0,         // 断裂应变
+    0,         // 其他参数
+    1          // 材料类型标识
+];
+
+blkdyn.SetMat(7800, 2.1e11, 0.3, 8e8, 8e8, 0, 0, 1);
+
+// ==================== 接触设置 ====================
+blkdyn.SetIModel("brittleMC"); // 接触面使用脆性断裂模型
+blkdyn.SetIStrengthByElem();
+blkdyn.SetIStiffByElem(1.0);
+
+// ==================== 初始条件设置 ====================
+// 定义弹头初始速度 (沿X方向)
+var velocity = new Array(500, 0, 0); // 500 m/s
+var gradient = new Array(0, 0, 0, 0, 0, 0, 0, 0, 0);
+
+// 对组1（弹头）节点施加初始速度
+blkdyn.InitConditionByGroup("velocity", velocity, gradient, 1, 1);
+
+// 固定岩石靶体边界 (可选，根据实际几何调整)
+blkdyn.FixV("x", 0, "x", -0.001, 0.001);
+blkdyn.FixV("z", 0, "z", -0.001, 0.001);
+
+// ==================== 阻尼设置 ====================
+blkdyn.SetLocalDamp(0.01); // 局部阻尼系数
+
+// ==================== 求解设置 ====================
+dyna.TimeStepCorrect(0.5); // 时间步长修正因子
+
+// 求解 (总时长根据物理过程调整，例如20ms)
+dyna.Solve(20e-3);

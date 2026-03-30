@@ -1,0 +1,18 @@
+--- 案例库-建模及网格案例-参数化几何及网格创建案例-参数化网格调整-二维单元旋转拉伸.js (ground_truth)
++++ 案例库-建模及网格案例-参数化几何及网格创建案例-参数化网格调整-二维单元旋转拉伸.js (generated)
+@@ -1,10 +1,11 @@
+ // 设置当前目录
+ setCurDir(getSrcDir());
+ 
+-//产生二维砖块网格
+-imeshing.genBrick2D("fc",5,5,10,10);
++// 产生二维砖块网格
++imeshing.genBrick2D("fc", 5, 5, 10, 10);
+ 
+-//旋转拉伸
+-imeshing.rotaExtrude( -1, 0, 0, -1, 1,0,180, 20 );
++// 旋转拉伸
++imeshing.rotaExtrude(-1, 0, 0, -1, 1, 0, 180, 20);
+ 
++// 输出结果与监测
+ print("Finished");

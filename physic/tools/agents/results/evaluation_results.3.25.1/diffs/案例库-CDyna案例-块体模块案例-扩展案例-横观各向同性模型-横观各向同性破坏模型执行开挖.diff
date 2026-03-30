@@ -1,0 +1,139 @@
+--- 案例库-CDyna案例-块体模块案例-扩展案例-横观各向同性模型-横观各向同性破坏模型执行开挖.js (ground_truth)
++++ 案例库-CDyna案例-块体模块案例-扩展案例-横观各向同性模型-横观各向同性破坏模型执行开挖.js (generated)
+@@ -1,92 +1,61 @@
++//设置当前目录为JS脚本文件所在目录
+ setCurDir(getSrcDir());
+ 
+-doc.clearResult();
+-dyna.Clear();
+-imeshing.clear();
+-igeo.clear();
++//设置个方向的重力加速度
++dyna.Set("Gravity 0.0 -9.8 0.0");
+ 
+-var f1 = igeo.genRect(0,0,0, 60, 40, 0, 2);
++//创建三维方块网格
++blkdyn.GenBrick3D(10, 10, 10, 20, 20, 20, 1);
+ 
+-var f2 = igeo.genRect(27,20,0, 33, 24, 0, 0.5);
+-
+-var loop = [f1, f2];
+-
+-igeo.genSurface(loop, 1);
+-
+-var loop = [f2];
+-igeo.genSurface(loop, 2);
+-
+-imeshing.genMeshByGmsh(2);
+-
+-///计算
+-dyna.Set("Virtural_Step 0.5");
+-
+-dyna.Set("Output_Interval 1000");
+-
+-blkdyn.GetMesh(imeshing);
+-
++//设置单元的模型为横观各向同性模型
+ blkdyn.SetModel("TransIso");
+ 
+-blkdyn.SetMat(2500, 3e10, 0.25, 3e6, 1e6, 35, 15);
++//设置材料参数
++blkdyn.SetMat(2500, 3e10, 0.25, 3e6, 1e6, 40, 15);
+ 
++//固定底部个方向的速度
++blkdyn.FixV("xyz", 0.0, "y", -0.001, 0.001);
+ 
+-///定义各向同性面的法向,45°方向
+-var normal = new Array(1, 1, 0);
++//设置Y方向的个监测点
++dyna.Monitor("block", "ydis", 5.0, 10.0, 5.0);
++dyna.Monitor("block", "ydis", 5.0, 6.0, 5.0);
++dyna.Monitor("block", "ydis", 5.0, 2.0, 5.0);
+ 
+-///设定全局材料号为1的横观各向同性材料参数
+-//各向同性面上的弹性模量、泊松比;垂直面上的弹性模量、泊松比
+-blkdyn.SetTransIsoMat(1, 3e10, 0.25, 1e10, 0.30, normal);
++//计算前初始haul
++dyna.BeforeCal();
+ 
+-//blkdyn.SetTransIsoMat(1, 3e10, 0.25, 3e10, 0.25, normal);
++//循环计算
++for (var i = 0; i < 10000; i++) {
++    //集成核心计算
++    //var unbal = blkdyn.Solver();
+ 
+-//对组1-10的单元绑定横观各向同性材料号1
+-blkdyn.BindTransIsoMat(1, 1, 10);
++    //计算单元变形力
++    blkdyn.CalBlockForce();
+ 
+-//模型底部及四周法向约束
+-blkdyn.FixV("x", 0, "x", -0.001, 0.001);
+-blkdyn.FixV("x",0, "x", 59.99, 61);
+-blkdyn.FixV("y", 0, "y", -0.001, 0.001);
++    //计算节点运动
++    var unbal = blkdyn.CalNodeMovement();
+ 
+-for(var i = 0; i < 11; i++)
+-{
+-dyna.Monitor("block","ydis", 5 + i * 5, 40 ,0);
++    //输出监测信息
++    dyna.OutputMonitorData();
++
++    //每隔步推送信息
++    if (i != 0 && i % 100 == 0) {
++        //推送文本信息
++        print("不平衡率：" + unbal);
++
++        //推送结果信息至GDEM-Env
++        dyna.PutStep(1, i, 0.1);
++    }
+ }
+ 
+-dyna.Solve();
++//输出监测信息
++dyna.OutputMonitorData();
+ 
+-dyna.Save("elastic.sav");
++//每隔步推送信息
++if (i != 0 && i % 100 == 0) {
++    //推送文本信息
++    print("不平衡率：" + unbal);
+ 
+-//定义三个方向基础值
+-var values = new Array(0.0,0.0, 0);
+-//定义变化梯度
+-var gradient = new Array(0, 0, 0, 0, 0, 0, 0, 0, 0);
+-//将组号1到3范围内的节点位移初始化为设定值
+-blkdyn.InitConditionByGroup("displace", values, gradient, 1, 3);
+-
+-blkdyn.SetModel("none", 2);
+-
+-dyna.Solve();
+-
+-dyna.Save("excavation.sav");
+-
+-//将组号1到3范围内的节点位移初始化为设定值
+-blkdyn.InitConditionByGroup("displace", values, gradient, 1, 3);
+-
+-
+-
+-
+-///设定遍布节理面的法向
+-var normal = new Array(1, 1, 0);
+-///设定序号为1的全局遍布节理参数
+-blkdyn.SetUbiJointMat(1, 20, 1e4, 1e4, normal);
+-
+-blkdyn.BindUbiJointMat(1, 1 ,100);
+-
+-
+-blkdyn.SetModel("TransJoint", 1, 1);
+-
+-
+-dyna.Solve(30000);
+-
+-
+-
++    //推送结果信息至GDEM-Env
++    dyna.PutStep(1, i, 0.1);
++}

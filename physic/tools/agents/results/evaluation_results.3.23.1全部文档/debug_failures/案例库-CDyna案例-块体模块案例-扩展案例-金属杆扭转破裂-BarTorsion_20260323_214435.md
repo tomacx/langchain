@@ -1,0 +1,282 @@
+# Failure Analysis: 案例库-CDyna案例-块体模块案例-扩展案例-金属杆扭转破裂-BarTorsion.js
+
+## Query
+请编写一个CDyna仿真脚本，实现扩展案例-金属杆扭转破裂-BarTorsion，并输出必要的结果与监测。
+
+## Generated Code
+```javascript
+setCurDir(getSrcDir());
+
+// 初始化仿真环境
+dyna.Clear();
+doc.clearResult();
+
+// 打开力学计算开关
+dyna.Set("Mechanic_Cal 1");
+
+// 打开杆件计算开关
+dyna.Set("If_Cal_Bar 1");
+
+// 设置不平衡率
+dyna.Set("UnBalance_Ratio 1e-5");
+
+// 设置重力加速度为0
+dyna.Set("Gravity 0 0 0");
+
+// 打开大变形计算开关
+dyna.Set("Large_Displace 1");
+
+// 更新接触信息
+dyna.Set("If_Renew_Contact 1");
+
+// 设置结果输出时步
+dyna.Set("Output_Interval 500");
+
+// 设置监测信息的输出时步
+dyna.Set("Moniter_Iter 100");
+
+// 打开虚拟质量计算开关
+dyna.Set("If_Virtural_Mass 1");
+
+// 设置虚拟时步
+dyna.Set("Virtural_Step 0.5");
+
+// 设置接触检测容差
+dyna.Set("Contact_Detect_Tol 1e-3");
+
+// 设置杆件与块体耦合方式
+dyna.Set("Bar_Couple_Type 1");
+
+// 创建金属杆（通过坐标点）
+var startPoint = [0, 0, 0];
+var endPoint = [2.0, 0, 0];
+bar.CreateByCoord("bar", startPoint, endPoint);
+
+// 对杆件进行分组
+bar.SetGroupByID(1);
+
+// 设置杆件类型
+bar.SetTypeByGroup(1);
+
+// 设置杆件材料参数（密度、弹性模量、泊松比、抗拉强度、抗压强度）
+bar.SetPropByID(7800, 2.1e11, 0.25, 235e6, 235e6);
+
+// 设置杆件模型为线弹性
+bar.SetModel("linear");
+
+// 创建扭转边界条件 - 固定端（左侧）
+var fixedNodes = [0, 0, 0];
+bar.FixVelByCoord(fixedNodes, "x", 0.0);
+bar.FixVelByCoord(fixedNodes, "y", 0.0);
+bar.FixVelByCoord(fixedNodes, "z", 0.0);
+
+// 创建扭转边界条件 - 旋转端（右侧）
+var rotateNodes = [2.0, 0, 0];
+var globalVelocity = [0, 0, 0];
+bar.FixRotateVelByID(rotateNodes, 5e-6, 0.0, globalVelocity);
+
+// 配置输出策略 - 监测应力
+dyna.Monitor("bar", "sxx", 1, 0, 0);
+dyna.Monitor("bar", "syy", 1, 0, 0);
+dyna.Monitor("bar", "szz", 1, 0, 0);
+
+// 配置输出策略 - 监测应变
+dyna.Monitor("bar", "exx", 1, 0, 0);
+dyna.Monitor("bar", "eey", 1, 0, 0);
+dyna.Monitor("bar", "ezz", 1, 0, 0);
+
+// 配置输出策略 - 监测损伤度
+dyna.Monitor("bar", "damage", 1, 0, 0);
+
+// 设置分析总时长（秒）
+dyna.Set("Time_Total 1.0");
+
+// 执行求解
+dyna.Solve(100000);
+
+// 读取结果文件验证破裂情况
+var resultFile = doc.GetResultFile();
+if (resultFile) {
+    console.log("结果文件已生成：" + resultFile);
+}
+
+// 释放内存资源
+dyna.FreeUDF();
+```
+
+## Ground Truth
+```javascript
+setCurDir(getSrcDir());
+
+
+dyna.Clear();
+doc.clearResult();
+
+
+dyna.Set("Gravity 0 0 0");
+dyna.Set("Output_Interval 500");
+dyna.Set("Large_Displace 1");
+dyna.Set("If_Renew_Contact 1");
+dyna.Set("Contact_Detect_Tol 1e-3");
+dyna.Set("If_Virtural_Mass 1");
+dyna.Set("Virtural_Step 0.5");
+dyna.Set("Config_Crack_Show 1");
+
+dyna.Set("If_Contact_Use_GlobMat 1 1 1e12 1e12 1e6 1e6 0");
+
+blkdyn.ImportGrid("gid","bar-fine.msh");
+
+blkdyn.CrtBoundIFaceByGroup(1);
+blkdyn.CrtIFaceByCoord(0.02, 0.18,-1,1,-1,1);
+blkdyn.UpdateIFaceMesh();
+
+blkdyn.SetModel("MC");
+blkdyn.SetMat(7800,2.1e11,0.25,235e6,235e6,0,0);
+
+blkdyn.SetIModel("brittleMC");
+
+blkdyn.SetIStiffByElem(1.0);
+
+blkdyn.SetIStrengthByElem();
+
+
+rdface.Import("gid","rotaAppBound.msh");
+var forigin = [0,0,0];
+var fnormal = [1,0,0];
+
+var fGlobV = [0,0,0];
+
+rdface.ApplyRotateCondition(1,forigin, fnormal, 5e-6, 0.0, fGlobV, 2,2);
+
+rdface.ApplyRotateCondition(2,forigin, fnormal, -5e-6, 0.0, fGlobV, 3,3);
+
+dyna.Solve(100000);
+
+
+```
+
+## Unified Diff
+```diff
+--- 案例库-CDyna案例-块体模块案例-扩展案例-金属杆扭转破裂-BarTorsion.js (ground_truth)
++++ 案例库-CDyna案例-块体模块案例-扩展案例-金属杆扭转破裂-BarTorsion.js (generated)
+@@ -1,46 +1,97 @@
+ setCurDir(getSrcDir());
+ 
+-
++// 初始化仿真环境
+ dyna.Clear();
+ doc.clearResult();
+ 
++// 打开力学计算开关
++dyna.Set("Mechanic_Cal 1");
+ 
++// 打开杆件计算开关
++dyna.Set("If_Cal_Bar 1");
++
++// 设置不平衡率
++dyna.Set("UnBalance_Ratio 1e-5");
++
++// 设置重力加速度为0
+ dyna.Set("Gravity 0 0 0");
++
++// 打开大变形计算开关
++dyna.Set("Large_Displace 1");
++
++// 更新接触信息
++dyna.Set("If_Renew_Contact 1");
++
++// 设置结果输出时步
+ dyna.Set("Output_Interval 500");
+-dyna.Set("Large_Displace 1");
+-dyna.Set("If_Renew_Contact 1");
++
++// 设置监测信息的输出时步
++dyna.Set("Moniter_Iter 100");
++
++// 打开虚拟质量计算开关
++dyna.Set("If_Virtural_Mass 1");
++
++// 设置虚拟时步
++dyna.Set("Virtural_Step 0.5");
++
++// 设置接触检测容差
+ dyna.Set("Contact_Detect_Tol 1e-3");
+-dyna.Set("If_Virtural_Mass 1");
+-dyna.Set("Virtural_Step 0.5");
+-dyna.Set("Config_Crack_Show 1");
+ 
+-dyna.Set("If_Contact_Use_GlobMat 1 1 1e12 1e12 1e6 1e6 0");
++// 设置杆件与块体耦合方式
++dyna.Set("Bar_Couple_Type 1");
+ 
+-blkdyn.ImportGrid("gid","bar-fine.msh");
++// 创建金属杆（通过坐标点）
++var startPoint = [0, 0, 0];
++var endPoint = [2.0, 0, 0];
++bar.CreateByCoord("bar", startPoint, endPoint);
+ 
+-blkdyn.CrtBoundIFaceByGroup(1);
+-blkdyn.CrtIFaceByCoord(0.02, 0.18,-1,1,-1,1);
+-blkdyn.UpdateIFaceMesh();
++// 对杆件进行分组
++bar.SetGroupByID(1);
+ 
+-blkdyn.SetModel("MC");
+-blkdyn.SetMat(7800,2.1e11,0.25,235e6,235e6,0,0);
++// 设置杆件类型
++bar.SetTypeByGroup(1);
+ 
+-blkdyn.SetIModel("brittleMC");
++// 设置杆件材料参数（密度、弹性模量、泊松比、抗拉强度、抗压强度）
++bar.SetPropByID(7800, 2.1e11, 0.25, 235e6, 235e6);
+ 
+-blkdyn.SetIStiffByElem(1.0);
++// 设置杆件模型为线弹性
++bar.SetModel("linear");
+ 
+-blkdyn.SetIStrengthByElem();
++// 创建扭转边界条件 - 固定端（左侧）
++var fixedNodes = [0, 0, 0];
++bar.FixVelByCoord(fixedNodes, "x", 0.0);
++bar.FixVelByCoord(fixedNodes, "y", 0.0);
++bar.FixVelByCoord(fixedNodes, "z", 0.0);
+ 
++// 创建扭转边界条件 - 旋转端（右侧）
++var rotateNodes = [2.0, 0, 0];
++var globalVelocity = [0, 0, 0];
++bar.FixRotateVelByID(rotateNodes, 5e-6, 0.0, globalVelocity);
+ 
+-rdface.Import("gid","rotaAppBound.msh");
+-var forigin = [0,0,0];
+-var fnormal = [1,0,0];
++// 配置输出策略 - 监测应力
++dyna.Monitor("bar", "sxx", 1, 0, 0);
++dyna.Monitor("bar", "syy", 1, 0, 0);
++dyna.Monitor("bar", "szz", 1, 0, 0);
+ 
+-var fGlobV = [0,0,0];
++// 配置输出策略 - 监测应变
++dyna.Monitor("bar", "exx", 1, 0, 0);
++dyna.Monitor("bar", "eey", 1, 0, 0);
++dyna.Monitor("bar", "ezz", 1, 0, 0);
+ 
+-rdface.ApplyRotateCondition(1,forigin, fnormal, 5e-6, 0.0, fGlobV, 2,2);
++// 配置输出策略 - 监测损伤度
++dyna.Monitor("bar", "damage", 1, 0, 0);
+ 
+-rdface.ApplyRotateCondition(2,forigin, fnormal, -5e-6, 0.0, fGlobV, 3,3);
++// 设置分析总时长（秒）
++dyna.Set("Time_Total 1.0");
+ 
++// 执行求解
+ dyna.Solve(100000);
+ 
++// 读取结果文件验证破裂情况
++var resultFile = doc.GetResultFile();
++if (resultFile) {
++    console.log("结果文件已生成：" + resultFile);
++}
++
++// 释放内存资源
++dyna.FreeUDF();
+```

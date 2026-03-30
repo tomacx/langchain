@@ -1,0 +1,65 @@
+setCurDir(getSrcDir());
+
+// 初始化CDyna仿真环境并加载物理模块
+dyna.Clear();
+imeshing.clear();
+
+// 设置固体力学计算配置
+dyna.Set("Time_Step 1e-3");
+dyna.Set("If_Virtural_Mass 0");
+dyna.Set("Output_Interval 100");
+dyna.Set("Large_Displace 1");
+dyna.Set("If_Renew_Contact 1");
+dyna.Set("Gravity 0 0 -9.8");
+
+// 开启固体力学计算配置
+dyna.Set("Config_Mechanics 1");
+dyna.Set("Mechanic_Cal 1");
+
+// 创建刚体Part几何（立方体）
+pdyna.CreateByCoord(4000, 1, 2, 0.2, 0.3, 0.5, [0.5, 9.5], [0.5, 9.5], [0.5, 4]);
+
+// 设置刚体材料属性
+pdyna.SetMat(2500, 5e7, 0.3, 0, 0, 10, 0, 0.01);
+
+// 导入刚性面网格并自动创建Part
+rdface.Import("gid", "GidGrp.msh");
+var nTotal = rdface.CrtPartAuto("geo");
+
+// 设置刚体部件的平动和转动局部阻尼系数
+rdface.SetPartLocalDamp(0.02, 0.05);
+
+// 为Part设置初始速度（X方向1 m/s）
+var afVel = [1, 0, 0];
+var abFixed = [0, 0, 0];
+pdyna.SetPartVel(afVel, abFixed, 1, nTotal);
+
+// 启用监测功能获取转动速度分量数据
+dyna.Monitor("rdface", "rg_PartRotaVelX", 1, 0, 0);
+dyna.Monitor("rdface", "rg_PartRotaVelY", 1, 0, 0);
+dyna.Monitor("rdface", "rg_PartRotaVelZ", 1, 0, 0);
+dyna.Monitor("rdface", "rg_PartRotaVelMag", 1, 0, 0);
+
+// 启用固体不平衡率监测
+dyna.Monitor("gvalue", "gv_solid_unbal", 1, 0, 0);
+
+// 计算并输出Part的质量、质心及转动惯量信息
+var modelInfo = gFun.calArbi3DModelInfo(cMesh[2], 2500, 100, 1, 1);
+print(modelInfo);
+
+// 执行仿真计算
+dyna.TimeStepCorrect(1.0);
+dyna.Solve(100000);
+
+// 输出最终监测报告
+print("=== Part质量、质心及转动惯量监测报告 ===");
+print("Part数量: " + nTotal);
+print("密度: 2500 kg/m^3");
+print("平动阻尼系数: 0.02");
+print("转动阻尼系数: 0.05");
+print("仿真时间步长: 1e-3 s");
+print("输出间隔: 100");
+print("重力加速度: -9.8 m/s^2 (Z方向)");
+
+// 关闭脚本会话
+dyna.Clear();

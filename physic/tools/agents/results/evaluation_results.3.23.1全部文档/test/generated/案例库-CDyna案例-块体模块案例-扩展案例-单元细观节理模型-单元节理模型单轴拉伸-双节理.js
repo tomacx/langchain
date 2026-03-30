@@ -1,0 +1,90 @@
+setCurDir(getSrcDir());
+
+// 清除平台及求解器内存
+doc.clearResult();
+dyna.Clear();
+imeshing.clear();
+igeo.clear();
+
+// 创建三维长方体模型 (1m x 0.2m x 0.2m)
+blkdyn.GenBrick3D(1.0, 0.2, 0.2, 50, 4, 4, 1);
+
+// 计算时步
+dyna.Set("Virtural_Step 0.5");
+
+// 不考虑重力的影响
+dyna.Set("Gravity 0 0 0");
+
+// 云图输出间隔500
+dyna.Set("Output_Interval 500");
+
+// 打开ElemJoint本构开关
+dyna.Set("If_ElemJoint_Model 1");
+
+// ElemJoint本构的破坏模式，1为脆性断裂，2为理想弹塑性
+dyna.Set("UbJoint_Mode_Option 1");
+
+// 从网格文件从imeshing模块搭载的BlockDyna核心求解器
+blkdyn.GetMesh(imeshing);
+
+// 设置单元本构模型为MC
+blkdyn.SetModel("MC");
+
+// 设置单元材料参数 (密度, 弹性模量, 泊松比, 粘聚力, 抗拉强度, 内摩擦角, 剪胀角)
+blkdyn.SetMat(2500, 3e10, 0.25, 3e6, 1e6, 35, 15);
+
+// 设定单元节理面厚度 (m)
+var fThickness = 0.004;
+
+// 设定单元节理面长度 (m) - 对于三维计算为圆面直径
+var fLength = 0.2;
+
+// 设置第一个节理参数 (序号1)
+// 节理中心坐标: x=0.5, y=0.1, z=0.1 (穿过模型中部偏上)
+// 法向向量: [0, 1, 0] (水平节理面，沿y方向)
+var joint1Centroid = new Array(0.5, 0.1, 0.1);
+var joint1Normal = new Array(0, 1, 0);
+blkdyn.SetElemJointMat(1, 20e9, 0.25, 30, 2e6, 1e6, fThickness, fLength, joint1Centroid, joint1Normal);
+
+// 设置第二个节理参数 (序号2) - 不同位置形成双节理配置
+// 节理中心坐标: x=0.5, y=0.1, z=-0.1 (穿过模型中部偏下，与第一个节理交叉)
+// 法向向量: [0, 0, 1] (垂直节理面，沿z方向)
+var joint2Centroid = new Array(0.5, 0.1, -0.1);
+var joint2Normal = new Array(0, 0, 1);
+blkdyn.SetElemJointMat(2, 20e9, 0.25, 30, 2e6, 1e6, fThickness, fLength, joint2Centroid, joint2Normal);
+
+// 左侧法向固定 (x方向)
+blkdyn.FixV("x", 0, "x", -0.001, 0.001);
+
+// 右侧施加准静态速度载荷 (x方向拉伸)
+blkdyn.FixV("x", 3e-7, "x", 0.999, 1.001);
+
+// 设置局部阻尼为0.2
+blkdyn.SetLocalDamp(0.2);
+
+// 监测x方向正应变 (典型测点)
+dyna.Monitor("block", "soxx", 0.5, 0.0125, 0);
+dyna.Monitor("block", "soxx", 0.75, 0.0125, 0);
+
+// 监测x方向正应力 (典型测点)
+dyna.Monitor("block", "sxx", 0.5, 0.0125, 0);
+dyna.Monitor("block", "sxx", 0.75, 0.0125, 0);
+
+// 监测y方向正应力 (监测节理面法向应力)
+dyna.Monitor("block", "syy", 0.5, 0.0125, 0);
+dyna.Monitor("block", "syy", 0.75, 0.0125, 0);
+
+// 监测z方向正应力 (监测节理面法向应力)
+dyna.Monitor("block", "szz", 0.5, 0.0125, 0);
+dyna.Monitor("block", "szz", 0.75, 0.0125, 0);
+
+// 监测y方向位移 (节理面张开/闭合)
+dyna.Monitor("block", "uy", 0.5, 0.0125, 0);
+dyna.Monitor("block", "uy", 0.75, 0.0125, 0);
+
+// 监测z方向位移 (节理面张开/闭合)
+dyna.Monitor("block", "uz", 0.5, 0.0125, 0);
+dyna.Monitor("block", "uz", 0.75, 0.0125, 0);
+
+// 求解30000步
+dyna.Solve(30000);

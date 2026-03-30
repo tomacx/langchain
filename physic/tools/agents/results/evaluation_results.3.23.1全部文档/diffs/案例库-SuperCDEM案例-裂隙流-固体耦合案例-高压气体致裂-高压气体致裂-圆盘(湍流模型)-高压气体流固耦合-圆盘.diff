@@ -1,0 +1,133 @@
+--- 案例库-SuperCDEM案例-裂隙流-固体耦合案例-高压气体致裂-高压气体致裂-圆盘(湍流模型)-高压气体流固耦合-圆盘.js (ground_truth)
++++ 案例库-SuperCDEM案例-裂隙流-固体耦合案例-高压气体致裂-高压气体致裂-圆盘(湍流模型)-高压气体流固耦合-圆盘.js (generated)
+@@ -1,67 +1,84 @@
+ setCurDir(getSrcDir());
+ 
+-scdem.outputInterval = 1000;
++// ==================== 1. 初始化仿真项目基本设置 ====================
++scdem.outputInterval = 500;
+ scdem.monitorIter = 100;
++scdem.set("isLargeDisplace", 1);
++scdem.gravity = [0, 0, 0];
++scdem.isVirtualMass = 0;
++scdem.set("ubr", 1e-4);
++scdem.set("RayleighDamp", 1e-7, 0.0);
++scdem.set("isVtk", 1);
+ 
+-scdem.set("isLargeDisplace", 1);
++// ==================== 2. 启用裂隙渗流模块 ====================
++scdem.set("Config_FracSeepage", 1);
++scdem.set("FracSeepage_Cal", 1);
++scdem.set("Seepage_Mode", 2); // 气体流动模式
++scdem.set("FS_Solid_Interaction", 1); // 开启流固耦合
++scdem.set("FS_MaxWid", 6e-5); // 最大裂隙宽度
+ 
+-scdem.gravity = [0, 0, 0];
+-
+-scdem.isVirtualMass = 0;
+-
+-scdem.set("ubr", 1e-4);
+-
+-scdem.set("RayleighDamp", 1e-7, 0.0);
+-
+-//裂隙渗流模块参数设置
+-scdem.set("Config_FracSeepage", 1); 
+-scdem.set("FracSeepage_Cal", 1);
+-scdem.set("Seepage_Mode", 2);
+-scdem.set("FS_Solid_Interaction", 1);
+-scdem.set("FS_MaxWid", 1e-3);
+-
+-scdem.set("GasEos", 2); //采用多方方程进行气体流动计算
+-
+-scdem.set("FS_Frac_Start_Cal", 1);// 破裂后，流体才流入计算
+-
+-scdem.set("GasFlowModel", 2); //开启湍流流动模型
+-
+-scdem.set("CSRoughness", 0.001);
+-
+-var msh = imesh.importGmsh("gas2.msh");
++// ==================== 3. 导入圆盘几何模型 ====================
++var msh = imesh.importGmsh("DiskGeometry.msh");
+ scdem.getMesh(msh);
+ 
+-scdem.setModel("linear");
++// ==================== 4. 设置材料属性 ====================
++// 圆盘材料：密度、弹性模量、泊松比、屈服强度等
++scdem.setMat([2600, 5.5e10, 0.25, 10e6, 2.5e6, 30.0, 10.0]);
+ 
+-scdem.setMat([1700, 3e9, 0.2, 14.4e6, 3e6, 30, 15]);
++// ==================== 5. 设置气体区域参数 ====================
++var pressure = 20e6; // 初始压力 (Pa)
++var adiabaticIndex = 1.4; // 绝热指数
+ 
+-scdem.setIModel("FracE");
+-scdem.setContactFractureEnergy(10,100);
+-scdem.setIMatByElem(10);
++// 设置气体本构系数
++scdem.set("EoSCof_C", pressure / 2600);
+ 
+-oSel = new SelElemFaces(scdem);
+-oSel.cylinder(0.0, 0.0, -1.0, 0.0, 0.0, 1.0, 6.99e-3, 7.05e-3);
+-scdem.applyNonReflectionBySel(oSel);
++// ==================== 6. 初始化高压气体区域 ====================
++// 定义圆盘周围的气体多边形边界（XY平面投影）
++var gasPolygon = [
++    [-1e5, 0, 0],
++    [1e5, 0, 0],
++    [1e5, 1e5, 0],
++    [1e5, -1e5, 0]
++];
+ 
+-//z方向左右两侧固定
+-oSel = new SelNodes(scdem);
+-oSel.box(-1e10,-1e10,-1e10, 1e10,1e10,1e10);
+-scdem.setVel(oSel, "z", 0);
++// 使用 ShockWave 接口初始化气体区域
++skwave.InitByPolygon(pressure, adiabaticIndex, gasPolygon);
+ 
+-SFracsp.preFlowCrackByCylinder(0.0, 0.0, -10.0, 0.0, 0.0, 10.0, 0.0, 3.2e-3);
++// ==================== 7. 设置气体域边界条件 ====================
++// 设置四周为透射边界（0=透射，1=固壁）
++skwave.SetBound(0, 0, 0, 0); // XY平面四周透射
+ 
++// ==================== 8. 创建网格并设置流体属性 ====================
+ SFracsp.createGridFromBlock(1);
+ 
+-SFracsp.setProp([0.00, 1e7, 12e-13, 12e-9]);
++// 设置流体物性参数：密度、粘度等
++SFracsp.setProp([2600.0, 1e7, 12e-13, 12e-9]);
+ 
+-SFracsp.setPropByCylinder([170.0,1e7,12e-13,12e-9], 0.0, 0.0, -1.0 , 0.0, 0.0, 1.0, 0.0, 3.05e-3);
++// 初始化气体压力条件
++SFracsp.initConditionByCoord("pp", pressure, 0, 0, 0, -1e5, 1e5, -1e5, 1e5, -1e5, 1e5);
+ 
+-var pressure = 20e6;
++// ==================== 9. 设置圆盘表面气体作用条件 ====================
++SFracsp.applyConditionByCylinder("pp", pressure, 0, 0, 0, 0, 0, -1, 0, 0, 1, 0, 0.151);
+ 
+-SFracsp.applyConditionByCylinder("pp", pressure, 0, 0, 0, 0.0, 0.0, -1.0 , 0.0, 0.0, 1.0, 0.0, 3.05e-3);
++// ==================== 10. 设置监测点 ====================
++// 圆盘中心监测位移和压力
++scdem.monitor("fracsp", "sc_disp", 0, 0, 0);
++scdem.monitor("fracsp", "sc_pp", 0, 0, 0);
+ 
+-scdem.timeStep= 1e-9;
++// 圆盘边缘监测点（径向）
++for (var i = 1; i <= 20; i++) {
++    var r = 0.1 * i;
++    scdem.monitor("fracsp", "sc_disp", r, 0, 0);
++    scdem.monitor("fracsp", "sc_pp", r, 0, 0);
++}
+ 
+-scdem.dynaSolveGpu(100e-6);
++// ==================== 11. 设置求解参数 ====================
++scdem.timeStep = 1e-7; // 时步大小
+ 
+-print("finish");
++// ==================== 12. 提交仿真任务 ====================
++scdem.dynaSolveGpu(8); // GPU加速求解，8个线程
++
++// ==================== 13. 输出结果 ====================
++scdem.exportTextData();
++
++print("Simulation completed successfully.");

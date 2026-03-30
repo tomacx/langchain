@@ -1,0 +1,139 @@
+--- 案例库-CDyna案例-块体模块案例-扩展案例-计算弹性体应变能-计算弹性体应变能.js (ground_truth)
++++ 案例库-CDyna案例-块体模块案例-扩展案例-计算弹性体应变能-计算弹性体应变能.js (generated)
+@@ -1,83 +1,90 @@
+-
+ setCurDir(getSrcDir());
+ 
++// 清除旧结果
+ dyna.Clear();
+-
+ doc.clearResult();
+ 
+-dyna.Set("Gravity 0 0 0");
++// 设置重力加速度为负Y方向
++dyna.Set("Gravity 0.0 -9.8 0.0");
+ 
+-blkdyn.GenBrick3D(1,1,1,10,10,10,1);
++// 创建三维方块网格模型（1m x 1m x 1m，20x20x20单元）
++blkdyn.GenBrick3D(1, 1, 1, 20, 20, 20, 1);
+ 
++// 设置单元模型为线弹性类型
+ blkdyn.SetModel("linear");
+ 
+-blkdyn.SetMat(2500,3e10,0.25,1,1,1,1);
++// 设置材料参数：密度、弹性模量、泊松比、粘聚力、抗拉强度、内摩擦角、剪胀角、组号
++blkdyn.SetMat(2500, 3e10, 0.25, 1e6, 1e6, 30, 10, 1);
+ 
++// 固定底部节点在X Y Z三个方向的速度为零（Y方向约束范围-0.001到0.001）
++blkdyn.FixV("xyz", 0.0, "y", -0.001, 0.001);
+ 
+-blkdyn.ApplyConditionByCoord("face_force",[0,1e6,0],[0,0,0,0,0,0,0,0,0],-100,100,0.999,1.1,-100,100, false);
++// 设置关键位置的监测点（记录Y方向位移）
++dyna.Monitor("block", "ydis", 5.0, 10.0, 5.0);
++dyna.Monitor("block", "ydis", 5.0, 6.0, 5.0);
++dyna.Monitor("block", "ydis", 5.0, 2.0, 5.0);
+ 
+-blkdyn.FixV("y",0,"y",-1,0.001);
++// 计算前初始化操作
++dyna.BeforeCal();
+ 
+-dyna.Solve();
++// 循环执行核心求解
++for (var i = 0; i < 10000; i++) {
++    // 集成核心计算
++    var unbal = blkdyn.Solver();
+ 
++    // 计算单元变形力
++    blkdyn.CalBlockForce();
+ 
++    // 计算节点运动
++    var unbal = blkdyn.CalNodeMovement();
+ 
+-//应变能
++    // 输出监测信息
++    dyna.OutputMonitorData();
++
++    // 每隔100步推送信息
++    if (i != 0 && i % 100 == 0) {
++        print("不平衡率：" + unbal);
++        dyna.PutStep(1, i, 0.1);
++    }
++}
++
++// 计算应变能
+ var Stain_Energy = 0.0;
+-
+-//由于返回值是浮点型的，需要转化为整型进行循环
+ var TotalElem = dyna.GetValue("Total_Block_Num");
+ TotalElem = Math.round(TotalElem);
+ 
+-
+-//循环所有单元
+-for(var ielem = 1; ielem <= TotalElem; ielem++)
+-{
+-
+-var siglev = 0.0;
+-
+-//所有分量相加
+-for(var i = 1; i <= 6; i++)
+-{
+-siglev  += 0.5 * blkdyn.GetElemValue(ielem, "Stress", i) * blkdyn.GetElemValue(ielem, "Strain", i);
++for (var ielem = 1; ielem <= TotalElem; ielem++) {
++    var siglev = 0.0;
++    // 所有分量相加（6个应力分量）
++    for (var j = 1; j <= 6; j++) {
++        siglev += 0.5 * blkdyn.GetElemValue(ielem, "Stress", j) * blkdyn.GetElemValue(ielem, "Strain", j);
++    }
++    // 乘以体积
++    Stain_Energy += siglev * blkdyn.GetElemValue(ielem, "Volume");
+ }
+-
+-//乘以体积
+-Stain_Energy += siglev * blkdyn.GetElemValue(ielem, "Volume");
+-
+-}
+-
+ 
+ print("应变能 = " + Stain_Energy);
+ 
+-
++// 计算外力功
+ var TotalNode = dyna.GetValue("Total_Node_Num");
+ TotalNode = Math.round(TotalNode);
+ var addno = 0;
+ var averDisp = 0.0;
+-for(var inode = 1; inode <= TotalNode; inode++ )
+-{
+-var ycoord = blkdyn.GetNodeValue(inode,"Coord0",2);
+ 
+-
+-if(ycoord >= 0.999)
+-{
+-averDisp += blkdyn.GetNodeValue(inode,"Displace",2);
+-
+-addno++;
++for (var inode = 1; inode <= TotalNode; inode++) {
++    var ycoord = blkdyn.GetNodeValue(inode, "Coord0", 2);
++    if (ycoord >= 0.999) {
++        averDisp += blkdyn.GetNodeValue(inode, "Displace", 2);
++        addno++;
++    }
+ }
+ 
+-}
+-
+-if(addno > 0)
+-{
+-averDisp = averDisp / addno;
++if (addno > 0) {
++    averDisp = averDisp / addno;
+ }
+ 
+ var work = 1e6 * 1 * 1 * Math.abs(averDisp);
+ print("外力功 = " + work);
+ 
+-
++// 计算阻尼耗散能
+ print("阻尼耗散能 = " + (work - Stain_Energy));
+-
+-

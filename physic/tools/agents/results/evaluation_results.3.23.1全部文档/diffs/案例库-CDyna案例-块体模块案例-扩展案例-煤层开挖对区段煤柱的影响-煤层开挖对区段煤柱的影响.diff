@@ -1,0 +1,209 @@
+--- 案例库-CDyna案例-块体模块案例-扩展案例-煤层开挖对区段煤柱的影响-煤层开挖对区段煤柱的影响.js (ground_truth)
++++ 案例库-CDyna案例-块体模块案例-扩展案例-煤层开挖对区段煤柱的影响-煤层开挖对区段煤柱的影响.js (generated)
+@@ -1,156 +1,79 @@
+-////设置工作路径为当前javascript文件所在的路径
+ setCurDir(getSrcDir());
+ 
+-//打开力学计算开关
++// 初始化环境
++dyna.Clear();
++doc.clearResult();
++
++// 打开固体计算开关
+ dyna.Set("Mechanic_Cal 1");
+ 
+-//设置系统收敛的不平衡率为 1e-4
+-dyna.Set("UnBalance_Ratio 1e-4");
++// 设置系统不平衡率为1e-5
++dyna.Set("UnBalance_Ratio 1e-5");
+ 
+-//设置 3 个方向的重力加速度值
+-dyna.Set("Gravity 0 0 -9.8");
++// 设置3个方向的重力加速度
++dyna.Set("Gravity 0 -9.8 0");
+ 
+-//打开大变形计算开关
++// 打开大变形计算开关
+ dyna.Set("Large_Displace 1");
+ 
+-//设置接触更新
++// 设置计算结果的输出间隔为500步
++dyna.Set("Output_Interval 500");
++
++// 打开接触更新开关
+ dyna.Set("If_Renew_Contact 1");
+ 
+-//设置计算结果的输出间隔为 1000 步
+-dyna.Set("Output_Interval 1000");
++// 创建网格，长400m，高200m，长度方向50个网格，高度方向25个网格，组号为1
++blkdyn.GenBrick2D(400, 200, 50, 25, 1);
+ 
+-//设置监测结果的输出时步为 100 步
+-dyna.Set("Moniter_Iter 100");
++// 将设定范围内的单元变成组2（煤层区域），便于开挖
++blkdyn.SetGroupByCoord(2, 80, 320, 24, 40, -1, 1);
+ 
+-//打开虚质量计算开关
+-dyna.Set("If_Virtural_Mass 1");
++// 创建接触面，全部单元离散
++blkdyn.CrtIFace();
+ 
+-//设置虚拟时步为 0.5
+-dyna.Set("Virtural_Step 0.2");
+-
+-//设置接触容差0.4
+-dyna.Set("Contact_Detect_Tol 0.4");
+-////////////////////////////////////////////////////////////////////////////
+-
+-//导入 midas 格式的网格
+-blkdyn.ImportGrid("ansys", "mesh.dat");
+-
+-//不同组间进行切割
+-blkdyn.CrtIFace(-1,-1);
+-
+-//更新交界面网格信息
++// 更新接触拓扑
+ blkdyn.UpdateIFaceMesh();
+ 
+-//设置所有单元为线弹性模型
++// 将单元模型设置为线弹性模型
+ blkdyn.SetModel("linear");
+ 
+-//设置材料参数，分别为密度，弹性模量，泊松比，粘聚力、抗拉强度、内摩擦角、剪胀角、组号
+-blkdyn.SetMatByGroup(2300,   4.37E+10	,    0.28,	2.17E+06,    1.83E+06,   25.0,   5,   1);//覆岩
+-blkdyn.SetMatByGroup(1380,   4.91E+09	,    0.24,	1.25E+06,    5.00E+05,   32.0,   5,   2);//煤层
+-blkdyn.SetMatByGroup(2219,   1.28E+10	,    0.26,	2.50E+06,    1.30E+06,   31.5,   5,   3);//基岩
+-																
+-//设置所有单元为线弹性模型
++// 设置材料参数：密度、弹性模量、泊松比、剪切模量、屈服强度、断裂能
++blkdyn.SetMat(2500, 1e10, 0.25, 1e6, 0.8e6, 40.0, 10.0);
++
++// 设置接触模型为线弹性
+ blkdyn.SetIModel("linear");
+ 
++// 设置接触参数，从单元中继承
++blkdyn.SetIStiffByElem(1);
+ blkdyn.SetIStrengthByElem();
+-blkdyn.SetIStiffByElem(10);														
+ 
+-//X 方向左侧法向约束
+-blkdyn.FixVByCoord("x", 0.0, -0.1, 0.1,  -1,110,  -1,110);
++// 模型底部施加全约束
++blkdyn.FixV("y", 0.0, "y", -0.01, 0.01);
+ 
+-//X 方向右侧法向约束
+-blkdyn.FixVByCoord("x", 0.0, 99, 101,  -1,110,  -1,110);
++// 模型左右两侧施加法向约束
++blkdyn.FixV("x", 0.0, "x", -0.01, 0.01);
++blkdyn.FixV("x", 0.0, "x", 399.99, 401);
+ 
+-//Y 方向左侧法向约束
+-blkdyn.FixVByCoord("y", 0.0, -1,110,  -0.1,0.1, -1, 110);
++// 监测块体破坏度
++dyna.Monitor("gvalue", "gv_block_broken_ratio");
+ 
+-//Y 方向右侧法向约束
+-blkdyn.FixVByCoord("y", 0.0, -1,110,  99,101, -1, 110);
++// 监测竖直应力
++dyna.Monitor("block", "syy", 200, 150, 0);
+ 
+-//z方向底部法向约束
+-blkdyn.FixVByCoord("z", 0.0, -1,110,  -1,110, -0.1,0.1);
++// 监测水平应力
++dyna.Monitor("block", "sxx", 200, 150, 0);
+ 
+-//blkdyn.FixVAuto();
++// 监测Y方向位移
++dyna.Monitor("block", "dis_y", 200, 150, 0);
+ 
+-//模型顶部施加面力
+-var fVar = [0,0,-5e6];
+-var fGrad = [0,0,0,0,0,0,0,0,0];
+-blkdyn.ApplyConditionByCoord("face_force", fVar, fGrad, -1,101, -1,101, 39,41, false);
++// 设置数据输出文件路径与格式
++dyna.Set("SaveFile_Out 1");
+ 
+-//设置全部节点的局部阻尼为 0.8
+-blkdyn.SetLocalDamp(0.8);
++// 求解至稳定
++dyna.Solve();
+ 
+-//弹性计算
+-dyna.Solve();
+-dyna.Save("linear.sav");
+-//dyna.Restore("linear.sav");
+-
+-
+-//将所有单元的计算模型设定为 Mohr-Coulomb 理想弹塑性模型
+-blkdyn.SetModel("softenMC");
+-//塑性计算
+-dyna.Solve();
+-dyna.Save("softenMC.sav");
+-//dyna.Restore("softenMC.sav");
+-
+-//初始化地应力
+-var values = [0, 0, 0];
+-var gradient = [0,0,0,0,0,0,0,0,0];
+-blkdyn.InitConditionByCoord("displace", values, gradient, -1e5, 1e5, -1e5, 1e5, -1e5, 1e5);
+-//////////////////////////////////////////////////////////////////////////////////////////////////////
+-
+-//弹簧脆断
+-blkdyn.SetIModel("brittleMC");
+-
+-blkdyn.SetLocalDamp(0.1);
+-
+-//构造采空区
+-blkdyn.SetGroupByCoord(4, 20, 60, 0,100, 10,15);
+-blkdyn.SetModelByCoord("none", 20, 60, 0,100, 10,15); 
+-
+-//构造巷道
+-blkdyn.SetGroupByCoord(4,  68, 72, 0,100, 10,15);
+-blkdyn.SetModelByCoord("none", 68, 72, 0,100, 10,15); 
+-
+-//构造区段煤柱
+-blkdyn.SetGroupByCoord(4,  60, 68, 40,48, 10,15);
+-blkdyn.SetModelByCoord("none", 60, 68, 40,48, 10,15);
+-
+-
+-//求解至稳定
+-dyna.Solve(10000);
+-
+-//保持save文件
+-dyna.Save("caikongqu.sav"); 
+-//dyna.Restore("caikongqu.sav");
+-
+-//监测测点
+-for (var i = 4; i <= 96; )
+-{
+-	dyna.Monitor("block", "syy", 64, i, 15);
+-	i += 4;
+-}
+-
+-dyna.Set("Time_Now 0");
+-
+-//工作面开采
+-//沿y轴正方向开挖，每次开挖8m
+-for(var istage = 0; istage < 8; istage++)
+-{
+-	var ycoord1 = istage * 8;
+-	var ycoord2 = istage * 8 + 8;
+-   
+-                blkdyn.SetGroupByCoord(5 + istage, 72, 100, ycoord1, ycoord2, 10, 15);
+-    	blkdyn.SetModelByCoord("none", 72, 100, ycoord1, ycoord2, 10, 15); 
+-
+-    //求解1万步
+-    dyna.Solve(10000);
+-
+-    ///保持save文件
+-    var string = ycoord1 + "-" + ycoord2 + ".sav";
+-    dyna.Save(string); 
+-    //dyna.Restore(string);
+-}
+-
+-//打印求解信息
+-print("Solution Finished");
++// 绘制云图分析开挖对煤柱稳定性的影响
++blkdyn.Plot("syy", "竖直应力分布");
++blkdyn.Plot("sxx", "水平应力分布");
++blkdyn.Plot("dis_y", "竖向位移分布");
++blkdyn.Plot("broken_ratio", "破坏度分布");

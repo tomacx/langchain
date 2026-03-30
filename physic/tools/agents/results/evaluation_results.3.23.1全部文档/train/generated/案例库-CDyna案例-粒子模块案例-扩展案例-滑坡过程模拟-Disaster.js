@@ -1,0 +1,76 @@
+setCurDir(getSrcDir());
+
+// 初始化仿真环境
+dyna.Clear();
+doc.ClearResult();
+
+// 设置输出间隔为500步
+dyna.Set("Output_Interval 500");
+
+// 关闭虚质量计算开关
+dyna.Set("If_Virtural_Mass 0");
+
+// 设置三个方向的重力加速度 (x, y, z)
+dyna.Set("Gravity 0.0 0.0 -9.8");
+
+// 设置接触容差为0.001m
+dyna.Set("Contact_Detect_Tol 0.001");
+
+// 设置沙漏阻尼系数 (根据手册，动态真实质量问题取0.05-0.15)
+dyna.Set("HourGlass_Damp_Factor 0.15");
+
+// 设置计算时步为5e-3秒
+dyna.Set("Time_Step 5e-3");
+
+// 设置不平衡率阈值用于SuperCal终止条件
+dyna.Set("UnBalance_Ratio 1e-4");
+
+// 导入颗粒模型文件
+pdyna.Import("gid", "particle-coarse.msh");
+
+// 根据颗粒的ID号重新设置颗粒的组号（可选，根据需要调整）
+// pdyna.SetGroupByID(3, 1, 1111111);
+
+// 设置颗粒模型为脆性断裂模型
+pdyna.SetModel("brittleMC");
+
+// 设置颗粒的材料参数：密度、弹性模量、泊松比、抗拉强度、粘聚力、内摩擦角、局部阻尼、粘性阻尼系数
+// 岩土材料典型参数：密度2500kg/m³, E=1e8 Pa, ν=0.25, 抗拉强度0.0 MPa, 粘聚力0.0 MPa, 内摩擦角25度
+pdyna.SetMat(2500, 1e8, 0.25, 0.0, 0.0, 25, 0.0, 0.3);
+
+// 设置颗粒超出范围后清除颗粒（可选，根据模拟区域大小调整）
+dyna.Set("Particle_Out_Kill 1 0 1870 0 2000 2000 4000 0");
+
+// 导入刚性面边界（滑坡体边界约束）
+rdface.Import(2, "bound-mesh.msh");
+
+// 创建监测点用于位移和速度监测
+dyna.Monitor("block", "xdis", 10, 10, 0);
+dyna.Monitor("block", "xdis", 14.2, 16.3, 0);
+dyna.Monitor("block", "xdis", 20, 25, 0);
+
+// 设置块体模块的破裂参数（可选，如需使用块体模块）
+// blkdyn.SetModel("linear");
+// blkdyn.SetMat(2200, 1e9, 0.3, 2e4, 2e4, 25, 15);
+
+// 设置接触关系以支持耦合转化过程模拟
+// dyna.Set("If_Contact_Use_GlobMat 1 2 1e8 1e8 0.0 0.0 0.0");
+
+// 执行求解，迭代1万步
+dyna.Solve(50000);
+
+// 调用SuperCal函数设定计算终止条件（不平衡率阈值）
+// HistNo=1表示第一个监测点，UnBalRatio=1e-4为不平衡率阈值
+dyna.SuperCal(10, 1000, 1e-4, 1, 0, 1e6);
+
+// 设置块体软化参数（可选，用于模拟滑坡过程中的材料软化）
+dyna.Set("Block_Soften_Value 3e-3 9e-3");
+
+// 初始化边界条件（可选，如需施加初始位移或速度）
+// blkdyn.InitConditionByGroup("displace", [0,0,0], [0,0,0,0,0,0,0,0,0], 1, 1);
+
+// 读取输出文件生成结果（通过doc模块访问）
+// doc.GetResult() 可获取位移场、速度场等数据
+
+// 保存最终报告
+doc.SaveReport("滑坡模拟报告.txt");

@@ -1,0 +1,211 @@
+--- 案例库-CDyna案例-块体模块案例-脚本功能库-锚杆轴力绘制.js (ground_truth)
++++ 案例库-CDyna案例-块体模块案例-脚本功能库-锚杆轴力绘制.js (generated)
+@@ -1,133 +1,104 @@
+ setCurDir(getSrcDir());
+ 
+-draw.clear();
+-draw.commit();
++// 设置网格尺寸
++var size = 0.3;
+ 
+-var TotalBar = Math.round(dyna.GetValue("Total_Bar_Num"));
++// 创建边坡多边形面域
++var feng = new Array();
++feng[0] = [0, 0, 0, size];
++feng[1] = [10, 0, 0, size];
++feng[2] = [10, 6, 0, size];
++feng[3] = [7, 6, 0, size];
++feng[4] = [3, 3, 0, size];
++feng[5] = [0, 3, 0, size];
++igeo.genPloygenS(feng, 1);
+ 
+-////最大力处的宽度
+-var MaxWidth = 0.3;
++// 划分二维网格
++imeshing.genMeshByGmsh(2);
+ 
+-var MaxForce = -1e20;
++// 从平台读取网格
++blkdyn.GetMesh(imeshing);
+ 
+-/////找到力的最大值
+-for(var ibar = 1; ibar <= TotalBar; ibar++)
+-{
+-var TotalSeg = Math.round( bar.GetBarInfo(ibar,"TotalSeg") );
++// 设置块体模型为线性弹性模型
++blkdyn.SetModel("linear");
+ 
+-for(var iseg = 1; iseg <= TotalSeg ; iseg++)
+-{
+-var LocalForce = Math.abs(  bar.GetSegValue(ibar,iseg,"LocalForce", 3) );
++// 设置块体材料参数：密度、弹性模量、泊松比、抗拉强度、抗压强度、内摩擦角、粘聚力
++blkdyn.SetMat(2500, 3e8, 0.25, 3e3, 3e3, 15, 10);
+ 
+-if(LocalForce > MaxForce)
+-{
+-MaxForce = LocalForce;
+-}
+-}
+-}
+-/////////////////////////////////////
++// 固定边坡底部及两侧节点位移
++blkdyn.FixV("x", 0, "x", -0.01, 0.001);
++blkdyn.FixV("x", 0, "x", 9.99, 10.01);
++blkdyn.FixV("y", 0, "y", -0.001, 0.001);
+ 
+-for(var ibar = 1; ibar <= TotalBar; ibar++)
+-{
+-var TotalSeg = Math.round( bar.GetBarInfo(ibar,"TotalSeg") );
++// 创建第1根锚索
++var fArrayCoord1 = [4, 3.75, 0];
++var fArrayCoord2 = [1, -0.694444444, 0];
++bar.CreateByDir("cable", fArrayCoord1, fArrayCoord2, 3, 20);
+ 
+-for(var iseg = 1; iseg <= TotalSeg ; iseg++)
+-{
+-var failtype = bar.GetSegValue(ibar,iseg,"FailType");
++// 创建第2根锚索
++var fArrayCoord1 = [5, 4.5, 0];
++var fArrayCoord2 = [1, -0.694444444, 0];
++bar.CreateByDir("cable", fArrayCoord1, fArrayCoord2, 3, 20);
+ 
+-var LocalForce = bar.GetSegValue(ibar,iseg,"LocalForce", 3);
++// 创建第3根锚索
++var fArrayCoord1 = [6, 5.25, 0];
++var fArrayCoord2 = [1, -0.694444444, 0];
++bar.CreateByDir("cable", fArrayCoord1, fArrayCoord2, 3, 20);
+ 
+-var DeltL = MaxWidth * Math.abs(LocalForce) / MaxForce;
++// 设置所有锚索的力学模型为可破坏模型
++bar.SetModelByID("failure", 1, 100);
+ 
+-if(LocalForce > 0.0)
+-{
+-draw.SetColor(255,0,0);
+-}
+-else
+-{
+-draw.SetColor(0,0,0);
+-}
++// 定义自由段锚索材料参数
++var BarPropFree = [1e-2, 7800.0, 1e10, 0.25, 235e6, 235e6, 0.0, 0.0, 1e9, 0.8, 0.0];
+ 
+-//if(failtype > 0.0001)  ///发生破坏
+-{
+-var PC1= new Array(3);
+-var PC2= new Array(3);
+-var PC3= new Array(3);
+-var PC4= new Array(3);
++// 定义锚固段锚索材料参数
++var BarPropBond = [1e-2, 7800.0, 1e10, 0.25, 235e6, 235e6, 1e6, 35, 1e9, 0.8, 0.0];
+ 
+-var Coord1x = bar.GetNodeValue (ibar, iseg, "Coord",1);
+-var Coord1y = bar.GetNodeValue (ibar, iseg, "Coord",2);
+-var Coord1z = 0.2;
++// 指定每根锚索的自由段材料（节点1-10）
++bar.SetPropByID(BarPropFree, 1, 10, 1, 15);
+ 
++// 指定每根锚索的锚固段材料（节点16-20）
++bar.SetPropByID(BarPropBond, 1, 10, 16, 20);
+ 
+-var Coord2x = bar.GetNodeValue (ibar, iseg+1, "Coord",1);
+-var Coord2y = bar.GetNodeValue (ibar, iseg+1, "Coord",2);
+-var Coord2z = 0.2;
++// 在每根锚索的第一个节点上施加预应力，为10kN
++bar.ApplyPreTenForce(1e4, 1, 11, 1, 1);
++bar.ApplyPreTenForce(1e4, 2, 11, 1, 1);
++bar.ApplyPreTenForce(1e4, 3, 11, 1, 1);
+ 
++// 打开杆件计算开关
++dyna.Set("If_Cal_Bar 0");
+ 
+-PC1[2] = PC2[2] = PC3[2] = PC4[2] = 0.1;
++// 设置大变形计算开关
++dyna.Set("Large_Displace 1");
+ 
+-var DeltX = Coord2x  -  Coord1x;
+-var DeltY = Coord2y  -  Coord1y;
++// 设置计算输出间隔为500步
++dyna.Set("Output_Interval 500");
+ 
++// 设置监测信息的输出时步为100步
++dyna.Set("Monitor_Iter 100");
+ 
+-if(Math.abs(DeltX) < 1e-3)
+-{
+-PC1[0] = Coord1x - DeltL;
+-PC1[1] = Coord1y;
++// 打开虚拟质量计算开关
++dyna.Set("If_Virtural_Mass 1");
+ 
+-PC2[0] = Coord1x + DeltL;
+-PC2[1] = Coord1y;
++// 设置虚拟时步为0.5
++dyna.Set("Virtural_Step 0.5");
+ 
+-PC3[0] = Coord2x + DeltL;
+-PC3[1] = Coord2y;
++// 设置重力加速度（Y方向）
++dyna.Set("Gravity 0 9.8 0");
+ 
+-PC4[0] = Coord2x - DeltL;
+-PC4[1] = Coord2y;
+-}
+-else if(Math.abs(DeltY) < 1e-3)
+-{
+-PC1[0] = Coord1x;
+-PC1[1] = Coord1y - DeltL;
++// 设置局部阻尼为0.2
++blkdyn.SetLocalDamp(0.2);
+ 
+-PC2[0] = Coord1x;
+-PC2[1] = Coord1y + DeltL;
++// 监测锚索轴力
++dyna.Monitor("bar", "Force", 1, 1, 0);
++dyna.Monitor("bar", "Force", 2, 1, 0);
++dyna.Monitor("bar", "Force", 3, 1, 0);
+ 
+-PC3[0] = Coord2x;
+-PC3[1] = Coord2y + DeltL;
++// 设置结果输出文件路径
++dyna.Set("Output_File_Name cdyna_result");
+ 
+-PC4[0] = Coord2x;
+-PC4[1] = Coord2y - DeltL;
+-}
+-else
+-{
+-var diak = DeltY / DeltX;
+-var diak2 = -1.0 / diak;
+-var sita1 = Math.atan(diak2);
+-var sita2 = sita1 + Math.PI;
++// 执行求解，计算14万步
++dyna.Solve(140000);
+ 
+-PC1[0] = Coord1x + Math.cos(sita1) * DeltL;
+-PC1[1] = Coord1y + Math.sin(sita1) * DeltL;
+-
+-PC2[0] = Coord1x + Math.cos(sita2) * DeltL;
+-PC2[1] = Coord1y + Math.sin(sita2) * DeltL;
+-
+-PC3[0] = Coord2x + Math.cos(sita2) * DeltL;
+-PC3[1] = Coord2y + Math.sin(sita2) * DeltL;
+-
+-PC4[0] = Coord2x + Math.cos(sita1) * DeltL;
+-PC4[1] = Coord2y + Math.sin(sita1) * DeltL;
+-
+-}
+-
+-
+-draw.polygon(PC1[0],  PC1[1], PC1[2],   PC2[0],  PC2[1], PC2[2],    PC3[0],  PC3[1], PC3[2],   PC4[0],  PC4[1], PC4[2] );
+-
+-}
+-
+-}
+-}
+-
+-draw.commit();
+-
+-
++// 绘制锚杆轴力云图
++dyna.Plot("Bar", "Force");

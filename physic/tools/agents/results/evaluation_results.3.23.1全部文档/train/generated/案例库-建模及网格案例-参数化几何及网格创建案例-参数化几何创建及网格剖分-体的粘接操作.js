@@ -1,0 +1,110 @@
+setCurDir(getSrcDir());
+
+// 初始化环境
+igeo.clear();
+imeshing.clear();
+
+// ========== 1. 参数化创建三维实体几何模型 ==========
+
+// 创建第一个长方体（基座）
+var Volume1 = igeo.genBrick3D(0, 0, 0, 2.0, 2.0, 1.0, 1);
+
+// 创建第二个圆柱体（上部结构）
+var Volume2 = igeo.genCylinderV(1.0, 0.5, 0, 1.0, 0.5, -4, 2, 4, 0.3, 0.3, 2);
+
+// 将两个体进行粘接操作
+var Volume3 = igeo.glue("Volume", Volume2, Volume1);
+
+// ========== 2. 设置几何体材料属性及物理力学参数 ==========
+
+// 为基座体设置材料参数（混凝土）
+imeshing.setValue("MaterialID", 1);
+imeshing.setValue("Density", 2400.0);
+imeshing.setValue("YoungModulus", 30e9);
+imeshing.setValue("PoissonRatio", 0.2);
+imeshing.setValue("YieldStress", 30e6);
+
+// 为圆柱体设置材料参数（钢材）
+imeshing.setValue("MaterialID", 2);
+imeshing.setValue("Density", 7850.0);
+imeshing.setValue("YoungModulus", 210e9);
+imeshing.setValue("PoissonRatio", 0.3);
+imeshing.setValue("YieldStress", 250e6);
+
+// ========== 3. 对参数化几何模型进行网格剖分处理 ==========
+
+// 划分三维网格（借助Gmsh）
+imeshing.genMeshByGmsh(3);
+
+// ========== 4. 将生成的网格加载至求解器内存中 ==========
+
+GetMesh();
+
+// ========== 5. 根据节点ID对相邻体网格进行分组定义 ==========
+
+// 设置基座体组（Group1）
+SetGroupByID("Group1", 1);
+
+// 设置圆柱体组（Group2）
+SetGroupByID("Group2", 2);
+
+// ========== 6. 配置粘接接触属性并激活体与体之间的粘接约束条件 ==========
+
+// 定义接触对：基座与圆柱体的接触面
+var ContactPair = [1, 2];
+
+// 设置粘接接触属性（Bonded）
+imeshing.setValue("ContactType", "Bonded");
+imeshing.setValue("ContactStiffness", 1e9);
+imeshing.setValue("ContactDamping", 0.1);
+
+// 激活粘接约束
+imeshing.activateContact(ContactPair, true);
+
+// ========== 7. 设置关键监测点以输出粘接界面的应力与位移数据 ==========
+
+// 在粘接界面中心位置设置监测点（基座顶面中心）
+var MonitorPoint = [1.0, 1.0, 0.5];
+imeshing.setValue("MonitorID", 1);
+imeshing.setValue("MonitorType", "StressDisplacement");
+imeshing.setValue("MonitorLocation", MonitorPoint);
+
+// 设置监测输出频率（每0.001秒输出一次）
+imeshing.setValue("MonitorFrequency", 0.001);
+
+// ========== 8. 施加边界条件及初始载荷 ==========
+
+// 固定基座底部（Z=0平面）
+var FixedNodes = [0, 0, 0];
+imeshing.setValue("BoundaryType", "Fixed");
+imeshing.setValue("BoundaryLocation", FixedNodes);
+
+// 在圆柱体顶部施加垂直向下的集中力（模拟重力载荷）
+var LoadPoint = [1.0, 0.0, 4.5];
+imeshing.setValue("LoadType", "Force");
+imeshing.setValue("LoadValue", -9810.0); // kg * g (约等于质量*重力加速度)
+imeshing.setValue("LoadLocation", LoadPoint);
+
+// ========== 9. 启动时间步长计算循环 ==========
+
+// 设置求解器参数
+imeshing.setValue("TimeStep", 1e-7);
+imeshing.setValue("TotalTime", 0.5);
+imeshing.setValue("OutputInterval", 0.01);
+
+// ========== 10. 执行仿真运行并导出最终报告 ==========
+
+// 启动求解
+CDyna.Solve();
+
+// 输出仿真结果摘要
+print("=== CDEM仿真完成 ===");
+print("基座体组: Group1 (混凝土)");
+print("圆柱体组: Group2 (钢材)");
+print("粘接接触状态: 已激活");
+print("监测点位置: " + MonitorPoint.join(", "));
+print("监测输出频率: " + imeshing.getValue("MonitorFrequency") + "s");
+print("求解总时间: " + imeshing.getValue("TotalTime") + "s");
+
+// 导出结果报告
+CDyna.ExportReport();

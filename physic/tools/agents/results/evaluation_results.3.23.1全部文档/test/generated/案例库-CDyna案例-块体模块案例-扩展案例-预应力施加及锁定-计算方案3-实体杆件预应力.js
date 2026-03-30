@@ -1,0 +1,93 @@
+setCurDir(getSrcDir());
+
+// 初始化环境
+igeo.clear();
+imeshing.clear();
+dyna.Clear();
+doc.clearResult();
+
+// 创建实体围岩模型
+var id1 = igeo.genBrickV(0, 0, 0, 2.0, 0.5, 0.5, 0.05, 1);
+
+// 创建圆柱形锚头区域
+var id2 = igeo.genCylinderV(-0.1, 0.25, 0.25, 0, 0.25, 0.25, 0.0, 0.1, 0.02, 0.02, 2);
+
+// 粘合实体与锚头
+igeo.glue("volume", id1, id2);
+
+// 网格划分
+imeshing.genMeshByGmsh(3);
+
+// 获取网格并创建接触面
+blkdyn.GetMesh(imeshing);
+blkdyn.CrtIFace(1, 2);
+blkdyn.UpdateIFaceMesh();
+
+// 设置实体单元为线弹性模型
+blkdyn.SetModel("linear");
+
+// 设置围岩材料参数（密度、弹性模量、泊松比、粘聚力、内摩擦角等）
+blkdyn.SetMatByGroup(2500, 3e10, 0.25, 3e4, 1e4, 25.0, 10.0, 1);
+
+// 设置接触面模型为线弹性
+blkdyn.SetIModel("linear");
+blkdyn.SetIStiffByElem(1.0);
+blkdyn.SetIStrengthByElem();
+
+// 固定围岩底部边界
+blkdyn.FixV("y", 0.0, "y", -0.01, 0.01);
+blkdyn.FixV("x", 0.0, "x", -0.01, 0.01);
+blkdyn.FixV("x", 0.0, "x", 2.01, 2.05);
+
+// 设置计算开关
+dyna.Set("Mechanic_Cal 1");
+dyna.Set("If_Cal_Bar 1");
+dyna.Set("Bar_Out 1");
+dyna.Set("UnBalance_Ratio 1e-5");
+dyna.Set("Gravity 0 -9.8 0");
+dyna.Set("Large_Displace 0");
+dyna.Set("Output_Interval 500");
+dyna.Set("Moniter_Iter 100");
+dyna.Set("If_Virtural_Mass 1");
+dyna.Set("Virtural_Step 0.5");
+
+// 创建实体杆件（锚索）
+var fArrayCoord1 = [0.0, 0.25, 0.25];
+var fArrayCoord2 = [2.0, 0.25, 0.25];
+bar.CreateByCoord("cable", fArrayCoord1, fArrayCoord2, 40);
+
+// 设置杆件力学模型为线弹性
+bar.SetModelByID("linear", 1, 100);
+
+// 定义杆件材料参数（直径、密度、弹性模量、泊松比、抗拉强度、抗压强度、粘聚力、内摩擦角、刚度、阻尼等）
+var BarProp = [0.02, 7800.0, 2e10, 0.25, 235e6, 235e6, 1e6, 35, 1e9, 0.8, 0.0];
+
+// 施加杆件材料属性
+bar.SetPropByID(BarProp, 1, 100, 1, 100);
+
+// 对杆件左侧节点施加预应力（10kN）
+bar.ApplyPreTenForce(1e4, 1, 100, 1, 1);
+
+// 固定杆件左侧节点的平动速度（锁定状态）
+var bArrayType = [true, true, true];
+var fArrayValue = [0.0, 0.0, 0.0];
+bar.FixVelByID(bArrayType, fArrayValue, 1, 100, 1, 1);
+
+// 固定杆件左侧节点的转动速度（锁定状态）
+bar.FixRotateVelByID(bArrayType, fArrayValue, 1, 100, 1, 1);
+
+// 监测杆件轴向力
+dyna.Monitor("bar", "a_normal_force", 0.0, 0.25, 0.25);
+dyna.Monitor("bar", "a_normal_force", 2.0, 0.25, 0.25);
+
+// 监测杆件轴向应变
+dyna.Monitor("bar", "a_axial_strain", 0.0, 0.25, 0.25);
+
+// 监测杆件位移
+dyna.Monitor("bar", "a_xdis", 2.0, 0.25, 0.25);
+
+// 执行计算
+dyna.Solve();
+
+// 打印结果信息
+print("*****预应力施加及锁定-计算方案3-实体杆件预应力求解成功!**********");

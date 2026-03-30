@@ -1,0 +1,90 @@
+setCurDir(getSrcDir());
+
+// 清除内存数据
+dyna.Clear();
+doc.clearResult();
+
+// 设置输出间隔为500步
+dyna.Set("Output_Interval 500");
+
+// 关闭虚质量计算开关
+dyna.Set("If_Virtural_Mass 0");
+
+// 设置三个方向的全局重力加速度为-9.8 m/s^2 (Y方向)
+dyna.Set("Gravity 0.0 -9.8 0.0");
+
+// 打开单元大变形计算开关
+dyna.Set("Large_Displace 1");
+
+// 打开单元接触更新开关
+dyna.Set("If_Renew_Contact 1");
+
+// 设置接触容差为0
+dyna.Set("Contact_Detect_Tol 0.0");
+
+// 设置计算时步为4e-5
+dyna.Set("Time_Step 4e-5");
+
+// 创建顶部刚性面作为边界条件
+var fCoord = new Array();
+fCoord[0] = new Array(-2, 0.0, 0.0);
+fCoord[1] = new Array(2, 0.0, 0.0);
+rdface.Create(1, 1, 2, fCoord);
+
+// 创建块体有限元网格
+var blockCoord = new Array();
+blockCoord[0] = new Array(-1, -1, 0);
+blockCoord[1] = new Array(1, -1, 0);
+blockCoord[2] = new Array(1, 1, 0);
+blockCoord[3] = new Array(-1, 1, 0);
+igeo.CreateQuad(blockCoord, "block");
+
+// 导入块体网格
+blkdyn.ImportGrid("gid", "block");
+
+// 设置单元模型为线弹性模型
+blkdyn.SetModel("linear");
+
+// 设置块体材料参数：密度、弹性模量、泊松比、粘聚力、抗拉强度、内摩擦角、剪胀角
+blkdyn.SetMat(2500, 1e8, 0.25, 8e5, 8e5, 35, 15);
+
+// 设置单元的局部阻尼
+blkdyn.SetLocalDamp(0.05);
+
+// 导入颗粒模块
+pdyna.Import("pdyna", "particle.dat");
+
+// 设置颗粒模型为脆性断裂模型
+pdyna.SetModel("brittleMC");
+
+// 设置颗粒材料参数：密度、弹性模量、泊松比、抗拉强度、粘聚力、内摩擦角、局部阻尼、粘性阻尼系数
+pdyna.SetMat(2500, 1e8, 0.25, 8e5, 8e5, 35, 0.0, 0.05);
+
+// 创建颗粒（在块体上方）
+pdyna.RegularCreateByCoord(1, 1, 0.01, -0.5, 0.5, -0.5, 0.5, 0.2, 0);
+
+// 设置块体与颗粒的接触检测
+pdyna.DetectPBContact();
+
+// 固定顶部刚性面
+rdface.FixV("xyz", 0, "y", 1, 1);
+
+// 固定块体左右两侧边界
+blkdyn.FixVByGroupInterface("xyz", 0.0, 1, 1);
+
+// 设置耦合计算开关
+dyna.Set("If_Cal_FEM_DEM_Evolvement 1");
+
+// 设置求解器输出请求：监测应力、位移及碰撞能量数据
+dyna.Monitor("block", "stress_y", -0.5, 0.5, 0);
+dyna.Monitor("block", "disp_y", -0.5, 0.5, 0);
+dyna.Monitor("particle", "pa_xdis", -0.4, 0.4, 0);
+
+// 执行求解（2万步）
+dyna.Solve(20000);
+
+// 打印信息
+print("Solution is ok!");
+
+// 调用 FreeUDF 接口卸载动态链接库资源
+dyna.FreeUDF();

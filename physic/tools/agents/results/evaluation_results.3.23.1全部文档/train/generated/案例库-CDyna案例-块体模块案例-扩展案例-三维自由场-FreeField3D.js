@@ -1,0 +1,71 @@
+setCurDir(getSrcDir());
+
+// 初始化仿真环境参数
+dyna.Set("Mechanic_Cal 1");
+dyna.Set("UnBalance_Ratio 1e-5");
+dyna.Set("Gravity 0.0 0.0 0.0");
+dyna.Set("Large_Displace 0");
+dyna.Set("Output_Interval 100");
+dyna.Set("GiD_Out 0");
+dyna.Set("Msr_Out 0");
+dyna.Set("Moniter_Iter 10");
+dyna.Set("If_Virtural_Mass 0");
+dyna.Set("Virtural_Step 0.6");
+dyna.Set("If_Cal_Rayleigh 1");
+
+// 导入计算域网格（使用flac3d格式）
+blkdyn.ImportGrid("flac3d", "cubic.flac3d");
+
+// 设置材料参数：密度、弹性模量、泊松比、抗拉强度、粘聚力、内摩擦角、局部阻尼、粘性阻尼
+blkdyn.SetMatByGroupRange(2500, 3e10, 0.25, 3e6, 1e6, 40.0, 10.0, 1, 2);
+
+// 设置模型类型
+blkdyn.SetModel("linear", 1);
+
+// 设置阻尼参数
+blkdyn.SetLocalDamp(0.0);
+blkdyn.SetRayleighDamp(5e-7, 0.0);
+
+// 施加X方向自由场边界条件（两个面）
+var xRange = [-0.01, 0.01];
+blkdyn.SetFreeFieldBound("x", -0.01, 0.01);
+blkdyn.SetFreeFieldBound("x", 9.99, 10.01);
+
+// 施加Z方向自由场边界条件（两个面）
+var zRange = [-0.01, 0.01];
+blkdyn.SetFreeFieldBound("z", -0.01, 0.01);
+blkdyn.SetFreeFieldBound("z", 9.99, 10.01);
+
+// 施加Y方向自由场边界条件（两个面）
+var yRange = [-0.01, 0.01];
+blkdyn.SetFreeFieldBound("y", -0.01, 0.01);
+blkdyn.SetFreeFieldBound("y", 9.99, 10.01);
+
+// 施加Column自由场单元（必须在所有Plane边界之后）
+blkdyn.SetFreeFieldBound3DColumn();
+
+// 设置监测点记录位移和速度数据
+dyna.Monitor("block", "sxx", 0.1, 0, 0);
+dyna.Monitor("block", "sxx", 0.2, 0, 0);
+dyna.Monitor("block", "sxx", 0.3, 0, 0);
+dyna.Monitor("block", "sxx", 0.4, 0, 0);
+
+// 设置计算时间步长
+dyna.Set("Time_Step 1e-5");
+
+// 设置面力载荷参数
+var coeff = [1.0, 0.0, 0.0];
+var range1 = [-2000.0, 2000.0];
+var range2 = [-0.01, 0.01];
+
+// 设置静默边界条件
+blkdyn.SetQuietBoundByCoord(-2000, 2000, -0.01, 0.01, -2000, 2000);
+
+// 施加面力载荷
+blkdyn.ApplyDynaSinVarByCoord("face_force", false, coeff, 0.0, 1e6, 0.01, 0.0, 0.0, 1.0, range1, range2, range1);
+
+// 执行计算循环（0.1秒）
+dyna.DynaCycle(0.1);
+
+// 输出计算完成信息
+print("Solution Finished");

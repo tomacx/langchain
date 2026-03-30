@@ -1,0 +1,98 @@
+--- 案例库-CDyna案例-粒子模块案例-扩展案例-MPM-自定义本构-MPM-调用自定义本构.js (ground_truth)
++++ 案例库-CDyna案例-粒子模块案例-扩展案例-MPM-自定义本构-MPM-调用自定义本构.js (generated)
+@@ -1,55 +1,68 @@
+-//设置工作路径为脚本文件所在路径
+ setCurDir(getSrcDir());
+ 
+-//设置输出间隔为200步
++// 设置输出间隔为200步
+ dyna.Set("Output_Interval 200");
+ 
+-//设置重力方向
+-dyna.Set("Gravity  0 0.0 0");
++// 设置重力方向（向下）
++dyna.Set("Gravity 0 -9.81 0");
+ 
+-//打开大变形计算开关
++// 打开大变形计算开关
+ dyna.Set("Large_Displace 1");
+ 
+-//打开虚拟质量开关
++// 关闭虚拟质量开关
+ dyna.Set("If_Virtural_Mass 0");
+ 
+-
+-//设置颗粒计算类型为 mpm方法
++// 设置颗粒计算类型为MPM方法（4=MPM）
+ dyna.Set("Particle_Cal_Type 4");
+ 
+-//设置断裂应变
++// 设置断裂应变参数
+ dyna.Set("Block_Soften_Value 5e-3 15e-3");
+ 
+-//创建1m×1m规则颗粒
+-pdyna.RegularCreateByCoord(1,1,0.005,0,1, 0,1, 0.0, 0);
++// 创建规则排列的颗粒（2m×2m区域，粒径0.01m）
++pdyna.RegularCreateByCoord(2, 2, 0.01, -1, 1, -1, 1, 0);
+ 
+-//0.4-0.6区域的颗粒设置为组2
+-pdyna.SetGroupByCoord(2, 0.4, 0.6, 0.4, 0.6, -1, 1);
++// 将上半部分颗粒设置为组2
++pdyna.SetGroupByCoord(2, 0.5, 1, -1, 1, -1, 1);
+ 
+-//组1设置固体参数，依次为density, young, poisson, tension, cohesion, friction, localdamp, viscdamp
+-pdyna.SetMat(2500,3e10,0.25, 1e6, 1e6, 30.0, 0.0, 0.1, 1);
++// 组1设置固体材料参数：density, young, poisson, tension, cohesion, friction, localdamp, viscdamp
++pdyna.SetMat(2500, 3e10, 0.25, 1e6, 1e6, 30.0, 0.0, 0.1, 1);
+ 
+-//组2设置高压气体参数，强度参数为0
+-pdyna.SetMat(900,1e9,0.25, 0, 0, 0.0, 0.0, 0.1, 2);
++// 组2设置气体材料参数（强度参数为0）
++pdyna.SetMat(900, 1e9, 0.25, 0, 0, 0.0, 0.0, 0.1, 2);
+ 
+-//创建mpm背景网格
+-mpm.SetBackGrid(2,0.025,  [-1,-1, 0], [120, 120, 0]);
++// 创建MPM背景网格（2层，网格尺寸0.02m）
++mpm.SetBackGrid(2, 0.02, [-1, -1, 0], [1, 1, 0]);
+ 
+-//设置组1的mpm模型为mohr-coulomb应变软化模型
+-mpm.SetModelByGroup("SoftenMC",1,1);
++// 设置组1的MPM模型为Mohr-Coulomb应变软化模型
++mpm.SetModelByGroup("SoftenMC", 1, 1);
+ 
+-//设置组2的mpm模型为自定义模型
+-mpm.SetModelByGroup("Custom",2, 2);
++// 设置组2的MPM模型为自定义模型
++mpm.SetModelByGroup("Custom", 2, 2);
+ 
+-dyna.LoadUDF("CustomModel.dll");
++// 加载CustomModel动态链接库
++dyna.LoadUDF("CustomModel");
+ 
+-//设置自定义值，第一个数为初始压力, 第二个数为绝热指数
++// 设置自定义本构参数：初始压力、绝热指数
+ dyna.SetUDFValue([10e6, 1.33]);
+ 
+-//设置计算时步为1e-6
++// 设置计算时步为1e-6秒
+ dyna.Set("Time_Step 1e-6");
+ 
+-//求解7000步
++// 固定底部颗粒速度（y方向）
++pdyna.FixV("xyz", 0, "y", -1, -1);
++
++// 求解7000步
+ dyna.Solve(7000);
+ 
++// 运行用户自定义命令流，获取监测数据
++var stressData = dyna.RunUDFCmd("GetStress");
++var strainData = dyna.RunUDFCmd("GetStrain");
++var damageData = dyna.RunUDFCmd("GetDamage");
++
++// 输出结果统计信息
++dyna.Plot("Particle", "Stress");
++dyna.Plot("Particle", "Strain");
++dyna.Plot("Particle", "Damage");
++
++// 释放动态链接库，释放系统资源
+ dyna.FreeUDF();

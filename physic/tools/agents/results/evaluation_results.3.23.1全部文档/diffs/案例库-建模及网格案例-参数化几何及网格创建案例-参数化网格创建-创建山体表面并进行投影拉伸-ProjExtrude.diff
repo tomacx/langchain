@@ -1,0 +1,104 @@
+--- 案例库-建模及网格案例-参数化几何及网格创建案例-参数化网格创建-创建山体表面并进行投影拉伸-ProjExtrude.js (ground_truth)
++++ 案例库-建模及网格案例-参数化几何及网格创建案例-参数化网格创建-创建山体表面并进行投影拉伸-ProjExtrude.js (generated)
+@@ -1,15 +1,93 @@
+-//设置工作目录为脚本文件所在目录
+ setCurDir(getSrcDir());
+ 
+-//清除几何信息
++// 清除几何和网格信息
+ igeo.clear();
+-
+-//清除网格信息
+ imeshing.clear();
+ 
+-//基于点云数据产生表面网格
+-imeshing.genSurfMesh("fc","coord.txt",100,100,"tri");
++// ========== 1. 定义山体几何参数 ==========
++var mountainWidth = 50.0;      // 山体宽度 (m)
++var mountainHeight = 30.0;     // 山体高度 (m)
++var mountainDepth = 40.0;      // 山体深度 (m)
++var surfaceResolution = 100;   // 表面网格分辨率
+ 
++// ========== 2. 创建山体表面轮廓 ==========
++// 创建底部基准点
++var PointBase1 = igeo.genPoint(0, 0, 0, 0.1);
++var PointBase2 = igeo.genPoint(mountainWidth, 0, 0, 0.1);
++var PointBase3 = igeo.genPoint(mountainWidth, mountainDepth, 0, 0.1);
++var PointBase4 = igeo.genPoint(0, mountainDepth, 0, 0.1);
+ 
+-//对imeshing模块中的所有单元执行投影拉伸操作
+-imeshing.projExtrude(0,0,0,0,0,1,10);
++// 创建顶部轮廓点（模拟山体形状）
++var PointTop1 = igeo.genPoint(mountainWidth * 0.3, mountainHeight * 0.8, mountainDepth * 0.5, 0.1);
++var PointTop2 = igeo.genPoint(mountainWidth * 0.7, mountainHeight * 0.9, mountainDepth * 0.6, 0.1);
++var PointTop3 = igeo.genPoint(mountainWidth * 0.5, mountainHeight * 0.85, mountainDepth * 0.5, 0.1);
++
++// 创建山体表面线环（前坡面）
++var LineFront1 = igeo.genLine(PointBase1, PointTop1);
++var LineFront2 = igeo.genLine(PointTop1, PointTop3);
++var LineFront3 = igeo.genLine(PointTop3, PointTop2);
++var LineFront4 = igeo.genLine(PointTop2, PointBase2);
++
++// 创建山体表面线环（后坡面）
++var LineBack1 = igeo.genLine(PointBase3, PointTop3);
++var LineBack2 = igeo.genLine(PointTop3, PointTop2);
++var LineBack3 = igeo.genLine(PointTop2, PointBase4);
++
++// 创建山体表面线环（左侧面）
++var LineLeft1 = igeo.genLine(PointBase1, PointBase4);
++var LineLeft2 = igeo.genLine(PointBase4, PointTop3);
++var LineLeft3 = igeo.genLine(PointTop3, PointTop1);
++var LineLeft4 = igeo.genLine(PointTop1, PointBase1);
++
++// 创建山体表面线环（右侧面）
++var LineRight1 = igeo.genLine(PointBase2, PointBase3);
++var LineRight2 = igeo.genLine(PointBase3, PointTop3);
++var LineRight3 = igeo.genLine(PointTop3, PointTop2);
++var LineRight4 = igeo.genLine(PointTop2, PointBase2);
++
++// 创建封闭线环（山体表面）
++var aLineSurface = [LineFront1, LineFront2, LineFront3, LineFront4, 
++                     LineBack1, LineBack2, LineBack3, 
++                     LineLeft1, LineLeft2, LineLeft3, LineLeft4,
++                     LineRight1, LineRight2, LineRight3, LineRight4];
++var SurfaceMountain = igeo.genSurface(aLineSurface, 2);
++
++// ========== 3. 生成表面网格 ==========
++imeshing.genSurfMesh("fc", "mountain_surface", surfaceResolution, surfaceResolution, "tri");
++
++// ========== 4. 投影拉伸生成体积网格 ==========
++// ProjExtrude: 将表面几何沿Z轴方向拉伸为体积
++// 参数：原点X, Y, Z, 拉伸高度, 拉伸次数, 单元类型
++imeshing.projExtrude(0, 0, 0, mountainHeight, 1, 10);
++
++// ========== 5. 生成三维网格文件 ==========
++// 调用Gmsh进行三维网格剖分
++imeshing.genMeshByGmsh(3, "mountain_mesh");
++
++// ========== 6. 网格分组处理 ==========
++// 将山体网格按高度分层分组（便于后续材料参数赋值）
++SetGroupByID("group_bottom", 0, mountainHeight * 0.2);
++SetGroupByID("group_middle", mountainHeight * 0.2, mountainHeight * 0.7);
++SetGroupByID("group_top", mountainHeight * 0.7, mountainHeight);
++
++// ========== 7. 设置监测点 ==========
++// 在山顶位置设置位移监测点
++var MonitorPoint1 = igeo.genPoint(mountainWidth * 0.5, mountainHeight * 0.85, mountainDepth * 0.5, 0.01);
++var MonitorPoint2 = igeo.genPoint(mountainWidth * 0.4, mountainHeight * 0.9, mountainDepth * 0.6, 0.01);
++var MonitorPoint3 = igeo.genPoint(mountainWidth * 0.6, mountainHeight * 0.85, mountainDepth * 0.4, 0.01);
++
++// ========== 8. 配置求解器参数 ==========
++// 设置重力加速度（向下）
++skwave.SetGravity(0, -9.81, 0);
++
++// 设置时间步长和总时长
++skwave.SetTimeStep(1e-6);
++skwave.SetTotalTime(10.0);
++
++// 设置输出频率
++skwave.SetOutputFreq(100);
++
++// ========== 9. 运行求解器并导出结果 ==========
++skwave.RunSolver();
++
++print("山体网格创建与投影拉伸完成，监测点已设置，求解器已启动");

@@ -1,0 +1,151 @@
+--- 案例库-CDyna案例-块体模块案例-扩展案例-地下水引起边坡失稳-地下水引起边坡失稳.js (ground_truth)
++++ 案例库-CDyna案例-块体模块案例-扩展案例-地下水引起边坡失稳-地下水引起边坡失稳.js (generated)
+@@ -5,73 +5,114 @@
+ dyna.Clear();
+ doc.clearResult();
+ 
++// 定义边坡几何模型坐标点
+ var acoord = new Array(6);
++var size = 1.0;
++acoord[0] = [0, 0, 0, size];
++acoord[1] = [40, 0, 0, size];
++acoord[2] = [40, 25, 0, size];
++acoord[3] = [20, 25, 0, size];
++acoord[4] = [10, 10, 0, size];
++acoord[5] = [0, 10, 0, size];
+ 
+-var size = 1.0;
+-acoord[0] = [0,0,0,  size];
+-acoord[1] = [40,0,0,  size];
+-acoord[2] = [40,25,0,  size];
+-acoord[3] = [20,25,0,  size];
+-acoord[4] = [10,10,0,  size];
+-acoord[5] = [0,10,0,  size];
+-
+-igeo.genPloygenS(acoord,1);
++igeo.genPloygenS(acoord, 1);
+ 
+ imeshing.genMeshByGmsh(2);
+ 
+ dyna.Set("Output_Interval 1000");
+-
+ dyna.Set("Gravity 0 -9.8 0");
+ 
+-//包含孔隙渗流计算功能，开辟渗流相关的内存
++// 包含孔隙渗流计算功能，开辟渗流相关的内存
+ dyna.Set("Config_PoreSeepage 1");
+ 
+-//开启孔隙渗流开关
++// 开启孔隙渗流开关
+ dyna.Set("PoreSeepage_Cal 0");
+ 
+ blkdyn.GetMesh(imeshing);
+ 
+ blkdyn.SetModel("linear");
+-blkdyn.SetMat(2200,1e9,0.3,2e4,2e4,25,15);
++blkdyn.SetMat(2200, 1e9, 0.3, 2e4, 2e4, 25, 15);
+ 
+-
+-//定义X、Y、Z三个方向的渗透系数
++// 定义X、Y、Z三个方向的渗透系数
+ var arrayK = new Array(1e-10, 1e-10, 1e-10);
+ 
+-//指定坐标控制范围内的孔隙渗流参数，依次为流体密度、体积模量、饱和度、孔隙率、渗透系数、比奥系数
+-poresp.SetPropByCoord (1000.0, 1e6, 0.0, 0.3, arrayK, 1.0, -500, 500, -500, 500, -500, 500);
++// 指定坐标控制范围内的孔隙渗流参数
++poresp.SetPropByCoord(1000.0, 1e6, 0.0, 0.3, arrayK, 1.0, -500, 500, -500, 500, -500, 500);
+ 
+-blkdyn.FixV("x",0,"x",-0.001,0.001);
+-blkdyn.FixV("x",0,"x",39.99,41);
+-blkdyn.FixV("y",0,"y",-0.001,0.001);
++// 施加边界条件
++blkdyn.FixV("x", 0, "x", -0.001, 0.001);
++blkdyn.FixV("x", 0, "x", 39.99, 41);
++blkdyn.FixV("y", 0, "y", -0.001, 0.001);
+ 
+-dyna.Monitor("block","xdis",10,10,0);
+-dyna.Monitor("block","xdis",14.2,16.3,0);
+-dyna.Monitor("block","xdis",20,25,0);
++// 设置初始地下水压力场及饱和度分布
++var initialPressure = new Array(2e5, 2e5, 2e5);
++var initialSaturation = new Array(0.8, 0.8, 0.8);
++fracsp.SetNodeValue(initialPressure, initialSaturation);
+ 
++// 定义渗流动态边界条件
++var flowBound = new Array(1e-4, 0, 0);
++fracsp.CalDynaBound(flowBound);
++
++// 设置安全系数求解参数
++var typical_step = 5000;
++var totalstage = 8;
++var displimit = 1.0;
++var coord = new Array(20.0, 12.5, 0.0);
++var save_filename = "slope.sav";
++
++// 执行初始求解
+ dyna.Solve();
+ 
++// 设置软化参数，进入塑性阶段
+ dyna.Set("Block_Soften_Value 3e-3 9e-3");
+ blkdyn.SetModel("SoftenMC");
+ 
+-dyna.Solve();
++// 初始化位移条件
++blkdyn.InitConditionByGroup("displace", [0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0], 1, 1);
+ 
+-blkdyn.InitConditionByGroup("displace", [0,0,0], [0,0,0,0,0,0,0,0,0], 1,1);
+-
++// 开启渗流计算和Biot耦合
+ dyna.Set("PoreSeepage_Cal 1");
+-
+ dyna.Set("If_Biot_Cal 1");
+-
+ dyna.Set("Time_Now 0");
+-
+ dyna.TimeStepCorrect(1.0);
+ 
+-poresp.ApplyConditionByCoord("pp", 2.156e5, [0,-9800,0], 39.99,41,-1,22.01,-1,1,true);
+-poresp.ApplyConditionByCoord("pp", 0.0, [0,0,0], 39.99,41,22.01,41,-1,1,true);
++// 设置降雨/水位边界条件
++poresp.ApplyConditionByCoord("pp", 2.156e5, [0, -9800, 0], -100, 100, 0, 40, 0, 40);
+ 
+-poresp.ApplyConditionByCoord("pp", 1.176e5, [0,-9800,0], -100,39.9,0.01,12.01,-1,1,true);
+-poresp.ApplyConditionByCoord("pp", 0.0, [0,0,0], -100,39.9,12.01,100,-1,1,true);
++// 计算节点压力与饱和度
++fracsp.CalNodePressure();
+ 
++// 监测关键坐标点位移变化
++dyna.Monitor("block", "xdis", 10, 10, 0);
++dyna.Monitor("block", "xdis", 20, 12.5, 0);
++dyna.Monitor("block", "xdis", 30, 12.5, 0);
+ 
++// 获取裂隙渗流单元流速信息
++fracsp.CalElemDischarge();
+ 
+-dyna.DynaCycle(2.2e7);
++// 执行安全系数求解
++var fos = dyna.SolveFos(typical_step, totalstage, displimit, coord, save_filename);
++
++// 检查系统不平衡率与位移阈值
++var unbalanceRatio = dyna.Get("UnBalance_Ratio");
++if (unbalanceRatio > 100) {
++    print("系统不平衡率超过100，边坡失稳");
++} else if (coord[0] < displimit) {
++    print("监测点位移未超过阈值，边坡稳定");
++}
++
++// 获取裂隙渗流节点信息
++var nodePressure = fracsp.GetNodeValue();
++print("节点压力: " + nodePressure);
++
++// 获取裂隙渗流单元信息
++var elemDischarge = fracsp.GetElemValue();
++print("单元流量: " + elemDischarge);
++
++// 导出仿真结果数据
++ExportInfo("slope_result.vtk", "slope_result.txt");
++
++// 输出最终安全系数与监测报告
++print("边坡安全系数: " + fos);
++print("监测点位移: " + dyna.Get("Xdis"));
++print("系统不平衡率: " + unbalanceRatio);

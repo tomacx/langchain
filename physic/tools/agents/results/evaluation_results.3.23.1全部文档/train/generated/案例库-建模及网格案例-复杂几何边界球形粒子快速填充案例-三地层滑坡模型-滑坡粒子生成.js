@@ -1,0 +1,140 @@
+setCurDir(getSrcDir());
+
+// ==================== 1. 初始化环境 ====================
+var solver = skwave.Solver();
+solver.SetSolverType("CDyna");
+solver.SetTimeStep(1e-6);
+solver.SetTotalTime(5.0);
+
+// ==================== 2. 定义计算域网格 ====================
+// 创建三维计算域：长×宽×高 = 200m × 100m × 50m
+skwave.DefMesh(3, [200.0, 100.0, 50.0], [40, 20, 10]);
+
+// ==================== 3. 导入/创建三地层几何边界 ====================
+// 假设使用外部网格文件定义滑坡区域边界
+var msh_top = imesh.importGid("top_layer.msh");
+var msh_middle = imesh.importGid("middle_layer.msh");
+var msh_bottom = imesh.importGid("bottom_layer.msh");
+
+// 如果没有外部文件，使用DefMesh创建简化边界（实际应用中应导入真实地形）
+if (!msh_top) {
+    // 创建上覆层边界（斜坡面）
+    var topPoints = [
+        [0, 0, 50], [200, 0, 50], [200, 100, 30], [0, 100, 50]
+    ];
+    imesh.CreatePolygon(topPoints);
+    msh_top = imesh.GetMesh(0);
+}
+
+if (!msh_middle) {
+    // 创建中层边界
+    var midPoints = [
+        [0, 0, 30], [200, 0, 30], [200, 100, 15], [0, 100, 30]
+    ];
+    imesh.CreatePolygon(midPoints);
+    msh_middle = imesh.GetMesh(1);
+}
+
+if (!msh_bottom) {
+    // 创建底层边界（基岩）
+    var botPoints = [
+        [0, 0, 15], [200, 0, 15], [200, 100, 0], [0, 100, 15]
+    ];
+    imesh.CreatePolygon(botPoints);
+    msh_bottom = imesh.GetMesh(2);
+}
+
+// ==================== 4. 添加边界约束 ====================
+pargen.addBound(msh_top, msh_middle, msh_bottom);
+
+// 设置优化位置选项（使粒子在边界内合理分布）
+pargen.setValue("OptiPosOption", 1);
+
+// ==================== 5. 设置材料参数 ====================
+// 上覆层：松散堆积物
+Set UserDefValue("Layer1_Density", 1600.0);
+Set UserDefValue("Layer1_Poisson", 0.35);
+Set UserDefValue("Layer1_ElasticModulus", 1e7);
+Set UserDefValue("Layer1_ShearModulus", 2e6);
+Set UserDefValue("Layer1_Cohesion", 5000.0);
+Set UserDefValue("Layer1_FrictionAngle", 30.0);
+
+// 中层：风化岩层
+Set UserDefValue("Layer2_Density", 2200.0);
+Set UserDefValue("Layer2_Poisson", 0.25);
+Set UserDefValue("Layer2_ElasticModulus", 5e8);
+Set UserDefValue("Layer2_ShearModulus", 1.9e8);
+Set UserDefValue("Layer2_Cohesion", 150000.0);
+Set UserDefValue("Layer2_FrictionAngle", 35.0);
+
+// 底层：基岩层
+Set UserDefValue("Layer3_Density", 2600.0);
+Set UserDefValue("Layer3_Poisson", 0.20);
+Set UserDefValue("Layer3_ElasticModulus", 1e10);
+Set UserDefValue("Layer3_ShearModulus", 3.8e9);
+Set UserDefValue("Layer3_Cohesion", 500000.0);
+Set UserDefValue("Layer3_FrictionAngle", 45.0);
+
+// ==================== 6. 生成粒子 ====================
+// 上覆层：小粒径（1-2m）
+var parmsh_top = pargen.gen(1.5);
+
+// 中层：中等粒径（2-3m）
+var parmsh_mid = pargen.gen(2.5);
+
+// 底层：大粒径（3-4m）
+var parmsh_bot = pargen.gen(3.5);
+
+// ==================== 7. 设置接触本构 ====================
+// 使用UserDef_ParticleConstitutiveLaw接口配置颗粒接触行为
+skwave.SetContactModel("UserDef_ParticleConstitutiveLaw");
+skwave.SetContactParameter("ParticleID", -1); // -1表示所有颗粒
+
+// ==================== 8. 设置边界条件与重力 ====================
+// 施加重力载荷（z方向）
+solver.SetGravity([0, 0, -9.8]);
+
+// 固定底层基岩边界
+var fixedNodes = imesh.GetNodeList(msh_bottom);
+foreach (node in fixedNodes) {
+    solver.SetBoundaryCondition(node.id, "Fixed");
+}
+
+// ==================== 9. 配置输出监测 ====================
+// 设置粒子位置输出频率
+solver.SetOutputFrequency(100);
+
+// 启用颗粒位移、速度、接触力链监测
+skwave.SetMonitor("ParticleDisplacement", true);
+skwave.SetMonitor("ParticleVelocity", true);
+skwave.SetMonitor("ContactForceChain", true);
+
+// 设置监测点（滑坡关键位置）
+var monitorPoints = [
+    [100, 50, 25], // 滑坡中心监测点
+    [50, 50, 30],  // 上游监测点
+    [150, 50, 20]  // 下游监测点
+];
+foreach (pt in monitorPoints) {
+    solver.AddMonitorPoint(pt[0], pt[1], pt[2]);
+}
+
+// ==================== 10. 运行仿真 ====================
+solver.Run();
+
+// ==================== 11. 导出结果 ====================
+// 导出粒子最终位置
+var finalPositions = solver.GetParticlePositions();
+skwave.ExportData("particle_positions.dat", finalPositions);
+
+// 导出监测数据
+var monitorData = solver.GetMonitorData();
+skwave.ExportData("monitor_data.dat", monitorData);
+
+// 导出接触力链信息
+var contactForces = solver.GetContactForceChains();
+skwave.ExportData("contact_force_chains.dat", contactForces);
+
+// 输出完成信息
+console.log("滑坡粒子生成与仿真计算完成！");
+console.log("已导出：particle_positions.dat, monitor_data.dat, contact_force_chains.dat");

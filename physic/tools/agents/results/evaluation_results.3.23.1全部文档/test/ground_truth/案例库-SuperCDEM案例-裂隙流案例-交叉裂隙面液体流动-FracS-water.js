@@ -1,0 +1,26 @@
+setCurDir(getSrcDir());
+
+//包含裂隙计算模块，开辟相应内存
+scdem.set("Config_FracSeepage", 1);
+
+scdem.set("FracSeepage_Cal", 1);
+
+scdem.set("Mechanic_Cal", 0);
+
+scdem.set("gravity",[0.0,-10.0,0.0]);
+
+scdem.outputInterval = 1000;
+
+scdem.set("Seepage_Mode", 1);
+
+SFracsp.importGrid("gid", "fracurenet.msh");
+
+SFracsp.setPropByCoord([1000.0,1e7,1e-12,1e-6], -1e5, 1e5, -1e5, 1e5, -1e5, 1e5);
+
+SFracsp.applyConditionByCoord("pp", 1e6, 0,0,0, -1e5, 1e5, -0.001, 0.001, -1e5, 1e5)
+
+
+scdem.timeStep = 100;
+scdem.solveGpu(1000000);
+
+print("finish");

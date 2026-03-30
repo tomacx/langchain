@@ -1,0 +1,27 @@
+setCurDir(getSrcDir());
+
+dyna.Set("Time_Step 4e-6");
+dyna.Set("Output_Interval 100");
+
+skwave.DefMesh(3, [50, 50, 50], [50, 50, 50]);
+
+skwave.InitBySphere(1.01e5, 1.02, [0, 0, 0], [0, 0, 0], 100.0);
+skwave.InitBySphere(1e9, 100, [0, 0, 0], [5, 5, 5], 1);
+
+skwave.SetBound(1, 1, 1, 1, 0, 0);
+
+dyna.Monitor("skwave", "sw_dens", 1, 5, 0);
+dyna.Monitor("skwave", "sw_dens", 2, 5, 0);
+dyna.Monitor("skwave", "sw_dens", 3, 5, 0);
+
+dyna.Monitor("skwave", "sw_pp", 1, 5, 0);
+dyna.Monitor("skwave", "sw_pp", 2, 5, 0);
+dyna.Monitor("skwave", "sw_pp", 3, 5, 0);
+
+dyna.Monitor("skwave", "sw_xvel", 1, 5, 0);
+dyna.Monitor("skwave", "sw_yvel", 2, 5, 0);
+dyna.Monitor("skwave", "sw_zvel", 3, 5, 0);
+
+dyna.DynaCycle(1e-2);
+
+print("求解完成");

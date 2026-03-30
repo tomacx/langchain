@@ -1,0 +1,117 @@
+--- 案例库-CDyna案例-粒子模块案例-扩展案例-水力压裂实验模拟-颗粒与孔隙渗流耦合-公共节点-颗粒与孔隙渗流耦合-公共节点.js (ground_truth)
++++ 案例库-CDyna案例-粒子模块案例-扩展案例-水力压裂实验模拟-颗粒与孔隙渗流耦合-公共节点-颗粒与孔隙渗流耦合-公共节点.js (generated)
+@@ -1,71 +1,59 @@
+-//设置当前工作路径为JavaScript脚本文件所在路径
+ setCurDir(getSrcDir());
+ 
+-//关闭力学计算开关
+-dyna.Set("Mechanic_Cal 0");
+-
+-//设置三个方向的重力加速度，均为0
+-dyna.Set("Gravity 0 0.0 0");
+-
+-//关闭大变形计算开关
++// 初始化仿真环境配置
++dyna.Set("Mechanic_Cal 1");
++dyna.Set("Gravity 0.0 -9.8 0.0");
+ dyna.Set("Large_Displace 1");
+-
+-//设置计算结果的输出间隔为1000步
+ dyna.Set("Output_Interval 100");
+-
+-//打开虚质量计算开关
+ dyna.Set("If_Virtural_Mass 0");
+-
+ dyna.Set("If_Cal_Particle 1");
+ 
+-
+-//包含孔隙渗流计算模块，开辟相应内存
++// 包含孔隙渗流计算模块，开辟相应内存
+ dyna.Set("Config_PoreSeepage 1");
+-
+-//关闭孔隙渗流计算开关
+ dyna.Set("PoreSeepage_Cal 1");
+ 
+-
+-//导入gid格式的网格文件，孔隙渗流
+-blkdyn.ImportGrid("gid","grid.msh");
+-
+-
+-//定义X、Y、Z三个方向的渗透系数
+-var arrayK = new Array(1e-6, 1e-6, 1e-6);
+-
+-//指定坐标控制范围内的孔隙渗流参数，依次为流体密度、体积模量、饱和度、孔隙率、渗透系数、比奥系数
+-poresp.SetPropByCoord (1000.0, 1e7, 0.0, 0.01, arrayK, 1.0, -500, 500, -500, 500, -500, 500);
+-
+-
+-var id = blkdyn.GetNodeID(0.5, 0.5, 0);
+-
+-var xcoord = blkdyn.GetNodeValue(id, "Coord0", 1);
+-var ycoord = blkdyn.GetNodeValue(id, "Coord0", 2);
+-var zcoord = blkdyn.GetNodeValue(id, "Coord0", 3);
+-print("xcoord: ", xcoord, "ycoord: ", ycoord,"zcoord: ", zcoord);
+-
+-poresp.ApplyConditionByCoord("pp", 1e6, [0,0,0], xcoord - 1e-3, xcoord + 1e-3,  ycoord - 1e-3, ycoord + 1e-3,  zcoord - 1e-3, zcoord + 1e-3, false);
+-
+-pdyna.Import("gid","particle.msh");
+-
+-pdyna.SetModel("brittleMC");
+-pdyna.SetMat(2500, 3e10, 0.25, 1e5, 1e5, 35, 0.0, 0.1);
+-
+-//参数意义，耦合模式2，渗透率计算系数，动力粘度、最大渗透系数、最小孔隙率、最后一个参数在模式2下无意义
+-dyna.Set("Par_PoreSp_Couple_Option 2 1.0 1e-3 1e-2  1e-2 1.0");
+-
+-
++// 设置计算时间步长
+ dyna.Set("Time_Step 1e-6");
+ 
++// 定义X、Y、Z三个方向的渗透系数（各向同性）
++var arrayK = new Array(1e-9, 1e-9, 1e-9);
+ 
+-//求解4000步
+-dyna.Solve(4000);
++// 设置渗流参数：密度、体积模量、饱和度、孔隙率、渗透系数、比奥系数
++// 控制范围：-500到500（根据实际模型尺寸调整）
++poresp.SetPropByCoord(1000.0, 2e9, 1.0, 0.3, arrayK, 1.0, -500, 500, -500, 500, -500, 500);
+ 
++// 创建渗流单元网格（示例：在计算域内生成规则网格）
++blkdyn.GenBrick2D(10, 0.1, 10, 0.1, 1);
+ 
+-//打印提示信息
++// 设置渗流边界条件：施加压力边界
++poresp.ApplyConditionByCoord("pp", 1e5, [0, 0, 0], -0.5, 0.5, -0.5, 0.5, -0.5, 0.5, true);
++
++// 导入颗粒网格文件（示例：从gid格式导入）
++pdyna.Import("gid", "particle.msh");
++
++// 设置颗粒模型为脆断模型
++pdyna.SetModel("brittleMC");
++
++// 设置颗粒材料参数：密度、杨氏模量、泊松比、抗拉强度、粘聚力、摩擦系数、局部阻尼、粘性阻尼
++pdyna.SetMat(2500, 3e10, 0.25, 1e5, 1e5, 0.6, 0.0, 0.1);
++
++// 设置耦合模式为2：渗流给颗粒施加不同方向的压力（颗粒与渗流单元共节点）
++// 参数：耦合模式、渗透率计算系数、动力粘度、最大渗透系数、最小孔隙率
++dyna.Set("Par_PoreSp_Couple_Option 2 1.0 1e-3 1e-2 1e-2 1.0");
++
++// 设置渗流求解器迭代次数
++poresp.SetIter(10);
++
++// 设置收敛容差
++poresp.SetTol(1e-5);
++
++// 执行计算循环
++dyna.Solve(10000);
++
++// 输出监测数据到Result文件夹
++OutputMonitorData();
++
++// 输出模型结果到其他软件可导入的格式
++OutputModelResult();
++
+ print("Solution Finished");
+-
+-
+-
+-
+-

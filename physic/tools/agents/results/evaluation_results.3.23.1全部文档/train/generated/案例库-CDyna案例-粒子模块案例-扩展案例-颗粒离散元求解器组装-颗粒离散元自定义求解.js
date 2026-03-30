@@ -1,0 +1,66 @@
+setCurDir(getSrcDir());
+
+// 1. 配置全局仿真参数
+dyna.Set("If_Virtural_Mass 0.0");
+dyna.Set("Output_Interval 500");
+dyna.Set("Contact_Detect_Tol 0.0");
+dyna.Set("Gravity -9.8 0.0 0.0");
+
+// 2. 随机生成颗粒对象（在指定坐标范围内）
+pdyna.CreateByCoord(2000, 1, 1, 0.05, 0.2, 0.0, [0, 5], [0, 5], [0, 5]);
+
+// 3. 设置颗粒组材料模型为脆性类型
+pdyna.SetModel("brittleMC");
+
+// 4. 配置物理属性（密度、弹性模量、泊松比、抗拉强度、粘聚力、摩擦系数、局部阻尼、粘性阻尼）
+pdyna.SetMat(2500, 3e10, 0.25, 1e6, 1e6, 30.0, 0.0, 0.1);
+
+// 5. 定义接触本构关系（摩擦系数与粘聚力已在材料参数中设置）
+rdface.Create(1, 1, 2, [[-10, 0.0, 0.0], [15.0, 0.0, 0.0]]);
+
+// 6. 配置时程监测变量（应力、应变及系统能量分布）
+dyna.Set("If_Monitor_Stress 1");
+dyna.Set("If_Monitor_Strain 1");
+dyna.Set("If_Monitor_Energy 1");
+
+// 7. 设置结果输出文件路径及命名规则
+dyna.Set("Output_File_Name Result_001");
+
+// 8. 调用自定义求解器进行计算
+dyna.BeforeCal();
+
+for (var i = 1; i <= 10000; i++) {
+    if (i % 10 == 0) {
+        pdyna.CellMapping();
+        pdyna.DetectContactAll();
+    }
+
+    pdyna.CalPPContact();
+    pdyna.CalPFContact();
+
+    var fratio = pdyna.CalMovement();
+
+    pdyna.PostProcess();
+
+    if (i % 100 == 0) {
+        print("已经迭代 " + i + " 步, 系统不平衡率为: " + fratio);
+    }
+
+    if (i % 500 == 0) {
+        var ftime = dyna.GetValue("Time_Now");
+        dyna.PutStep(i, i, ftime);
+    }
+}
+
+print("！！！！！！本次求解结束！！！！！");
+
+// 9. 监控计算进程状态（通过 fratio 判断收敛）
+var finalFratio = pdyna.CalMovement();
+if (finalFratio < 0.01) {
+    print("计算已收敛，不平衡率: " + finalFratio);
+} else {
+    print("计算未完全收敛，最终不平衡率: " + finalFratio);
+}
+
+// 10. 执行 FreeUDF 函数卸载动态链接库并释放系统资源
+dyna.FreeUDF();

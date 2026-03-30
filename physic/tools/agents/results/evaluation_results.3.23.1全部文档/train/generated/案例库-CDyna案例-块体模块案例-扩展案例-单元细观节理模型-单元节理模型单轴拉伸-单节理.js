@@ -1,0 +1,64 @@
+setCurDir(getSrcDir());
+
+// 清除平台及求解器内存
+doc.clearResult();
+dyna.Clear();
+imeshing.clear();
+igeo.clear();
+
+// 创建网格文件（长方体模型）
+igeo.genRectS(0, 0, 0, 0.1, 0.2, 0, 0.005, 1);
+imeshing.genMeshByGmsh(2);
+
+// 计算时步
+dyna.Set("Virtural_Step 0.5");
+
+// 不考虑重力的影响
+dyna.Set("Gravity 0 0 0");
+
+// 云图输出间隔500
+dyna.Set("Output_Interval 500");
+
+// 打开ElemJoint本构开关
+dyna.Set("If_ElemJoint_Model 1");
+
+// ElemJoint本构的破坏模式，1为脆性断裂，2为理想弹塑性
+dyna.Set("UbJoint_Mode_Option 1");
+
+// 从网格文件从imeshing模块搭载的BlockDyna核心求解器
+blkdyn.GetMesh(imeshing);
+
+// 设置单元本构模型为MC
+blkdyn.SetModel("MC");
+
+// 设置单元材料参数（密度，弹性模量，泊松比，粘聚力，抗拉强度，内摩擦角，剪胀角，组号）
+blkdyn.SetMat(2500, 3e10, 0.25, 3e6, 1e6, 35, 15, 1);
+
+// 设定单元节理面厚度（m）
+var fThickness = 0.004;
+
+// 设定单元节理面长度（m）
+var fLength = 0.1;
+
+// 设定单元节理面中心坐标（x, y, z）
+var centroid = new Array(0.05, 0.1, 0);
+
+// 设定单元节理面的法向向量（x, y, z）
+var normal = new Array(0, 1, 0);
+
+// 设定序号为1的单元节理参数（将节理穿过的单元设置为"ElemJoint"本构）
+blkdyn.SetElemJointMat(1, 20e9, 0.25, 30, 5e5, 1e6, fThickness, fLength, centroid, normal);
+
+// 施加边界条件 - Y方向底部固定
+blkdyn.FixV("y", 1e-9, "y", 0.0, 0.001);
+
+// 施加边界条件 - Y方向顶部准静态位移加载（单轴拉伸）
+blkdyn.FixV("y", 8e-8, "y", 0.199, 0.201);
+
+// 设置测点 - 获取特定位置的应力时程曲线
+for (var i = 0; i <= 10; i++) {
+    dyna.Monitor("block", "syy", i * 0.01, 0.2, 0);
+}
+
+// 求解计算
+dyna.Solve(20000);

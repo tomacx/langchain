@@ -1,0 +1,53 @@
+setCurDir(getSrcDir());
+
+// 导入凳子几何模型
+var msh1 = imesh.importGid("dengzi.msh");
+
+// 添加边界条件
+pargen.addBound(msh1);
+
+// 设置优化位置选项
+pargen.setValue("OptiPosOption", 1);
+
+// 生成半径为1.0m的球形颗粒
+var parmsh = pargen.gen(1.0);
+
+// 设置颗粒材料参数（密度、摩擦系数、弹性模量等）
+SetUserDefValue("Particle_Density", 2500.0);
+SetUserDefValue("Particle_Friction", 0.3);
+SetUserDefValue("Particle_ElasticModulus", 1e9);
+SetUserDefValue("Particle_PoissonRatio", 0.3);
+
+// 定义三维计算域网格（根据凳子尺寸调整）
+skwave.DefMesh(3, [2.0, 2.0, 2.0], [50, 50, 50]);
+
+// 设置求解器参数
+Set("Particle_Cal_Type", 2);
+Set("PCMM_Elem_Tol", 1e-6);
+
+// 初始化颗粒初始速度（随机扰动）
+var initVel = [0.0, 0.0, 0.0];
+for (var i = 0; i < parmsh.Count(); i++) {
+    var p = parmsh.GetParticle(i);
+    p.SetVelocity(initVel);
+}
+
+// 设置监测点记录颗粒位置、速度及接触力链
+Set("Output_Frequency", 100);
+Set("Output_Variables", "Position,Velocity,ContactForce");
+
+// 启动求解器循环执行时间步长迭代
+var totalTime = 5.0;
+var dt = 1e-6;
+var stepCount = Math.floor(totalTime / dt);
+
+for (var i = 0; i < stepCount; i++) {
+    // 每一迭代步开始时执行CellMapping将颗粒映射到背景格子
+    pdyna.CellMapping();
+
+    // 执行时间步迭代
+    dyna.Step(dt);
+}
+
+// 导出仿真结果
+Set("Output_Files", "Particle_Distribution,Contact_Chain,Force_Chain");

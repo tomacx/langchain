@@ -1,0 +1,121 @@
+--- 案例库-建模及网格案例-参数化几何及网格创建案例-参数化几何创建及网格剖分-创建隧道几何模型.js (ground_truth)
++++ 案例库-建模及网格案例-参数化几何及网格创建案例-参数化几何创建及网格剖分-创建隧道几何模型.js (generated)
+@@ -3,78 +3,55 @@
+ igeo.clear();
+ imeshing.clear();
+ 
+-var Rad1 = 2.25;
+-var Rad2 = 2.55;
+-var Rad3 = 2.65;
+-var Thick1 = 0.3;
+-var Thick2 = 0.1;
+-var BottomL = 4.5;
+-var Height = 6.0;
++// ========== 1. 定义隧道几何参数 ==========
++var TunnelRadius = 3.0;      // 隧道半径 (m)
++var TunnelLength = 50.0;     // 隧道长度 (m)
++var TunnelHeight = 20.0;     // 计算域高度 (m)
++var TunnelWidth = 40.0;      // 计算域宽度 (m)
+ 
+-var ModelL= 96.0;
+-var ModelH = 100.0;
++// 隧道中心位置
++var TunnelCenterX = 50.0;
++var TunnelCenterY = 10.0;
++var TunnelCenterZ = 0.0;
+ 
+-var TunnelBottomX = ModelL / 2.0;
+-var TunnelBottomY = 46.0;
+-var CircleY = TunnelBottomY + 0.3 + 6;
++// 网格划分参数
++var MeshDivX = 20;           // X方向节点数
++var MeshDivY = 15;           // Y方向节点数
++var MeshDivZ = 10;           // Z方向节点数
+ 
+-var size1 = 0.1;
+-var size2 = 1.0;
++// ========== 2. 创建三维圆柱形隧道主体 ==========
++var CylinderID = igeo.genCylinder(TunnelRadius, TunnelLength, TunnelCenterX, TunnelCenterY, TunnelCenterZ);
+ 
+-var P0 = igeo.genPoint(TunnelBottomX, CircleY,0.0, size1);
++// ========== 3. 设置计算域网格参数 ==========
++skwave.DefMesh(3, [TunnelWidth, TunnelHeight, TunnelHeight], [MeshDivX, MeshDivY, MeshDivZ]);
+ 
+-var P1 = igeo.genPoint(TunnelBottomX - BottomL * 0.5 - Thick1 - Thick2, TunnelBottomY,0.0, size1);
+-var P2 = igeo.genPoint(TunnelBottomX - BottomL * 0.5 - Thick1        , TunnelBottomY,0.0, size1);
+-var P3 = igeo.genPoint(TunnelBottomX + BottomL * 0.5+ Thick1      , TunnelBottomY,0.0, size1);
+-var P4 = igeo.genPoint(TunnelBottomX + BottomL * 0.5 + Thick1 + Thick2, TunnelBottomY,0.0, size1);
++// ========== 4. 对几何模型进行网格剖分 ==========
++imeshing.genMeshByGmsh(3);
+ 
+-var P5 = igeo.genPoint(TunnelBottomX - BottomL * 0.5, TunnelBottomY + Thick1, 0.0, size1);
+-var P6 = igeo.genPoint(TunnelBottomX + BottomL * 0.5, TunnelBottomY + Thick1, 0.0, size1);
++// ========== 5. 按隧道结构重新分组 ==========
++var GroupID = imeshing.SetGroupByID(CylinderID);
+ 
+-var P7 = igeo.genPoint(TunnelBottomX - BottomL * 0.5 - Thick1- Thick2, CircleY, 0.0, size1);
+-var P8 = igeo.genPoint(TunnelBottomX - BottomL * 0.5 - Thick1        , CircleY, 0.0, size1);
+-var P9 = igeo.genPoint(TunnelBottomX - BottomL * 0.5                , CircleY, 0.0, size1);
+-var P10 = igeo.genPoint(TunnelBottomX + BottomL * 0.5                , CircleY, 0.0, size1);
+-var P11 = igeo.genPoint(TunnelBottomX + BottomL * 0.5   + Thick1     , CircleY, 0.0, size1);
+-var P12 = igeo.genPoint(TunnelBottomX + BottomL * 0.5   + Thick1  + Thick2   , CircleY, 0.0, size1);
++// ========== 6. 配置监测点（隧道顶部、底部、中部） ==========
++var MonitorPoint1 = [TunnelCenterX, TunnelCenterY + TunnelRadius, TunnelCenterZ];
++var MonitorPoint2 = [TunnelCenterX, TunnelCenterY - TunnelRadius, TunnelCenterZ];
++var MonitorPoint3 = [TunnelCenterX, TunnelCenterY, TunnelCenterZ + TunnelLength / 2.0];
+ 
+-var P13 = igeo.genPoint(TunnelBottomX , CircleY + Rad1, 0.0, size1);
+-var P14 = igeo.genPoint(TunnelBottomX , CircleY + Rad2, 0.0, size1);
+-var P15 = igeo.genPoint(TunnelBottomX , CircleY + Rad3, 0.0, size1);
++// ========== 7. 配置求解器输出设置 ==========
++var OutputDir = getSrcDir() + "/results";
++var ResultFormat = "binary"; // 二进制格式存储结果
+ 
+-///水平
+-var H1 = igeo.genLine(P1, P2);
+-var H2 = igeo.genLine(P2, P3);
+-var H3 = igeo.genLine(P3, P4);
+-var H4 = igeo.genLine(P5, P6);
++// ========== 8. 启动物理场求解器 ==========
++skwave.Solve(1, 10000); // 时间步长1s，最大迭代10000步
+ 
+-///竖直
+-var V1 =  igeo.genLine(P1, P7);
+-var V2 =  igeo.genLine(P8, P2);
+-var V3 =  igeo.genLine(P9, P5);
+-var V4 =  igeo.genLine(P10, P6);
+-var V5 =  igeo.genLine(P11, P3);
+-var V6 =  igeo.genLine(P12, P4);
++// ========== 9. 输出监测数据与网格变形结果 ==========
++print("隧道模型创建完成");
++print("网格节点数: " + imeshing.GetNodeCount());
++print("网格单元数: " + imeshing.GetElementCount());
++print("分组ID: " + GroupID);
++print("监测点位置: " + MonitorPoint1 + ", " + MonitorPoint2 + ", " + MonitorPoint3);
+ 
+-///圆弧
+-var ArcIn1 = igeo.genArc(P9, P0, P13);
+-var ArcIn2 = igeo.genArc(P13, P0, P10);
+-var ArcMid1 = igeo.genArc(P8, P0, P14);
+-var ArcMid2 = igeo.genArc(P14, P0, P11);
+-var ArcOut1 = igeo.genArc(P7, P0, P15);
+-var ArcOut2 = igeo.genArc(P15, P0, P12);
++// 导出结果到指定目录
++imeshing.ExportMesh(OutputDir + "/tunnel_mesh.vtk");
++skwave.ExportResults(OutputDir + "/tunnel_results.dat", ResultFormat);
+ 
+-var LineLoop1 = igeo.genLineLoop(  [V3,H4,V4, ArcIn1,  ArcIn2]  );
+-var LineLoop2 = igeo.genLineLoop(  [V2,H2,V5, ArcMid1, ArcMid2]   );
+-var LineLoop3 = igeo.genLineLoop(  [V1,H1,V2,ArcMid1, ArcMid2,V5,H3,V6, ArcOut2, ArcOut1]  );
+-
+-igeo.genSurface([LineLoop2, LineLoop1], 1);
+-igeo.genSurface([LineLoop3], 2);
+-
+-var LineLoop4 = igeo.genLineLoop(  [V1, H1, H2, H3,V6, ArcOut2, ArcOut1]  );
+-var LineLoop5 = igeo.genRect(0,0,0, ModelL, ModelH, 0, size2);
+-igeo.genSurface([LineLoop5, LineLoop4], 3);
+-
+-imeshing.genMeshByGmsh(2);
+-
+-
++print("仿真计算完成，结果已导出至: " + OutputDir);

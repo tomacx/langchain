@@ -961,7 +961,7 @@ class AgentConstructionModule:
         
         # 3. 系统提示词
         if globals().get('HAS_CUSTOM_PROMPT', False) and globals().get('agent_system') is not None:
-            system_prompt = agent_system.AGENT_SYSTEM_PROMPT2
+            system_prompt = agent_system.AGENT_SYSTEM_PROMPT0
         else:
             system_prompt = self._get_default_system_prompt()
             

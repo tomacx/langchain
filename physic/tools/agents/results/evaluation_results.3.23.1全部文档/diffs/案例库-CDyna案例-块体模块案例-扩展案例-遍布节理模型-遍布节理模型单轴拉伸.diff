@@ -1,0 +1,92 @@
+--- 案例库-CDyna案例-块体模块案例-扩展案例-遍布节理模型-遍布节理模型单轴拉伸.js (ground_truth)
++++ 案例库-CDyna案例-块体模块案例-扩展案例-遍布节理模型-遍布节理模型单轴拉伸.js (generated)
+@@ -1,52 +1,62 @@
+ setCurDir(getSrcDir());
+ 
++// 清除平台及求解器内存
+ doc.clearResult();
+ dyna.Clear();
+ imeshing.clear();
+ igeo.clear();
+ 
+-igeo.genRectS(0,0,0, 0.1, 0.2, 0, 0.005, 1);
++// 创建单轴拉伸试件几何（长方体）
++var f1 = igeo.genRect(0, 0, 0, 0.2, 0.05, 0.05, 1);
++var loop = [f1];
++igeo.genSurface(loop, 1);
+ 
++// 网格划分
+ imeshing.genMeshByGmsh(2);
+ 
+-///计算
++// 计算时步设置
+ dyna.Set("Virtural_Step 0.5");
++dyna.Set("Output_Interval 500");
++dyna.Set("Gravity 0 0 0");
++dyna.Set("Large_Displace 1");
+ 
+-dyna.Set("Gravity 0 0 0");
+-
+-dyna.Set("Output_Interval 500");
+-
++// 从网格文件搭载BlockDyna核心求解器
+ blkdyn.GetMesh(imeshing);
+ 
+-///设置面的原点
+-var origin = new Array(0.05, 0.1, 0.0);
+-///设置面的法向
+-var normal = new Array(0, 1, 0);
+-blkdyn. SetGroupByPlaneAndGroup(2, origin, normal, 1, 1);
++// 设置单元本构模型为MC（遍布节理）
++blkdyn.SetModel("MC");
+ 
+-blkdyn.SetModel("linear");
+-blkdyn.SetModel("Joint",2);
++// 设置基体材料参数：密度、弹性模量、泊松比、抗拉强度、粘聚力、内摩擦角、局部阻尼
++blkdyn.SetMat(2500, 3e10, 0.25, 1e6, 3e6, 35, 0.15);
+ 
+-blkdyn.SetMat(2500, 3e10, 0.25, 3e6, 1e6, 35, 15);
++// 设定遍布节理面的法向（沿X方向拉伸，节理面垂直于Y-Z平面）
++var normal = new Array(1, 0, 0);
+ 
++// 设置全局节理参数：序号、摩擦角、内聚力、抗拉强度、法向向量
++blkdyn.SetUbiJointMat(1, 35, 3e6, 1e6, normal);
+ 
+-///设定遍布节理面的法向
+-var normal = new Array(0, 1, 0);
+-///设定序号为1的全局遍布节理参数
+-blkdyn.SetUbiJointMat(1, 20, 5e5, 5e5, normal);
++// 将全局节理参数关联到所有单元（组号范围）
++blkdyn.BindUbiJointMat(1, 1, 100);
+ 
+-blkdyn.BindUbiJointMat(1, 2 ,2);
++// 设置遍布节理模型的破坏模式为脆性断裂（1）
++dyna.Set("UbJoint_Mode_Option 1");
+ 
++// 左侧固定约束（X方向）
++blkdyn.FixV("x", 0, "x", -0.0001, 0.0001);
+ 
+-blkdyn.FixV("y",1e-9, "y", 0.1999, 11);
+-blkdyn.FixV("y", 0, "y", -0.001, 0.001);
++// 右侧施加准静态拉伸速度载荷（X方向，速度3e-7 m/s）
++blkdyn.FixV("x", 3e-7, "x", 0.199, 0.201);
+ 
+-for(var i = 0; i <= 10; i++)
+-{
+-dyna.Monitor("block","syy", i * 0.01, 0.2 ,0);
++// 监测节点Y、Z方向位移（节理张开闭合状态）
++for (var i = 0; i <= 10; i++) {
++    dyna.Monitor("block", "ydis", i * 0.01, 0.2, 0);
++    dyna.Monitor("block", "zdis", i * 0.01, 0.2, 0);
+ }
+ 
+-dyna.Solve(20000);
++// 监测单元应力（sxx为X方向正应力）
++for (var i = 0; i <= 10; i++) {
++    dyna.Monitor("block", "sxx", i * 0.01, 0.2, 0);
++}
+ 
+-
+-
++// 求解仿真
++dyna.Solve();

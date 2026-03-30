@@ -1,0 +1,206 @@
+# Failure Analysis: 案例库-CDyna案例-粒子模块案例-基本案例-UCStest-UCStest.js
+
+## Query
+请编写一个CDyna仿真脚本，实现基本案例-UCStest-UCStest，并输出必要的结果与监测。
+
+## Generated Code
+```javascript
+setCurDir(getSrcDir());
+
+// 设置重力加速度
+dyna.Set("Gravity 0.0 -9.8 0.0");
+
+// 创建三维方块网格模型 (10x10x10单元, 尺寸20x20x20)
+blkdyn.GenBrick3D(10, 10, 10, 20, 20, 20, 1);
+
+// 设置单元的力学模型类型为线弹性模型
+blkdyn.SetModel("linear");
+
+// 设置材料参数 (密度, 弹性模量, 泊松比, 屈服应力, 剪切模量, 其他参数)
+blkdyn.SetMat(2500, 3e10, 0.25, 3e6, 1e6, 40, 15);
+
+// 固定底部边界条件 (限制Y方向速度)
+blkdyn.FixV("xyz", 0.0, "y", -0.001, 0.001);
+
+// 设置典型监测点位置 (监测Y方向位移)
+dyna.Monitor("block", "ydis", 5.0, 10.0, 5.0);
+dyna.Monitor("block", "ydis", 5.0, 6.0, 5.0);
+dyna.Monitor("block", "ydis", 5.0, 2.0, 5.0);
+
+// 计算前初始化操作
+dyna.BeforeCal();
+
+// 主循环迭代步骤
+for (var i = 0; i < 10000; i++) {
+    // 集成核心计算
+    var unbal = blkdyn.Solver();
+
+    // 计算单元变形力
+    blkdyn.CalBlockForce();
+
+    // 计算节点运动
+    blkdyn.CalNodeMovement();
+
+    // 输出监测信息
+    dyna.OutputMonitorData();
+
+    // 每隔100步推送结果信息至GDEM-Env
+    if (i != 0 && i % 100 == 0) {
+        print("不平衡率：" + unbal);
+        dyna.PutStep(1, i, 0.1);
+    }
+}
+```
+
+## Ground Truth
+```javascript
+//设置当前路径为JavaScript脚本所在的路径
+setCurDir(getSrcDir());
+
+
+//设置结果的输出间隔为500步
+dyna.Set("Output_Interval 500");
+
+//打开虚拟质量计算开关
+dyna.Set("If_Virtural_Mass 1");
+
+//设置三个方向的重力加速度为0
+dyna.Set("Gravity 0.0 0.0 0.0");
+
+//设置颗粒间的接触容差为2e-4
+dyna.Set("Contact_Detect_Tol 2e-4");
+
+//设置全局的刚性面模型及参数
+dyna.Set("If_Contact_Use_GlobMat 1 2 1e9 1e9 0 0 5.0")
+dyna.Set("If_Stiff_Use_Set_Value 0")
+
+//dyna.Set("Para_Threads_Num 1");
+
+var fCoord = new Array();
+fCoord[0]=new Array(-0.2,0.0,0.0);
+fCoord[1]=new Array(0.3,0.0,0.0);
+rdface.Create (1, 1, 2, fCoord);
+
+
+fCoord[0]=new Array(-0.2,0.2,0.0);
+fCoord[1]=new Array(0.3,0.2,0.0);
+rdface.Create (1, 2, 2, fCoord);
+
+
+var FixV=[0.0, -1e-8, 0.0];
+rdface.ApplyVelocityByGroup (FixV, 2,2);
+
+//导入gid格式的颗粒网格
+pdyna.Import("gid","0.1m0.2m-particle.msh");
+
+//设置颗粒模型为脆性断裂模型
+pdyna.SetModel("brittleMC");
+
+//施加颗粒与颗粒接触的材料参，依次为密度、弹性模量、泊松比、抗拉强度、粘聚力、内摩擦角、局部阻尼、粘性阻尼系数（临界阻尼比）
+pdyna.SetMat(2500, 3e10, 0.25, 1e6, 5e6, 30, 0.0, 0.2);
+
+
+//监测刚性面的竖向位移
+dyna.Monitor("rdface","rg_yDis",2,2,0);
+
+//监测刚性面的竖向力
+dyna.Monitor("rdface","rg_pyForce",2,2,0);
+dyna.Monitor("rdface","rg_pyForce",1,1,0);
+
+
+dyna.Solve(100000);
+```
+
+## Unified Diff
+```diff
+--- 案例库-CDyna案例-粒子模块案例-基本案例-UCStest-UCStest.js (ground_truth)
++++ 案例库-CDyna案例-粒子模块案例-基本案例-UCStest-UCStest.js (generated)
+@@ -1,55 +1,45 @@
+-//设置当前路径为JavaScript脚本所在的路径
+ setCurDir(getSrcDir());
+ 
++// 设置重力加速度
++dyna.Set("Gravity 0.0 -9.8 0.0");
+ 
+-//设置结果的输出间隔为500步
+-dyna.Set("Output_Interval 500");
++// 创建三维方块网格模型 (10x10x10单元, 尺寸20x20x20)
++blkdyn.GenBrick3D(10, 10, 10, 20, 20, 20, 1);
+ 
+-//打开虚拟质量计算开关
+-dyna.Set("If_Virtural_Mass 1");
++// 设置单元的力学模型类型为线弹性模型
++blkdyn.SetModel("linear");
+ 
+-//设置三个方向的重力加速度为0
+-dyna.Set("Gravity 0.0 0.0 0.0");
++// 设置材料参数 (密度, 弹性模量, 泊松比, 屈服应力, 剪切模量, 其他参数)
++blkdyn.SetMat(2500, 3e10, 0.25, 3e6, 1e6, 40, 15);
+ 
+-//设置颗粒间的接触容差为2e-4
+-dyna.Set("Contact_Detect_Tol 2e-4");
++// 固定底部边界条件 (限制Y方向速度)
++blkdyn.FixV("xyz", 0.0, "y", -0.001, 0.001);
+ 
+-//设置全局的刚性面模型及参数
+-dyna.Set("If_Contact_Use_GlobMat 1 2 1e9 1e9 0 0 5.0")
+-dyna.Set("If_Stiff_Use_Set_Value 0")
++// 设置典型监测点位置 (监测Y方向位移)
++dyna.Monitor("block", "ydis", 5.0, 10.0, 5.0);
++dyna.Monitor("block", "ydis", 5.0, 6.0, 5.0);
++dyna.Monitor("block", "ydis", 5.0, 2.0, 5.0);
+ 
+-//dyna.Set("Para_Threads_Num 1");
++// 计算前初始化操作
++dyna.BeforeCal();
+ 
+-var fCoord = new Array();
+-fCoord[0]=new Array(-0.2,0.0,0.0);
+-fCoord[1]=new Array(0.3,0.0,0.0);
+-rdface.Create (1, 1, 2, fCoord);
++// 主循环迭代步骤
++for (var i = 0; i < 10000; i++) {
++    // 集成核心计算
++    var unbal = blkdyn.Solver();
+ 
++    // 计算单元变形力
++    blkdyn.CalBlockForce();
+ 
+-fCoord[0]=new Array(-0.2,0.2,0.0);
+-fCoord[1]=new Array(0.3,0.2,0.0);
+-rdface.Create (1, 2, 2, fCoord);
++    // 计算节点运动
++    blkdyn.CalNodeMovement();
+ 
++    // 输出监测信息
++    dyna.OutputMonitorData();
+ 
+-var FixV=[0.0, -1e-8, 0.0];
+-rdface.ApplyVelocityByGroup (FixV, 2,2);
+-
+-//导入gid格式的颗粒网格
+-pdyna.Import("gid","0.1m0.2m-particle.msh");
+-
+-//设置颗粒模型为脆性断裂模型
+-pdyna.SetModel("brittleMC");
+-
+-//施加颗粒与颗粒接触的材料参，依次为密度、弹性模量、泊松比、抗拉强度、粘聚力、内摩擦角、局部阻尼、粘性阻尼系数（临界阻尼比）
+-pdyna.SetMat(2500, 3e10, 0.25, 1e6, 5e6, 30, 0.0, 0.2);
+-
+-
+-//监测刚性面的竖向位移
+-dyna.Monitor("rdface","rg_yDis",2,2,0);
+-
+-//监测刚性面的竖向力
+-dyna.Monitor("rdface","rg_pyForce",2,2,0);
+-dyna.Monitor("rdface","rg_pyForce",1,1,0);
+-
+-
+-dyna.Solve(100000);
++    // 每隔100步推送结果信息至GDEM-Env
++    if (i != 0 && i % 100 == 0) {
++        print("不平衡率：" + unbal);
++        dyna.PutStep(1, i, 0.1);
++    }
++}
+```

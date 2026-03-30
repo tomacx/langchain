@@ -1,0 +1,61 @@
+--- 案例库-CDyna案例-粒子模块案例-扩展案例-基于单元产生随机分组的颗粒-从单元产生随机分组的颗粒.js (ground_truth)
++++ 案例库-CDyna案例-粒子模块案例-扩展案例-基于单元产生随机分组的颗粒-从单元产生随机分组的颗粒.js (generated)
+@@ -1,12 +1,54 @@
+ setCurDir(getSrcDir());
+ 
++// 创建矩形实体几何模型 (长x宽x高)
++igeo.genRectS(0, 0, 0, 1.0, 1.0, 0.5, 0.01, 1);
+ 
+-igeo.genRectS(0,0,0,1,1,0,0.01,1);
+-
++// 使用Gmsh生成网格
+ imeshing.genMeshByGmsh(2);
+ 
++// 加载网格到块体动力学求解器
+ blkdyn.GetMesh(imeshing);
+ 
+-blkdyn.RandomizeGroupByBall(0.05,0.2, 0, 200, 1);
++// 设置随机分组参数 (半径范围,密度范围,起始节点ID,最大节点数)
++blkdyn.RandomizeGroupByBall(0.05, 0.2, 0, 200, 1);
+ 
+-pdyna.CreateFromBlock(2,1,111111);
++// 从实体单元创建颗粒
++pdyna.CreateFromBlock(2, 1, 111111);
++
++// 设置求解器基本参数
++dyna.Set("Gravity 0 0 -9.8");
++dyna.Set("Output_Interval 500");
++dyna.Set("Contact_Detect_Tol 0.0");
++dyna.Set("Time_Step 2e-4");
++
++// 设置颗粒材料属性 (密度,弹性模量,泊松比,抗拉强度,粘聚力,内摩擦角,平动阻尼,转动阻尼,粘性阻尼)
++pdyna.SetPartMat(2500, 1e7, 0.25, 1e6, 5e6, 30, 0.01, 0.1, 0.1);
++
++// 设置颗粒接触模型为Mohr-Coulomb模型
++pdyna.SetModel("brittleMC");
++
++// 创建底部刚性面作为边界约束
++var bottomCoord = new Array(2);
++bottomCoord[0] = [0, 0, 0];
++bottomCoord[1] = [1.0, 0, 0];
++rdface.Create(1, 1, 2, bottomCoord);
++
++// 创建侧面刚性面约束
++var sideCoord = new Array(2);
++sideCoord[0] = [0, 0, 0];
++sideCoord[1] = [0, 1.0, 0];
++rdface.Create(1, 2, 2, sideCoord);
++
++// 创建顶部刚性面约束
++var topCoord = new Array(2);
++topCoord[0] = [0, 0, 0.5];
++topCoord[1] = [1.0, 0, 0.5];
++rdface.Create(1, 3, 2, topCoord);
++
++// 设置监测变量 - 应力、应变、能量输出
++dyna.Set("Stress_Output 1");
++dyna.Set("Strain_Output 1");
++dyna.Set("Energy_Output 1");
++
++// 执行计算 (8000步)
++dyna.Solve(8000);

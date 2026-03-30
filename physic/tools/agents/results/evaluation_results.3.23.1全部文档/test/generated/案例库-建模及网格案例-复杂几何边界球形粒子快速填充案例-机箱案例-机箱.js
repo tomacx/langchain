@@ -1,0 +1,52 @@
+setCurDir(getSrcDir());
+
+// 1. 初始化仿真环境并启用PCMM模块
+dyna.Set("Particle_Cal_Type", 2);
+dyna.Set("PCMM_Elem_Tol", 0.001);
+
+// 2. 创建三维计算域（机箱尺寸：0.5m x 0.3m x 0.2m，节点分割数）
+skwave.DefMesh(3, [0.5, 0.3, 0.2], [50, 30, 20]);
+
+// 3. 设置球形粒子材料参数（体积模量、剪切模量、动力粘度）
+pcmm.SetKGVByGroup([1], [2.0e9, 7.0e8, 1.5]); // 组1：体积模量2GPa，剪切模量0.7GPa，动力粘度1.5 Pa·s
+
+// 4. 导入机箱几何边界并生成粒子
+pargen.importBoundSTL("box1.stl", "box2.stl", "box3.stl");
+pargen.setValue("OptiPosOption", 1); // 优化位置选项，确保紧密排列
+pargen.gen(0.0005); // 粒子半径0.5mm
+
+// 5. 施加无反射静态边界条件（在机箱壁面坐标位置）
+ApplyQuietBoundByCoord([0, 0, 0], [0.5, 0.3, 0.2]);
+
+// 6. 配置仿真输出设置
+dyna.Set("Output_File_Name", "output");
+dyna.Set("Output_Time_Step", 1e-7); // 时步长100ns
+dyna.Set("Output_Total_Time", 0.01); // 总时间10ms
+
+// 7. 设定监测点位置及物理量类型
+var monitorPoints = [[0.25, 0.15, 0.1], [0.1, 0.1, 0.1]];
+dyna.Set("Monitor_Point_Count", monitorPoints.length);
+for (var i = 0; i < monitorPoints.length; i++) {
+    dyna.Set("Monitor_Point_" + (i + 1) + "_X", monitorPoints[i][0]);
+    dyna.Set("Monitor_Point_" + (i + 1) + "_Y", monitorPoints[i][1]);
+    dyna.Set("Monitor_Point_" + (i + 1) + "_Z", monitorPoints[i][2]);
+}
+
+// 8. 执行脚本计算任务
+dyna.Run();
+
+// 9. 读取计算结束后的数据文件验证颗粒分布
+var particleCount = pargen.getValue("Particle_Count");
+var totalVolume = pargen.getValue("Total_Volume");
+console.log("粒子总数：" + particleCount);
+console.log("填充总体积：" + totalVolume + " m³");
+
+// 10. 生成报告文件（输出结果摘要）
+var reportContent = "=== CDEM机箱填充案例仿真报告 ===\n";
+reportContent += "计算域尺寸：0.5m x 0.3m x 0.2m\n";
+reportContent += "粒子半径：0.5mm\n";
+reportContent += "粒子总数：" + particleCount + "\n";
+reportContent += "填充体积：" + totalVolume + " m³\n";
+reportContent += "边界条件：无反射静态边界\n";
+reportContent += "仿真时间：10ms\n";
+console.log(reportContent);

@@ -1,0 +1,47 @@
+setCurDir(getSrcDir());
+
+// 设置求解器全局参数
+dyna.Set("Gravity 0.0 -9.8 0.0");
+dyna.Set("If_Virtural_Mass 0");
+dyna.Set("Contact_Detect_Tol 0.001");
+dyna.Set("Output_Interval 500");
+dyna.Set("Contact_Search_Method 2");
+dyna.Set("Particle_Renew_Interval 1");
+dyna.Set("If_Opti_Cell_Length 0");
+dyna.Set("Min_Cell_Length 4.0");
+dyna.Set("Time_Step 5e-5");
+
+// 创建级配颗粒系统（直径差20倍）
+var x = new Array(0.0, 100.0);
+var y = new Array(0.0, 100.0);
+var z = new Array(0.0, 100.0);
+
+// 最大粒径颗粒（直径20m）
+pdyna.CreateByCoord(100, 1, 2, 20.0, 20.0, 0, x, y, z);
+
+// 中等粒径颗粒（直径10m）
+pdyna.CreateByCoord(500, 2, 2, 10.0, 10.0, 0, x, y, z);
+
+// 小粒径颗粒（直径5m）
+pdyna.CreateByCoord(1000, 3, 2, 5.0, 5.0, 0, x, y, z);
+
+// 细粒径颗粒（直径2.5m）
+pdyna.CreateByCoord(5000, 4, 2, 2.5, 2.5, 0, x, y, z);
+
+// 设置颗粒模型为脆性断裂模型
+pdyna.SetModel("brittleMC");
+
+// 设置颗粒材料参数（密度、弹性模量、泊松比、抗拉强度、粘聚力、内摩擦角、局部阻尼）
+pdyna.SetMat(2500, 1e8, 0.25, 0.0, 0.0, 30, 0.01, 0.0);
+
+// 导入刚性面边界（用于约束颗粒运动）
+rdface.Import("gid", "bound.msh");
+
+// 设置计算时步
+dyna.Set("Time_Step 5e-5");
+
+// 执行求解（迭代30000步确保级配颗粒动力响应收敛）
+dyna.Solve(30000);
+
+// 导出颗粒数据
+pdyna.exportPDyna("par.dat");

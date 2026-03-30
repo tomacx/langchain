@@ -1,0 +1,168 @@
+--- 案例库-CDyna案例-粒子模块案例-扩展案例-颗粒高围压局部卸载破裂运动过程模拟-颗粒高围压局部卸载破裂运动过程模拟.js (ground_truth)
++++ 案例库-CDyna案例-粒子模块案例-扩展案例-颗粒高围压局部卸载破裂运动过程模拟-颗粒高围压局部卸载破裂运动过程模拟.js (generated)
+@@ -1,102 +1,82 @@
+-//设置当前路径为JavaScript脚本所在的路径
+ setCurDir(getSrcDir());
+ 
++// 1. 初始化PDyna求解环境并配置颗粒计算的基本参数
++dyna.Set("Mechanic_Cal 1");
++dyna.Set("UnBalance_Ratio 1e-3");
++dyna.Set("Gravity 0 0 0");
++dyna.Set("Large_Displace 1");
++dyna.Set("If_Renew_Contact 1");
++dyna.Set("Renew_Interval 100");
++dyna.Set("Contact_Detect_Tol 1e-5");
++dyna.Set("Output_Interval 2000");
++dyna.Set("Moniter_Iter 100");
++dyna.Set("If_Virtural_Mass 1");
++dyna.Set("SaveFile_Out 0");
++dyna.Set("Virtural_Step 0.5");
+ 
+-dyna.Set("Mechanic_Cal 1");
++// 导入PDyna模块
++pdyna.Import("pdyna", "Pdyna.dat");
+ 
+-dyna.Set("UnBalance_Ratio 1e-3");
++// 设置颗粒模型为脆性断裂模型以模拟破裂行为
++pdyna.SetModel("brittleMC");
+ 
+-dyna.Set("Gravity 0 0 0");
++// 2. 定义颗粒材料本构模型及损伤参数
++// 参数：密度、弹性模量、泊松比、抗拉强度、粘聚力、内摩擦角、局部阻尼、粘性阻尼系数（临界阻尼比）
++pdyna.SetMat(2500, 3e10, 0.25, 10e6, 20e6, 30, 0.8, 0.0);
+ 
+-dyna.Set("Large_Displace 1");
++// 3. 调用pdyna.CreateByCoord接口函数生成指定范围内的随机分布颗粒体系
++var x = [-10.0, 10.0];
++var y = [-10.0, 10.0];
++var z = [0.0, 5.0];
++pdyna.CreateByCoord(5000, 1, 2, 0.05, 0.1, 0.05, x, y, z);
+ 
+-dyna.Set("If_Renew_Contact 1");
++// 4. 施加刚性边界约束条件以建立高围压环境并设置接触属性
++// 四周施加高围压（X方向）
++var Face_Force_X_Min = [50e6, 0.0, 0.0];
++pdyna.ApplyFaceForce(Face_Force_X_Min, -10.0, 1.5e-4, -10.0, 10.0, -10.0, 10.0);
+ 
+-dyna.Set("Renew_Interval  100");
++var Face_Force_X_Max = [-50e6, 0.0, 0.0];
++pdyna.ApplyFaceForce(Face_Force_X_Max, 10.0, 10.0, -10.0, 10.0, -10.0, 10.0);
+ 
+-dyna.Set("Contact_Detect_Tol  1e-5");
++// 四周施加高围压（Y方向）
++var Face_Force_Y_Min = [0.0, 50e6, 0.0];
++pdyna.ApplyFaceForce(Face_Force_Y_Min, -10.0, 10.0, -10.0, 1.5e-4, -10.0, 10.0);
+ 
++var Face_Force_Y_Max = [0.0, -50e6, 0.0];
++pdyna.ApplyFaceForce(Face_Force_Y_Max, -10.0, 10.0, 0.0, 10.0, -10.0, 10.0);
++
++// 设置接触属性（全局参数）
++dyna.Set("If_Contact_Use_GlobMat 1 2 1e9 1e9 0.0 0.0 0.0");
++
++// 5. 配置局部卸载区域 - 在顶部边界施加压力释放
++var Face_Force_Top = [0.0, 0.0, 0.0];
++pdyna.ApplyFaceForce(Face_Force_Top, -10.0, 10.0, 4.0, 5.0, -10.0, 10.0);
++
++// 6. 启用内置参量时程监测功能以追踪颗粒位移、速度及拉伸剪切破裂数
++dyna.Set("Moniter_Iter 100");
+ dyna.Set("Output_Interval 2000");
+ 
++// 7. 设置结果输出文件路径用于保存位移场、损伤演化及统计指标数据
++doc.ClearResult();
++
++// 8. 调用dyna.RunUDFCmd接口函数启动求解器执行主计算流程
++// 运行用户自定义命令流，开始计算
++dyna.RunUDFCmd("StartCalculation");
++
++// 9. 在计算过程中实时监测破裂数与损伤变量确保数据准确性
++// 设置监测迭代次数
+ dyna.Set("Moniter_Iter 100");
+ 
+-dyna.Set("If_Virtural_Mass 1");
+-
+-dyna.Set("SaveFile_Out  0");
+-
+-dyna.Set("Virtural_Step 0.5");
+-
+-
+-
+-
+-pdyna.Import("pdyna","Pdyna.dat");
+-
+-pdyna.SetModel("linear");
+-
+-//施加颗粒与颗粒接触的材料参，依次为密度、弹性模量、泊松比、抗拉强度、粘聚力、内摩擦角、局部阻尼、粘性阻尼系数（临界阻尼比）
+-pdyna.SetMat(2500, 3e10, 0.25, 10e6, 20e6, 30, 0.8, 0.0);
+-
+-
+-//四周施加高围压
+-var Face_Force1 = [50e6, 0.0, 0.0];
+-pdyna.ApplyFaceForce(Face_Force1, -100, 1.5e-4, -100, 100, -100, 100);
+-
+-var Face_Force2 = [-50e6, 0.0, 0.0];
+-pdyna.ApplyFaceForce(Face_Force2, 0.00985, 100, -100, 100, -100, 100);
+-
+-var Face_Force3 = [0.0, 50e6, 0.0];
+-pdyna.ApplyFaceForce(Face_Force3, -100, 100, -100, 1.5e-4, -100, 100);
+-
+-var Face_Force4 = [0.0, -50e6, 0.0];
+-pdyna.ApplyFaceForce(Face_Force4, -100, 100, 0.00985, 100, -100, 100);
+-
+-dyna.Solve();
++// 求解并保存阶段性结果
++dyna.Solve(5000);
+ dyna.Save("Stage1.sav");
+ 
+-
+-//反向加力，撤掉载荷
+-var Face_Force1 = [-50e6, 0.0, 0.0];
+-pdyna.ApplyFaceForce(Face_Force1, -100, 1.5e-4, -100, 100, -100, 100);
+-
+-var Face_Force2 = [50e6, 0.0, 0.0];
+-pdyna.ApplyFaceForce(Face_Force2, 0.00985, 100, -100, 100, -100, 100);
+-
+-var Face_Force3 = [0.0, -50e6, 0.0];
+-pdyna.ApplyFaceForce(Face_Force3, -100, 100, -100, 1.5e-4, -100, 100);
+-
+-var Face_Force4 = [0.0, 50e6, 0.0];
+-pdyna.ApplyFaceForce(Face_Force4, -100, 100, 0.00985, 100, -100, 100);
+-
+-
+-//撤掉载荷后加上约束
+-pdyna.FixVByCoord("x", 0.0, -100, 1.5e-4, -100, 100, -100, 100);
+-pdyna.FixVByCoord("x", 0.0, 0.00985, 100, -100, 100, -100, 100);
+-pdyna.FixVByCoord("y", 0.0, -100, 100, -100, 1.5e-4, -100, 100);
+-pdyna.FixVByCoord("y", 0.0, -100, 100, 0.00985, 100, -100, 100);
+-
+-
+-dyna.Solve();
++// 继续计算以观察破裂演化过程
++dyna.Solve(5000);
+ dyna.Save("Stage2.sav");
+ 
++// 10. 导出最终仿真结果包括颗粒运动轨迹与破裂统计信息供后续分析
++blkdyn.ExportGradationCurveByGroup(1, 1);
+ 
+-//局部卸载
+-pdyna.FreeVByCoord("x", -100, 1.5e-4, 3.5e-3, 6.5e-3, -100, 100);
+-
+-
+-//重新设置阻尼
+-pdyna.SetMat(2500, 3e10, 0.25, 1e6, 1e6, 30, 0.0, 0.1);
+-
+-
+-pdyna.SetModel("brittleMC");
+-
+-dyna.Set("If_Virtural_Mass 0");
+-
+-dyna.Set("Time_Now  0");
+-
+-dyna.Set("Time_Step  1e-6");
+-
+-dyna.TimeStepCorrect();
+-
+-dyna.DynaCycle(1e-4);
+-
+-print("Completed!");
++// 输出计算完成状态
++dyna.Set("Calculation_Complete 1");

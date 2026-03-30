@@ -1,0 +1,133 @@
+--- 案例库-CDyna案例-块体模块案例-扩展案例-塑性区半径理论解对比-塑性区半径理论解对比.js (ground_truth)
++++ 案例库-CDyna案例-块体模块案例-扩展案例-塑性区半径理论解对比-塑性区半径理论解对比.js (generated)
+@@ -1,95 +1,46 @@
+ setCurDir(getSrcDir());
+-dyna.Clear();
+-dyna.Set("Mechanic_Cal 1");
+ 
++// ========== 1. 初始化CDyna仿真环境并配置求解器基本设置 ==========
++dyna.Set("Output_Interval 500");
++dyna.Set("If_Virtural_Mass 0");
++dyna.Set("Gravity 0.0 0.0 -9.8");
++dyna.Set("Contact_Detect_Tol 0.0");
++dyna.Set("Time_Step 2e-4");
++dyna.Set("HourGlass_Damp_Factor 0.15");
++dyna.Set("Large_Displace 1");
+ 
+-//设置不平衡率
+-dyna.Set("UnBalance_Ratio 1e-2");
++// ========== 2. 定义材料本构模型（Drucker-Prager参数） ==========
++// 弹性参数：E=5e7 Pa, mu=0.25
++// Drucker-Prager强度参数：C=5e6 Pa, T=1e6 Pa, FaiA=30度, DiaA=0度
++// 材料参数顺序：密度、弹性模量、泊松比、抗拉强度、粘聚力、内摩擦角、局部平动阻尼、局部转动阻尼、粘性阻尼系数
++pdyna.SetMat(2500, 5e7, 0.25, 1e6, 5e6, 30, 0.01, 0.1, 0.1);
+ 
+-dyna.Set("Gravity 0 0.0 0");
++// ========== 3. 生成计算域颗粒系统 ==========
++// 创建球形颗粒系统，半径范围0.8-1.0m，分段数12x12
++pdyna.CrtEllipsoidPartFromFile("Rad4m.dat", "uniform", 0.8, 1, "uniform", 0.2, 1, "uniform", 0.2, 1.0, 12, 12);
+ 
+-dyna.Set("Large_Displace 0");
++// ========== 4. 施加边界条件与重力载荷 ==========
++// 导入底部刚性面约束颗粒运动
++rdface.Import("gid", "boundary.msh");
+ 
+-//输出间隔为2000步
+-dyna.Set("Output_Interval 2000");
++// ========== 5. 配置颗粒间接触模型参数 ==========
++pdyna.SetModel("brittleMC");
+ 
+-//是否输出结果为GiD可读的格式
+-dyna.Set("GiD_Out 1");
++// ========== 6. 设置特定监测点（中心区域） ==========
++// 通过RunUDFCmdAdv调用自定义函数获取塑性区半径
++var fDist = dyna.RunUDFCmdAdv("CalPlasticRadius", [0, 0, 0]);
+ 
+-//是否将结果文件输出为GDEM 平台可以读入的格式，0-不输出
+-dyna.Set("Msr_Out 0");
++// ========== 7. 定义输出请求（已包含在Output_Interval中） ==========
++// 记录指定监测点的应力、应变及塑性状态变量数据
+ 
+-//时程数据的检测步长 根据步长记录检测数据
+-dyna.Set("Moniter_Iter 100");
++// ========== 8. 调整沙漏阻尼系数等求解控制参数 ==========
++dyna.Set("HourGlass_Damp_Factor 0.15");
++dyna.Set("DP_Model_Option 1");
++dyna.Set("UnBalance_Ratio 1e-3");
+ 
+-//是否开启虚质量计算（适用于静态或准静态问题），0-不开启，1-开启。
+-dyna.Set("If_Virtural_Mass 1");
++// ========== 9. 执行求解器命令运行仿真 ==========
++// 计算3万步，达到收敛条件或总时间步长限制
++dyna.Solve(30000);
+ 
+-//虚质量时间步长为0.5
+-dyna.Set("Virtural_Step 0.5");
+-
+-
+-//导入GiD的网格
+-blkdyn.ImportGrid("gid", "gidmesh1.msh");
+-
+-//将单元ID号为1-1500之间的单元设置为组1
+-blkdyn.SetGroupByID(1, 1, 1);
+-
+-//将单元ID号为2-2之间的单元设置为组2
+-blkdyn.SetGroupByID(1, 2, 2);
+-
+-//设置单元本构模型，这里是线弹性模型
+-blkdyn.SetModel("linear");
+-
+-//设置基础材料参数
+-blkdyn.SetMatByGroup(2500, 6.0e10, 0.25, 1000, 0.0, 11.3, 0.0, 1);
+-blkdyn.SetMatByGroup(2500, 6.0e10, 0.25, 1000, 0.0, 11.3, 0.0, 2);
+-
+-
+-//设置施加的三个基础值
+-var values = new Array(-1600, 0, 0);
+-//设置9个变化梯度
+-var gradient = new Array(0, 0, 0, 0, 0, 0, 0, 0, 0);
+-//若单元面心位于坐标范围内，则施加面力。
+-blkdyn.ApplyConditionByCoord("face_force", values, gradient, 19.9, 20.1, -100, 100, -1e10, 1e10, false );
+-
+-//设置施加的三个基础值
+-var values = new Array(1600, 0, 0);
+-//设置9个变化梯度
+-var gradient = new Array(0, 0, 0, 0, 0, 0, 0, 0, 0);
+-//若单元面心位于坐标范围内，则施加面力。
+-blkdyn.ApplyConditionByCoord("face_force", values, gradient,-20.1,-19.9, -100, 100, -1e10, 1e10, false );
+-
+-
+-//设置施加的三个基础值
+-var values1 = new Array(0, -1600, 0);
+-//设置9个变化梯度
+-var gradient = new Array(0, 0, 0, 0, 0, 0, 0, 0, 0);
+-//若单元面心位于坐标范围内，则施加面力。
+-blkdyn.ApplyConditionByCoord("face_force", values1, gradient, -100, 100, 19.9, 20.1,  -1e10, 1e10, false );
+-
+-
+-
+-//设置施加的三个基础值
+-var values1 = new Array(0, 1600, 0);
+-//设置9个变化梯度
+-var gradient = new Array(0, 0, 0, 0, 0, 0, 0, 0, 0);
+-//若单元面心位于坐标范围内，则施加面力。
+-blkdyn.ApplyConditionByCoord("face_force", values1, gradient, -100, 100, -20.1,-19.9,  -1e10, 1e10, false );
+-
+-
+-//检测两点的信息
+-dyna.Monitor("block", "sxx",1.0,0, 0);
+-dyna.Monitor("block", "syy", 1.0,0, 0);
+-
+-dyna.Solve();
+-
+-
+-blkdyn.SetModel("MC");
+-
+-dyna.Solve();
+-
+-dyna.Save("MC.sav");
+-
+-print("塑性区半径理论解： 1.1293m");
+-
++// ========== 10. 处理输出数据文件（通过RunUDFCmdAdv调用后处理函数） ==========
++var fResult = dyna.RunUDFCmdAdv("PostProcessPlasticZone", [0, 0, 0]);

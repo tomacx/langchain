@@ -1,0 +1,71 @@
+setCurDir(getSrcDir());
+
+// 初始化仿真环境
+scdem.outputInterval = 1000;
+scdem.monitorIter = 10;
+scdem.gravity = [0, 0, 0];
+scdem.isVirtualMass = 0;
+scdem.set("ubr", 1e-4);
+
+// 裂隙渗流模块参数设置
+scdem.set("Config_FracSeepage", 1);
+scdem.set("FracSeepage_Cal", 1);
+scdem.set("Seepage_Mode", 1);
+scdem.set("FS_Solid_Interaction", 1);
+scdem.set("FS_MaxWid", 5e-3);
+scdem.set("SimpleFSI", 1);
+scdem.set("FS_Frac_Start_Cal", 1);
+
+// 导入几何模型并获取网格
+var msh = imesh.importGmsh("RadBox-0.1m.msh");
+scdem.getMesh(msh);
+
+// 设置材料模型
+scdem.setModel("linear");
+
+// 设置岩石材料属性 [密度, 弹性模量, 泊松比, 粘聚力, 抗拉强度, 内摩擦角, 抗压强度]
+scdem.setMat([2500, 38.8e9, 0.15, 1e6, 1.5e6, 50, 10]);
+
+// 设置裂隙面材料参数 - 注入点附近单元设置为零强度以诱导破裂
+scdem.setIModel("FracE");
+scdem.setContactFractureEnergy(10, 20);
+scdem.setIMatByElem(10);
+
+// 设置耦合面的本构参数 - 仅允许拉伸破坏及摩擦破坏
+trff.SetMat([1e9, 1e9, 30, 0, 0, 1e12], 1, 10);
+
+// 设置流道
+SFracsp.setFlowCrackFace(1, 2);
+SFracsp.createGridFromBlock(2);
+
+// 设置流体参数 [密度, 体积模量, 渗透率, 孔隙度]
+var w = 1e-5;
+var k = w * w / 12 / (1e-3);
+SFracsp.setProp([1000.0, 2.2e9, k, w]);
+
+// 设置注入点条件 - 压力边界类型
+SFracsp.applyConditionByCoord("source", 0.001, 0, 0, 0, 24.9, 25.1, 24.9, 25.1, 24.9, 25.1);
+
+// 设置注入压力条件
+SFracsp.applyConditionByCoord("pp", 1e6, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+
+// 设置监测变量 - 开度与压力
+scdem.monitor("fracsp", "sc_aperture", 25, 25, 25);
+scdem.monitor("fracsp", "sc_pp", 25, 25, 25);
+
+// 设置径向监测点
+for (var i = 1; i <= 50; i++) {
+    scdem.monitor("fracsp", "sc_aperture", 25 + 0.12 * i, 25, 25);
+}
+
+for (var i = 1; i <= 50; i++) {
+    scdem.monitor("fracsp", "sc_aperture", 25, 25 + 0.12 * i, 25);
+}
+
+// 设置时间步长
+scdem.timeStep = 1e-7;
+
+// 运行仿真
+scdem.dynaSolveGpu(8);
+
+print("finish");

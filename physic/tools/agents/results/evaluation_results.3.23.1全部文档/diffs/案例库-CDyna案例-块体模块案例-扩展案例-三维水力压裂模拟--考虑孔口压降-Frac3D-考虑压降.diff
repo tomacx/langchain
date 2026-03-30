@@ -1,0 +1,228 @@
+--- 案例库-CDyna案例-块体模块案例-扩展案例-三维水力压裂模拟--考虑孔口压降-Frac3D-考虑压降.js (ground_truth)
++++ 案例库-CDyna案例-块体模块案例-扩展案例-三维水力压裂模拟--考虑孔口压降-Frac3D-考虑压降.js (generated)
+@@ -1,183 +1,78 @@
+-//设置当前工作路径为JavaScript脚本文件所在路径
+ setCurDir(getSrcDir());
+ 
+-//打开力学计算开关
++// ==================== 1. 初始化仿真环境 ====================
+ dyna.Set("Mechanic_Cal 1");
+-
+-//设置三个方向的重力加速度，均为0
+ dyna.Set("Gravity 0 0.0 0");
+-
+-//关闭大变形计算开关
+ dyna.Set("Large_Displace 0");
+-
+-//设置计算结果的输出间隔为1000步
+ dyna.Set("Output_Interval 200");
+-
+-//打开虚质量计算开关
+ dyna.Set("If_Virtural_Mass 1");
+-
+-//设置虚质量时步为0.5
+ dyna.Set("Virtural_Step 0.5");
+-
+-//设置满足稳定条件的系统不平衡率
+ dyna.Set("UnBalance_Ratio 1e-4");
+-
+-//关闭接触更新计算开关
+ dyna.Set("If_Renew_Contact 0");
+-
+-//设置接触容差为0
+ dyna.Set("Contact_Detect_Tol 0.0");
+ 
+-dyna.Set("Config_Crack_Show 1");
+-dyna.Set("Crack_Color 1");
+-
+-dyna.Set("If_Find_Contact_OBT 1");
+-
+-//包含裂隙渗流计算模块，开辟相应内存
++// ==================== 2. 裂隙渗流模块初始化 ====================
+ dyna.Set("Config_FracSeepage 1");
+-
+-//关闭裂隙渗流计算开关
+ dyna.Set("FracSeepage_Cal 1");
+-
+ dyna.Set("FS_MaxWid 2e-5");
+-
+-//打开裂隙渗流与固体耦合开关（孔隙渗流无此开关）
+ dyna.Set("FS_Solid_Interaction 1");
+ 
+-//打开孔口压降计算开关
++// ==================== 3. 孔口压降计算开关 ====================
+ dyna.Set("BoreholePressureDrop_Cal 1");
+ 
++// ==================== 4. 创建三维网格模型 ====================
++// 创建包含井筒与裂缝区域的三维网格 (20m x 20m x 20m, 20x20x20单元)
++blkdyn.GenBrick3D(20.0, 20.0, 20.0, 20, 20, 20, 1);
+ 
+-//导入gid格式网格
+-blkdyn.ImportGrid("gmsh", "GDEM.msh");
+-
+-//对公共面进行切割，形成接触面
+-blkdyn.CrtIFaceByCoord(1, 99, 1, 99, 1, 99);
+-
+-//更新接触面网格
+-blkdyn.UpdateIFaceMesh();
+-
+-//设定所有单元的本构为线弹性本构
++// ==================== 5. 设置材料属性 ====================
++// 设定所有单元的本构为线弹性本构
+ blkdyn.SetModel("linear");
+ 
+-//设定组号为1-100之间的材料参数
+-blkdyn.SetMat(2500, 5e10, 0.25, 10e6, 5e6, 40.0, 15.0, 1, 100);
++// 设定岩石基质材料参数 (密度, 弹性模量, 泊松比, 抗拉强度, 抗压强度, 内聚力, 摩擦角)
++blkdyn.SetMat(2500, 5e10, 0.25, 10e6, 5e6, 40.0, 15.0, 1, 20);
+ 
+-//设定所有接触面的本构为脆性断裂的Mohr-Coulomb模型
++// ==================== 6. 设置接触面本构 ====================
+ blkdyn.SetIModel("brittleMC");
+-
+-//接触面强度从单元中获取
+ blkdyn.SetIStrengthByElem();
+-
+-//接触面刚度从单元中获取
+ blkdyn.SetIStiffByElem(20.0);
+ 
++// ==================== 7. 初始化地应力 ====================
++var stressValues = new Array(0.0, -15e6, -8e6); // X, Y, Z方向初始地应力
++blkdyn.InitStressByCoord(stressValues, -100, 100, -100, 100, -100, 100);
+ 
+-//*******************************************初始化地应力
++// ==================== 8. 设置孔隙渗流参数 ====================
++// 定义X、Y、Z三个方向的渗透系数 (m/s)
++var arrayK = new Array(1e-12, 1e-12, 1e-12);
+ 
+-//定义三个方向基础值
+-var values = new Array(0.0, -10e6, 0.0);
++// 指定坐标控制范围内的孔隙渗流参数
++// 密度, 体积模量, 饱和度, 孔隙率, 渗透系数, 比奥系数
++poresp.SetPropByGroup(1810.0, 1e6, 0.0, 0.01, arrayK, 1.0, 1);
+ 
+-//定义变化梯度
+-var gradient = new Array(0, 0, 0, 0, 0, 0, 0, 0, 0);
++// ==================== 9. 设置孔口压降参数 ====================
++// 设置射孔参数: 射孔数, 射孔直径(m), 流量系数, 压降系数, 压降指数
++fracsp.SetBoreholePressureDropPropByCoord(1, 0.06, 0.8, 0.001, 2, -5, 5, -5, 5, -5, 5);
+ 
+-//将控制范围内的位移清零
+-blkdyn.InitConditionByCoord("stress", values, gradient, -1e5, 1e5, -1e5, 1e5, -1e5, 1e5);
++// ==================== 10. 初始化孔隙压力 ====================
++// 初始化地层初始孔隙压力 (MPa)
++poresp.InitConditionByCoord("pp", 1e7, new Array(0.0, 0.0, 0.0), -100, 100, -100, 100, -100, 100, false);
+ 
+-//*******************************************初始化地应力
++// ==================== 11. 设置边界条件 ====================
++// 模型四周压力边界条件 (MPa)
++poresp.ApplyConditionByCoord("pp", 5e5, new Array(0.0, 0.0, 0.0), -20, 20, -20, 20, -20, 20, true);
+ 
++// ==================== 12. 设置监测点 ====================
++// 在井筒位置设置压力监测点
++dyna.Monitor("block", "fpp", 10, 5, 0); // X=10, Y=5, Z=0处的压力监测
++dyna.Monitor("block", "fpp", 11, 5, 0); // X=10, Y=5, Z=10处的压力监测
+ 
+-//设定全部节点的局部阻尼系数为0.8
+-blkdyn.SetLocalDamp(0.8);
++// ==================== 13. 求解控制参数设置 ====================
++dyna.Set("Time_Step 0.01");
++dyna.Set("Moniter_Iter 100");
++dyna.Set("Solver_MaxIter 1000");
+ 
+-//从固体单元接触面创建裂隙单元
+-fracsp.CreateGridFromBlock(2);
++// ==================== 14. 执行求解 ====================
++// 迭代求解 (步数根据物理过程调整)
++dyna.Solve(5000);
+ 
+-//设置裂隙渗流参数，依次为密度、体积模量、渗透系数、裂隙初始开度、组号下限及组号上限
+-fracsp.SetPropByGroup(1000.0,1e7,1e-15,3.46e-9,1,11);
+-
+-//左侧中间裂隙入口处指定入口单宽流量1.4e-3
+-var aiNodeID = new Array(30);
+-for (var i1 = 0; i1 < 5; i1++)
+-{
+-	aiNodeID[i1] = blkdyn.GetNodeID(20 + i1 * 5, 25, 75);
+-}
+-for (var i1 = 0; i1 < 5; i1++)
+-{
+-	aiNodeID[i1 + 5] = blkdyn.GetNodeID(60 + i1 * 5, 25, 75);
+-}
+-for (var i1 = 0; i1 < 5; i1++)
+-{
+-	aiNodeID[i1 + 10] = blkdyn.GetNodeID(20 + i1 * 5, 75, 75);
+-}
+-for (var i1 = 0; i1 < 5; i1++)
+-{
+-	aiNodeID[i1 + 15] = blkdyn.GetNodeID(60 + i1 * 5, 75, 75);
+-}
+-for (var i1 = 0; i1 < 5; i1++)
+-{
+-	aiNodeID[i1 + 20] = blkdyn.GetNodeID(20 + i1 * 5, 50, 25);
+-}
+-for (var i1 = 0; i1 < 5; i1++)
+-{
+-	aiNodeID[i1 + 25] = blkdyn.GetNodeID(60 + i1 * 5, 50, 25, 25);
+-}
+-
+-var xc = new Array(30);
+-var yc = new Array(30);
+-var zc = new Array(30);
+-for (var i1 = 0; i1 < 30; i1++)
+-{
+-	xc[i1] = blkdyn.GetNodeValue(aiNodeID[i1],"Coord",1);
+-	yc[i1] = blkdyn.GetNodeValue(aiNodeID[i1],"Coord",2);
+-	zc[i1] = blkdyn.GetNodeValue(aiNodeID[i1],"Coord",3);
+-}
+-
+-
+-// fracsp.SetPropByCoord(1000.0,1e7,1e-9,3.46e-6, xc1 - 1e-5, xc1 + 1e-5, yc1 - 1e-5, yc1 + 1e-5 , zc1 - 1e-5, zc1 + 1e-5);
+-// fracsp.SetPropByCoord(1000.0,1e7,1e-9,3.46e-6, xc2 - 1e-5, xc2 + 1e-5, yc2 - 1e-5, yc2 + 1e-5 , zc2 - 1e-5, zc2 + 1e-5);
+-// fracsp.SetPropByCoord(1000.0,1e7,1e-9,3.46e-6, xc3 - 1e-5, xc3 + 1e-5, yc3 - 1e-5, yc3 + 1e-5 , zc3 - 1e-5, zc3 + 1e-5);
+-// fracsp.SetPropByCoord(1000.0,1e7,1e-9,3.46e-6, xc4 - 1e-5, xc4 + 1e-5, yc4 - 1e-5, yc4 + 1e-5 , zc4 - 1e-5, zc4 + 1e-5);
+-// fracsp.SetPropByCoord(1000.0,1e7,1e-9,3.46e-6, xc5 - 1e-5, xc5 + 1e-5, yc5 - 1e-5, yc5 + 1e-5 , zc5 - 1e-5, zc5 + 1e-5);
+-
+-// fracsp.SetPropByCoord(1000.0,1e7,1e-9,3.46e-6, xc6 - 1e-5, xc6 + 1e-5, yc6 - 1e-5, yc6 + 1e-5 , zc6 - 1e-5, zc6 + 1e-5);
+-// fracsp.SetPropByCoord(1000.0,1e7,1e-9,3.46e-6, xc7 - 1e-5, xc7 + 1e-5, yc7 - 1e-5, yc7 + 1e-5 , zc7 - 1e-5, zc7 + 1e-5);
+-// fracsp.SetPropByCoord(1000.0,1e7,1e-9,3.46e-6, xc8 - 1e-5, xc8 + 1e-5, yc8 - 1e-5, yc8 + 1e-5 , zc8 - 1e-5, zc8 + 1e-5);
+-// fracsp.SetPropByCoord(1000.0,1e7,1e-9,3.46e-6, xc9 - 1e-5, xc9 + 1e-5, yc9 - 1e-5, yc9 + 1e-5 , zc9 - 1e-5, zc9 + 1e-5);
+-// fracsp.SetPropByCoord(1000.0,1e7,1e-9,3.46e-6, xc10 - 1e-5, xc10 + 1e-5, yc10 - 1e-5, yc10 + 1e-5 , zc10 - 1e-5, zc10 + 1e-5);
+-
+-
+-var sorceV = 0.01;
+-
+-//定义三个方向梯度值
+-var fArrayGrad = [0.0, 0.0, 0.0];
+-for (var i1 = 0; i1 < 30; i1++)
+-{
+-	fracsp.ApplyConditionByCoord("source", sorceV, fArrayGrad, xc[i1] - 1e-5, xc[i1] + 1e-5, yc[i1] - 1e-5, yc[i1] + 1e-5 , zc[i1] - 1e-5, zc[i1] + 1e-5);
+-}
+-
+-
+-//设置计算时步
+-dyna.Set("Time_Step 5e-3");
+-
+-//设置压降参数:
+-//np:当前簇的射孔数。
+-//D:射孔直径，m
+-//C:无量纲流量系数，一般为0.5（未磨蚀）到0.9（磨蚀）
+-//faiT: 压降系数
+-//beta:压降指数
+-for (var i1 = 0; i1 < 30; i1++)
+-{
+-	fracsp.SetBoreholePressureDropPropByCoord(15, 0.01, 0.7, 0, 2, xc[i1] - 1e-5, xc[i1] + 1e-5, yc[i1] - 1e-5, yc[i1] + 1e-5 , zc[i1] - 1e-5, zc[i1] + 1e-5);
+-}
+-
+-//计算20万步
+-dyna.DynaCycle(110);
+-
+-//打印提示信息
+-print("Solution Finished");
+-
+-
+-
+-
+-
++// ==================== 15. 输出结果 ====================
++print("Solution Finished - Fracture Propagation Simulation Complete");

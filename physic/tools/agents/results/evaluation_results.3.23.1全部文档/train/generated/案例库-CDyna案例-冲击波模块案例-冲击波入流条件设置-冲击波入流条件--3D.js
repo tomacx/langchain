@@ -1,0 +1,45 @@
+setCurDir(getSrcDir());
+
+// 清除模型数据
+dyna.Clear();
+
+// 设置计算参数
+dyna.Set("Time_Step 1e-5");
+dyna.Set("Output_Interval 200");
+dyna.Set("Mechanic_Cal 1");
+dyna.Set("Large_Displace 1");
+dyna.Set("SaveFile_Out 1");
+
+// 定义3D自由场网格
+skwave.DefMesh(3, [10, 10, 10], [50, 50, 50]);
+
+// 设置固体区域边界（X、Y、Z方向）
+skwave.SetSolid(1, 4, 6, 4, 6, 4, 6);
+
+// 初始化球形流体区域：压力1.01e5 Pa，密度1.02 kg/m³，半径100m
+skwave.InitBySphere(1.01e5, 1.02, [0, 0, 0], [0, 0, 0], 100.0);
+
+// 设置边界条件：X、Y、Z方向均为透射边界（0）
+skwave.SetBound(0, 0, 0, 0, 0, 0);
+
+// 根据坐标施加冲击波动态边界条件
+// 参数：TNT质量=100kg，爆炸点=[5,2,3]，起爆时间=0s，声速=340m/s，衰减指数=1.0
+// 空间范围：X[0-10], Y[0-10], Z[0-10]
+blkdyn.ApplyShockWaveByCoord(100.0, [5, 2, 3], 0, 340, 1.0, 0, 10, 0, 10, 0, 10);
+
+// 设置流体属性：密度和气体类型
+skwave.SetInflow(1, 1, 6, 130, 1000, 1e7, 3, [5, 5, 10, 3]);
+
+// 设置监测点：监测节点1、2、3的密度和压力
+dyna.Monitor("skwave", "sw_dens", 1, 5, 0);
+dyna.Monitor("skwave", "sw_dens", 2, 5, 0);
+dyna.Monitor("skwave", "sw_dens", 3, 5, 0);
+
+dyna.Monitor("skwave", "sw_pp", 1, 5, 0);
+dyna.Monitor("skwave", "sw_pp", 2, 5, 0);
+dyna.Monitor("skwave", "sw_pp", 3, 5, 0);
+
+// 执行求解循环
+dyna.DynaCycle(1e-2);
+
+print("冲击波入流条件设置完成，求解结束");

@@ -1,0 +1,64 @@
+--- 案例库-SuperCDEM案例-裂隙流案例-单裂隙非饱和渗流-fs-gpu.js (ground_truth)
++++ 案例库-SuperCDEM案例-裂隙流案例-单裂隙非饱和渗流-fs-gpu.js (generated)
+@@ -1,40 +1,43 @@
+ setCurDir(getSrcDir());
+ 
+-//包含裂隙计算模块，开辟相应内存
++// 启用裂隙渗流计算模块
+ scdem.set("Config_FracSeepage", 1);
++scdem.set("FracSeepage_Cal", 1);
++scdem.set("Mechanic_Cal", 0);
++scdem.set("gravity", [0.0, 0.0, 0.0]);
+ 
+-scdem.set("FracSeepage_Cal", 1);
+-
+-scdem.set("Mechanic_Cal", 0);
+-
+-scdem.set("gravity",[0.0,0.0,0.0]);
+-
++// 设置输出和监测参数
+ scdem.outputInterval = 1000;
+ scdem.monitorIter = 10;
+ 
++// 导入Gmsh网格文件
+ var msh = imesh.importGmsh("boxcrack.msh");
+ scdem.getMesh(msh);
+ 
+-SFracsp.setFlowCrackFace(1,2);
++// 设置裂隙流动面并创建网格
++SFracsp.setFlowCrackFace(1, 2);
+ SFracsp.createGridFromBlock(2);
+ 
+-SFracsp.setPropByCoord([1000.0,2e8,1e-9,1e-4], -1e5, 1e5, -1e5, 1e5, -1e5, 1e5);
++// 设置裂隙物理属性 [密度, 体积模量, 渗透系数, 动力粘度]
++SFracsp.setPropByCoord([1000.0, 2e8, 1e-9, 1e-4], -1e5, 1e5, -1e5, 1e5, -1e5, 1e5);
+ 
+-SFracsp.applyConditionByCoord("pp", 10e6, 0,0,0, -1, 0.001, -1e5, 1e5, -1e5, 1e5)
++// 应用注入压力边界条件
++SFracsp.applyConditionByCoord("pp", 10e6, 0, 0, 0, -1e5, 1e5, -1e5, 1e5);
+ 
+-
+-for(var i = 0; i <= 50; i++)
+-{
+-    scdem.monitor("fracsp", "sc_pp", i,0.5,0.5)
++// 设置监测点：压力监测
++for(var i = 0; i <= 50; i++) {
++    scdem.monitor("fracsp", "sc_pp", i, 0.5, 0.5);
+ }
+ 
+-for(var i = 0; i <= 50; i++)
+-{
+-   scdem.monitor("fracsp", "sc_sat", i,0.5,0.5)
++// 设置监测点：饱和度监测
++for(var i = 0; i <= 50; i++) {
++    scdem.monitor("fracsp", "sc_sat", i, 0.5, 0.5);
+ }
+ 
++// 设置时间步长（秒）
+ scdem.timeStep = 0.01;
+ 
+-scdem.dynaSolveGpu(30*3600);
++// 执行GPU求解，总时长30小时
++scdem.dynaSolveGpu(30 * 3600);
+ 
+ print("finish");

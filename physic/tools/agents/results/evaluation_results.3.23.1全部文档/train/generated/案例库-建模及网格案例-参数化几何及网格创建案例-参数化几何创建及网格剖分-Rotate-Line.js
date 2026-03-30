@@ -1,0 +1,61 @@
+setCurDir(getSrcDir());
+
+// 定义计算域（三维）
+skwave.DefMesh(3, [10.0, 10.0, 10.0], [20, 20, 20]);
+
+// 创建参数化几何的点
+var Point1 = igeo.genPoint(4, 0, 0, 0.1);
+var Point2 = igeo.genPoint(5, 0, 0, 0.1);
+var Point3 = igeo.genPoint(5, 5, 0, 0.1);
+var Point4 = igeo.genPoint(0, 5, 0, 0.1);
+
+// 创建直线几何
+var Line1 = igeo.genLine(Point1, Point2);
+var Line2 = igeo.genLine(Point2, Point3);
+var Line3 = igeo.genLine(Point3, Point4);
+var Line4 = igeo.genLine(Point4, Point1);
+
+// 创建线环
+var aLine = [Line1, Line2, Line3, Line4];
+var LineLoop1 = igeo.genLineLoop(aLine);
+
+// 将线环拉伸为体（参数化颗粒几何）
+var Volume1 = igeo.extrude("LineLoop", [LineLoop1], 0, 0, 5, 1, 1, 1);
+
+// 借助Gmsh剖分网格
+imeshing.genMeshByGmsh(3);
+
+// 设置颗粒组号（假设自动分配组号为1-10）
+var groupL = 1;
+var groupU = 10;
+
+// 旋转操作：绕原点(0,0,0)的Y轴旋转45度
+var origin = new Array(0.0, 0.0, 0.0);
+var Normal = new Array(0.0, 1.0, 0.0);
+pdyna.RotaByGroup(45, origin, Normal, groupL, groupU);
+
+// 设置输出路径和监测变量
+var outputDir = getSrcDir() + "/output";
+var monitorFile = outputDir + "/monitor.dat";
+
+// 配置求解器参数
+skwave.SetSolverParam("output_dir", outputDir);
+skwave.SetSolverParam("monitor_file", monitorFile);
+skwave.SetSolverParam("displacement_monitor", true);
+skwave.SetSolverParam("velocity_monitor", true);
+
+// 启动计算引擎
+skwave.StartSolver();
+
+// 读取并验证网格数据
+var meshData = skwave.GetMeshInfo();
+print("网格节点数: " + meshData.nodeCount);
+print("网格单元数: " + meshData.elementCount);
+
+// 导出旋转后颗粒的最终位置结果
+pdyna.PostProcess("export_position", outputDir + "/position_result.dat");
+
+// 导出监测曲线文件
+pdyna.PostProcess("export_curve", monitorFile);
+
+print("仿真计算完成，结果已导出至: " + outputDir);

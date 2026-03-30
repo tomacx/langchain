@@ -1,0 +1,94 @@
+setCurDir(getSrcDir());
+
+// ==================== 1. 初始化仿真环境 ====================
+dyna.Clear();
+doc.ClearResult();
+
+// ==================== 2. 定义材料属性参数 ====================
+// 刚体玉材料参数（密度、弹性模量、泊松比）
+var jadeMat = [2600, 3e10, 0.25];
+
+// 颗粒材料参数（密度、弹性模量、泊松比、抗拉强度、粘聚力、内摩擦角、局部阻尼、粘性阻尼系数）
+var particleMat = [2500, 1e7, 0.25, 0.0, 0.0, 30, 0.0, 0.3];
+
+// ==================== 3. 构建刚体玉模型几何形状 ====================
+// 创建刚体玉块（使用刚性面边界）
+var jadeWidth = 1.0;
+var jadeHeight = 0.5;
+var jadeDepth = 0.2;
+
+// 导入或创建刚性面边界
+rdface.Import("ansys", "jade_boundary.dat");
+
+// ==================== 4. 构建颗粒离散元分布区域 ====================
+// 定义颗粒生成范围（x, y, z）
+var xRange = [-0.5, jadeWidth + 0.5];
+var yRange = [0.0, jadeHeight + 0.2];
+var zRange = [0.0, jadeDepth + 0.1];
+
+// 创建颗粒系统（规则排列）
+pdyna.RegularCreateByCoord(1, 3, 0.01, 0.01, xRange[0], xRange[1], yRange[0], yRange[1], zRange[0]);
+
+// ==================== 5. 设置模型与材料参数 ====================
+// 设置颗粒模型为脆性断裂模型（支持刚体接触）
+pdyna.SetModel("brittleMC");
+
+// 设置颗粒材料属性
+pdyna.SetMat(particleMat[0], particleMat[1], particleMat[2],
+              particleMat[3], particleMat[4], particleMat[5],
+              particleMat[6], particleMat[7]);
+
+// ==================== 6. 检测刚体与颗粒接触关系 ====================
+// 检测颗粒-块体接触（PB = Particle-Block）
+pdyna.DetectPBContact();
+
+// ==================== 7. 配置接触力计算接口 ====================
+// 计算颗粒与刚体间的接触力
+pdyna.CalPBContact();
+
+// ==================== 8. 设置边界条件及无反射边界参数 ====================
+// 设置重力加速度（向下）
+dyna.Set("Gravity -9.8 0.0 0.0");
+
+// 设置接触容差
+dyna.Set("Contact_Detect_Tol 0.001");
+
+// 关闭虚质量计算
+dyna.Set("If_Virtural_Mass 0");
+
+// 设置无反射边界（可选，根据需求）
+pdyna.CalQuietBound();
+
+// ==================== 9. 施加外部载荷或初始速度 ====================
+// 给刚体玉施加初始水平速度（模拟抛掷）
+var initialVelocity = [5.0, 0.0, 0.0];
+dyna.Set("Init_Velocity " + initialVelocity[0] + " " + initialVelocity[1] + " " + initialVelocity[2]);
+
+// ==================== 10. 定义输出请求 ====================
+// 设置结果输出间隔（每500步输出一次）
+dyna.Set("Output_Interval 500");
+
+// 设置大变形计算开关
+dyna.Set("Large_Displace 1");
+
+// 打开接触更新开关
+dyna.Set("If_Renew_Contact 1");
+
+// ==================== 11. 设定时间步长及仿真时长 ====================
+// 设置计算时间步（0.2ms）
+dyna.Set("Time_Step 2.0e-4");
+
+// 设置总迭代步数（根据物理过程调整，此处设为50000步）
+var totalSteps = 50000;
+
+// ==================== 12. 执行求解 ====================
+// 运行用户自定义命令流启动计算
+dyna.RunUDFCmd("Solve " + totalSteps);
+
+// ==================== 13. 导出监测数据 ====================
+// 导出结果文件（自动保存至当前目录）
+doc.ExportResult();
+
+// ==================== 14. 清理资源 ====================
+// 释放动态链接库
+dyna.FreeUDF();

@@ -1,0 +1,138 @@
+--- 案例库-CDyna案例-块体模块案例-扩展案例-蠕变算例-单轴压缩破裂-CreepUCS.js (ground_truth)
++++ 案例库-CDyna案例-块体模块案例-扩展案例-蠕变算例-单轴压缩破裂-CreepUCS.js (generated)
+@@ -1,87 +1,74 @@
+ setCurDir(getSrcDir());
+ 
++// 初始化环境
+ igeo.clear();
+ imeshing.clear();
+-
+ doc.clearResult();
+ dyna.Clear();
+ 
+-igeo.genRectS(0,0,0,0.1,0.2,0,0.02,1);
++// 创建岩石试件几何（100mm x 50mm x 200mm）
++igeo.genRectS(0, 0, 0, 0.1, 0.05, 0, 0.2);
+ 
+-imeshing.genMeshByGmsh(2);
++// 生成表面网格
++imeshing.genSurfMesh("rock", "", 50, 25, "quad", "invdist1");
+ 
+-
+-dyna.Set("Creep_Cal 1");
+-
+-dyna.Set("Creep_G_Inherit 1");
+-
+-dyna.Set("Auto_Creep_Time 0");
+-
+-dyna.Set("Elem_Plastic_Cal_Creep 0");
+-
+-dyna.Set("Output_Interval 500");
+-
+-dyna.Set("Gravity 0 0 0");
+-
+-dyna.Set("Large_Displace 0");
+-
+-//将平台网格读入dyna内核
++// 将平台网格读入dyna内核
+ blkdyn.GetMesh(imeshing);
+ 
+-blkdyn.CrtIFace();
+-blkdyn.UpdateIFaceMesh();
++// 设置全局蠕变计算参数
++dyna.Set("Creep_Cal 1");
++dyna.Set("Auto_Creep_Time 1");
++dyna.Set("HourGlass_Damp_Factor 0.15");
++dyna.Set("DP_Model_Option 1");
++dyna.Set("Elem_Plastic_Cal_Creep 1");
++dyna.Set("Large_Displace 1");
++dyna.Set("Gravity 0 0 -9.8");
+ 
+-blkdyn.SetModel("burger");
++// 设置材料参数（岩石：密度2500kg/m³，弹性模量3e10Pa，泊松比0.25）
++blkdyn.SetMat(2500, 3e10, 0.25, 3e6, 3e6, 30.0, 10.0, 1);
+ 
+-blkdyn.SetMat(2000,3e10, 0.3, 3e6, 1e6, 30, 10);
++// 设置蠕变材料参数（Burger模型）
++blkdyn.SetCreepMat(1, 3e12, 3e9, 1e11, 3e9);
+ 
+-blkdyn.SetCreepMat(1, 3e15, 3e9, 3e15, 3e9);
+-
++// 绑定蠕变材料到单元组
+ blkdyn.BindCreepMat(1, 1, 1);
+ 
++// Y方向底部固定（法向约束）
++blkdyn.FixV("y", 8e-8, "y", -0.001, 0.001);
+ 
+-blkdyn.SetIModel("brittleMC");
+-blkdyn.SetIMat(1e12, 1e12, 30, 2e5, 2e5);
++// Y方向顶部施加单轴压缩载荷（准静态速度）
++blkdyn.FixV("y", -8e-8, "y", 0.199, 0.201);
+ 
++// 设置沙漏阻尼和虚质量参数
++blkdyn.SetLocalDamp(0.8);
++dyna.Set("If_Virtural_Mass 1");
++dyna.Set("Virtural_Step 0.4");
+ 
+-blkdyn.FixV("y",0.0, "y", -0.01, 0.001);
+-blkdyn.FixV("y",-2e-9, "y", 0.199,0.201);
++// 设置单元软化断裂应变
++dyna.Set("Block_Soften_Value 0.005 0.01");
++dyna.Set("Elem_Kill_Option 1 0.01 0.005 1 1");
+ 
++// 允许块体转化为颗粒
++dyna.Set("If_Allow_Block_To_Particles 1 1");
+ 
++// 设置输出间隔
++dyna.Set("Output_Interval 500");
++dyna.Set("Moniter_Iter 10");
+ 
+-dyna.Monitor("block","ydis", 0.00, 0.2, 0);
+-dyna.Monitor("block","ydis", 0.02, 0.2, 0);
+-dyna.Monitor("block","ydis", 0.04, 0.2, 0);
+-dyna.Monitor("block","ydis", 0.06, 0.2, 0);
+-dyna.Monitor("block","ydis", 0.08, 0.2, 0);
+-dyna.Monitor("block","ydis", 0.08, 0.2, 0);
+-dyna.Monitor("block","ydis", 0.10, 0.2, 0);
++// 创建监测靶板（监测中心区域，半径0.08m）
++pfly.CrtPeneTarget(0.0, 0.0, 0.0, 0.08, -0.1, 0.1);
+ 
++// 设置典型测点应力监测
++dyna.Monitor("block", "sxx", 0.025, 0.0, 0);
++dyna.Monitor("block", "sxx", 0.075, 0.0, 0);
++dyna.Monitor("block", "syy", 0.025, 0.0, 0);
++dyna.Monitor("block", "syy", 0.075, 0.0, 0);
+ 
+-dyna.Monitor("block","syy", 0.00, 0.2, 0);
+-dyna.Monitor("block","syy", 0.02, 0.2, 0);
+-dyna.Monitor("block","syy", 0.04, 0.2, 0);
+-dyna.Monitor("block","syy", 0.06, 0.2, 0);
+-dyna.Monitor("block","syy", 0.08, 0.2, 0);
+-dyna.Monitor("block","syy", 0.08, 0.2, 0);
+-dyna.Monitor("block","syy", 0.10, 0.2, 0);
++// 设置时间步长
++dyna.Set("Time_Step 1e-6");
+ 
+-dyna.Monitor("block","ydis", 0.05, 0.05, 0);
+-dyna.Monitor("block","ydis", 0.05, 0.10, 0);
+-dyna.Monitor("block","ydis", 0.05, 0.15, 0);
+-dyna.Monitor("block","ydis", 0.05, 0.20, 0);
++// 执行求解（根据蠕变特性设置足够的时间步数）
++dyna.Solve(200000);
+ 
+-
+-dyna.Monitor("block","syy", 0.05, 0.05, 0);
+-dyna.Monitor("block","syy", 0.05, 0.10, 0);
+-dyna.Monitor("block","syy", 0.05, 0.15, 0);
+-dyna.Monitor("block","syy", 0.05, 0.20, 0);
+-
+-
+-dyna.Set("Time_Step 36.0")
+-
+-
+-dyna.Solve(50000);
+-
+-
+-
++// 导出靶板监测信息
++pfly.ExportPeneTargetInfo();

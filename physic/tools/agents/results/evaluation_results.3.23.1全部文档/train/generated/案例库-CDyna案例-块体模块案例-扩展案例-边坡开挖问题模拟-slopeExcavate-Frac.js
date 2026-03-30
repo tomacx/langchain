@@ -1,0 +1,170 @@
+setCurDir(getSrcDir());
+
+// 初始化环境
+dyna.Clear();
+doc.clearResult();
+
+// 设置重力加速度
+dyna.Set("Gravity 0 -9.8 0");
+
+// 设置输出间隔
+dyna.Set("Output_Interval 1000");
+
+// 开启大变形分析
+dyna.Set("Large_Displace 1");
+
+// 设置接触检测容差
+dyna.Set("Contact_Detect_Tol 0");
+
+// 创建边坡几何模型
+var acoord = new Array(6);
+var size = 2.0;
+acoord[0] = [0, 0, 0, size];
+acoord[1] = [40, 0, 0, size];
+acoord[2] = [40, 25, 0, size];
+acoord[3] = [20, 25, 0, size];
+acoord[4] = [10, 10, 0, size];
+acoord[5] = [0, 10, 0, size];
+
+igeo.genPloygenS(acoord, 1);
+
+// 划分网格
+imeshing.genMeshByGmsh(2);
+
+// 获取网格到计算模块
+blkdyn.GetMesh(imeshing);
+
+// 设置线性弹性模型
+blkdyn.SetModel("linear");
+
+// 设置岩土材料参数：密度、弹性模量、泊松比、粘聚力、内摩擦角
+blkdyn.SetMat(2200, 1e9, 0.3, 2e4, 2e4, 25, 15);
+
+// 创建虚拟界面
+blkdyn.CrtIFace();
+blkdyn.UpdateIFaceMesh();
+
+// 设置虚拟界面模型及参数
+blkdyn.SetIModel("linear");
+
+// 虚拟界面的接触刚度从单元中继承
+blkdyn.SetIStiffByElem(1);
+
+// 虚拟界面的强度从单元中继承
+blkdyn.SetIStrengthByElem();
+
+// 固定边界条件：底部和两侧
+blkdyn.FixV("x", 0.0, "x", -0.001, 0.001);
+blkdyn.FixV("x", 0.0, "x", 39.99, 41);
+blkdyn.FixV("y", 0.0, "y", -0.001, 0.001);
+
+// 设置初始水位面坐标（X=20, Y=5, Z=0）
+var waterLevel = new Array(20.0, 5.0, 0.0);
+var waterBottom = new Array(20.0, 5.0, -10.0);
+
+// 配置简单流固耦合开关
+dyna.Set("SimpleFSI 1");
+
+// 设置水位面坐标参数（用于 SimpleFSI 计算）
+dyna.Set("WaterLevelX 20.0");
+dyna.Set("WaterLevelY 5.0");
+dyna.Set("WaterLevelZ 0.0");
+dyna.Set("WaterBottomX 20.0");
+dyna.Set("WaterBottomY 5.0");
+dyna.Set("WaterBottomZ -10.0");
+
+// 配置裂隙渗流与裂缝压力耦合设置
+dyna.Set("FS_Frac_Start_Cal 1");
+
+// 定义监测点坐标（用于安全系数计算）
+var monitorCoord = new Array(20.0, 16.3, 0.0);
+
+// 设置孔隙渗流计算开关
+dyna.Set("Config_PoreSeepage 1");
+dyna.Set("PoreSeepage_Cal 0");
+
+// 定义渗透系数（X、Y、Z方向）
+var arrayK = new Array(1e-10, 1e-10, 1e-10);
+
+// 设置孔隙渗流参数：密度、体积模量、饱和度、孔隙率、渗透系数、比奥系数
+poresp.SetPropByCoord(1000.0, 1e6, 0.0, 0.3, arrayK, 1.0, -500, 500, -500, 500, -500, 500);
+
+// 设置开挖标记量（nExcaFlag=1表示开挖）
+var nExcaFlag = 1;
+
+// 定义开挖区域（使用圆柱体地形函数模拟开挖）
+gflow.setTerrainByCylinder(20.0, 16.3, 5.0, 5.0, 10.0, 0.0, nExcaFlag);
+
+// 设置迭代时间步数用于安全系数计算
+var TotalStepForLoop = 6000;
+
+// 设置位移上限值（单位：m）
+var displimit = 1e-3;
+
+// 保存文件名
+var saveFilename = "slopeExcavate.sav";
+
+// 执行开挖步骤并动态更新边界条件
+for (var i = 2; i <= 5; i++) {
+    // 设置当前步的模型状态为 none（表示开挖）
+    blkdyn.SetModel("none", i);
+
+    // 计算渗流动态边界
+    fracsp.CalDynaBound();
+
+    // 计算节点压力及饱和度
+    fracsp.CalNodePressure();
+
+    // 计算单元流量透传值
+    fracsp.CalElemDischarge();
+
+    // 计算与固体破裂的耦合
+    fracsp.CalIntSolid();
+
+    // 求解当前步
+    dyna.Solve();
+
+    // 保存中间结果
+    dyna.Save("ExcGroup_" + i + ".sav");
+}
+
+// 设置塑性模型参数用于安全系数计算
+blkdyn.SetModel("SoftenMC");
+
+// 设置软化值
+blkdyn.SetBlockSofenValue(3e-3, 9e-3);
+
+// 重新初始化条件
+blkdyn.InitConditionByGroup("displace", [0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0], 1, 1);
+
+// 开启孔隙渗流计算
+dyna.Set("PoreSeepage_Cal 1");
+
+// 开启比奥耦合计算
+dyna.Set("If_Biot_Cal 1");
+
+// 设置当前时间步为 0
+dyna.Set("Time_Now 0");
+
+// 修正时间步长
+dyna.TimeStepCorrect(1.0);
+
+// 求解安全系数（通过关键点位移监测）
+var fos = dyna.SolveFosByCriDisp(TotalStepForLoop, displimit, monitorCoord, saveFilename);
+
+// 输出安全系数到控制台
+print("边坡安全系数: " + fos);
+
+// 获取并输出裂隙单元流量信息
+var dischargeValue = fracsp.GetElemValue();
+print("裂隙单元流量监测值: " + dischargeValue);
+
+// 获取节点压力信息
+var nodePressure = fracsp.GetNodeValue();
+print("节点压力监测值: " + nodePressure);
+
+// 保存最终结果
+dyna.Save(saveFilename);
+
+// 输出完成信息
+print("边坡开挖仿真计算完成，结果已保存到 " + saveFilename);

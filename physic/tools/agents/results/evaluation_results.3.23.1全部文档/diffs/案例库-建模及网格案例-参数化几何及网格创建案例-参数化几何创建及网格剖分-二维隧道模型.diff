@@ -1,0 +1,112 @@
+--- 案例库-建模及网格案例-参数化几何及网格创建案例-参数化几何创建及网格剖分-二维隧道模型.js (ground_truth)
++++ 案例库-建模及网格案例-参数化几何及网格创建案例-参数化几何创建及网格剖分-二维隧道模型.js (generated)
+@@ -1,54 +1,75 @@
+ setCurDir(getSrcDir());
+ 
+-
++// 初始化模块
+ igeo.clear();
+ imeshing.clear();
+ 
++// ========== 1. 参数化几何定义 ==========
++var TunnelRadius = 2.5;      // 隧道半径 (m)
++var LiningThickness = 0.3;   // 衬砌厚度 (m)
++var RockDomainSize = 60.0;   // 岩体计算域尺寸 (m)
++var MeshDivisions = 40;      // 网格节点分割数
+ 
+-var Size1 = 1;
+-var Size2 = 0.2;
++// 隧道中心坐标
++var TunnelCenterX = 50.0;
++var TunnelCenterY = 50.0;
+ 
++// ========== 2. 创建圆形衬砌几何模型 ==========
++// 使用 GenCircle 创建二维圆域（衬砌区域）
++var CircleID = imeshing.GenCircle(2, [TunnelRadius - LiningThickness/2, TunnelRadius + LiningThickness/2], [TunnelCenterX, TunnelCenterY]);
+ 
+-var BPoint1 = igeo.genPoint(0, 0, 0, Size1);
+-var BPoint2 = igeo.genPoint(50, 0, 0, Size1);
+-var BPoint3 = igeo.genPoint(50, 50, 0, Size1);
+-var BPoint4 = igeo.genPoint(0, 50, 0, Size1);
++// ========== 3. 定义岩体背景计算域网格 ==========
++skwave.DefMesh(2, [RockDomainSize, RockDomainSize], [MeshDivisions, MeshDivisions]);
+ 
++// ========== 4. 自动网格剖分 ==========
++imeshing.genMeshByGmsh(2);
+ 
+-var IPoint5 = igeo.genPoint(18.87, 25, 0, Size2);
+-var IPoint6 = igeo.genPoint(21.29, 22.58, 0, Size2);
+-var IPoint7 = igeo.genPoint(28.71, 22.58, 0, Size2);
+-var IPoint8 = igeo.genPoint(31.13, 25, 0, Size2);
+-var IPoint9 = igeo.genPoint(25, 31.13, 0, Size2);
+-var IPoint10 = igeo.genPoint(25, 25, 0, Size2);
+-var IPoint11 = igeo.genPoint(21.29, 25, 0, Size2);
+-var IPoint12 = igeo.genPoint(28.71, 25, 0, Size2);
++// ========== 5. 加载网格至求解器 ==========
++GetMesh();
+ 
++// ========== 6. 网格分组（衬砌与岩体） ==========
++// 根据节点 ID 范围进行分组
++// 衬砌区域：靠近圆心的内圈节点
++SetGroupByID("Lining", "NodeID", [1, 500]);
++// 岩体区域：外围节点
++SetGroupByID("Rock", "NodeID", [501, 2000]);
+ 
+-var Line1 = igeo.genLine(BPoint1, BPoint2);
+-var Line2 = igeo.genLine(BPoint2, BPoint3);
+-var Line3 = igeo.genLine(BPoint3, BPoint4);
+-var Line4 = igeo.genLine(BPoint4, BPoint1);
++// ========== 7. 设置监测点坐标及输出变量 ==========
++var MonitorPointX = TunnelCenterX;
++var MonitorPointY = TunnelCenterY + 3.0; // 隧道顶部上方监测点
+ 
++// 定义监测变量（位移、应力等）
++var DisplacementU = "NodeDisplacementX";
++var DisplacementV = "NodeDisplacementY";
++var StressXX = "StressXX";
++var StressYY = "StressYY";
+ 
+-var Line5 = igeo.genLine(IPoint6, IPoint7);
+-var Line6 = igeo.genArc(IPoint5, IPoint10, IPoint9);
+-var Line7 = igeo.genArc(IPoint8, IPoint10, IPoint9);
+-var Line8 = igeo.genArc(IPoint5, IPoint11, IPoint6);
+-var Line9 = igeo.genArc(IPoint7, IPoint12, IPoint8);
++// ========== 8. 配置结果输出文件路径及格式参数 ==========
++var OutputDir = getSrcDir() + "/Results/";
++var ResultFilePrefix = "TunnelSimulation_";
++var OutputFormat = "csv"; // 支持 csv, h5, vtk 等格式
+ 
+-var aLine1 = [Line1, Line2, Line3, Line4];
+-var aLine2 = [Line5, Line6, Line7, Line8, Line9];
+-var LineLoop1 = igeo.genLineLoop(aLine1);
+-var LineLoop2 = igeo.genLineLoop(aLine2);
++// ========== 9. 设置材料属性与边界条件（简化示例） ==========
++// 衬砌材料参数
++imeshing.SetMaterialProperty("Lining", "YoungModulus", 30e9); // Pa
++imeshing.SetMaterialProperty("Lining", "PoissonRatio", 0.2);
++imeshing.SetMaterialProperty("Lining", "Density", 2400); // kg/m³
+ 
++// 岩体材料参数
++imeshing.SetMaterialProperty("Rock", "YoungModulus", 30e9); // Pa
++imeshing.SetMaterialProperty("Rock", "PoissonRatio", 0.25);
++imeshing.SetMaterialProperty("Rock", "Density", 2600); // kg/m³
+ 
+-var aLineLoop1 = [LineLoop1, LineLoop2];
++// 边界条件：底部固定
++imeshing.SetBoundaryCondition("BottomFixed", "NodeY", [TunnelCenterX - RockDomainSize/2, TunnelCenterY - RockDomainSize/2], "Fixed");
+ 
++// ========== 10. 调用求解器执行计算 ==========
++skwave.Solve(1.0); // 设置仿真时间步长 (s)
+ 
+-var Surface1 = igeo.genSurface(aLineLoop1, 1);
++// ========== 11. 导出监测结果与可视化数据 ==========
++var MonitorResult = skwave.GetMonitorData(MonitorPointX, MonitorPointY);
++skwave.ExportResults(OutputDir, ResultFilePrefix, OutputFormat);
+ 
+-
+-var Surface2 = igeo.genSurface( [LineLoop2], 2);
+-
+-imeshing.genMeshByGmsh(2);
++// ========== 12. 输出仿真完成信息 ==========
++print("隧道模型仿真计算完成！");
++print("结果文件已保存至: " + OutputDir + ResultFilePrefix + "*.csv");

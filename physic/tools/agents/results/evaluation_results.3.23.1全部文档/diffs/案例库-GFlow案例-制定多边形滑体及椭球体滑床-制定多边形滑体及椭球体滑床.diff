@@ -1,0 +1,89 @@
+--- 案例库-GFlow案例-制定多边形滑体及椭球体滑床-制定多边形滑体及椭球体滑床.js (ground_truth)
++++ 案例库-GFlow案例-制定多边形滑体及椭球体滑床-制定多边形滑体及椭球体滑床.js (generated)
+@@ -1,54 +1,46 @@
+ setCurDir(getSrcDir());
++
++// 初始化仿真环境
+ gflow.clear();
+-gflow.defGrid( 0.0, 100.0, 0.0, 100.0, 200, 200);
+-gflow.setValue("LastTime", 80.0) ;
+-gflow.setValue("CourantCoeff", 0.04) ;
+-gflow.setValue("OutputInterval", 400) ;
+-gflow.setValue("ParaNum", 32) ;
+ 
++// 设置求解器控制参数
++gflow.setValue("LastTime", 20.0);
++gflow.setValue("CourantCoeff", 0.2);
++gflow.setValue("OutputInterval", 100);
++gflow.setValue("ParaNum", 32);
+ 
+-var aCoord = new Array(24);
+-aCoord[0]=	[	19.9503	,	37.7018	];
+-aCoord[1]=	[	18.7395	,	48.6763	];
+-aCoord[2]=	[	24.5513	,	58.0369	];
+-aCoord[3]=	[	36.6592	,	68.2045	];
+-aCoord[4]=	[	56.1126	,	69.4956	];
+-aCoord[5]=	[	68.2205	,	63.5242	];
+-aCoord[6]=	[	78.9562	,	47.8693	];
+-aCoord[7]=	[	78.0683	,	32.0531	];
+-aCoord[8]=	[	68.0591	,	22.3697	];
+-aCoord[9]=	[	62.1666	,	31.0041	];
+-aCoord[10]=	[	62.1666	,	40.5261	];
+-aCoord[11]=	[	56.6777	,	49.4832	];
+-aCoord[12]=	[	52.0766	,	49.4832	];
+-aCoord[13]=	[	52.0766	,	39.235	];
+-aCoord[14]=	[	52.0766	,	27.6149	];
+-aCoord[15]=	[	46.6684	,	25.4361	];
+-aCoord[16]=	[	44.489	,	34.7967	];
+-aCoord[17]=	[	43.6011	,	43.6732	];
+-aCoord[18]=	[	41.1795	,	50.5323	];
+-aCoord[19]=	[	35.6099	,	45.4485	];
+-aCoord[20]=	[	36.5785	,	32.9408	];
+-aCoord[21]=	[	31.8161	,	22.9346	];
+-aCoord[22]=	[	21.0804	,	23.9836	];
+-aCoord[23]=	[	18.9817	,	29.3095	];
++// 导入基础地形网格文件
++gflow.importGrid("terrain.dat");
+ 
+-gflow.setSlidingBodyByPolygon(aCoord,10);
++// 设置滑体材料（组号）
++gflow.setMat(30, 0.0, 0.0);
+ 
+-gflow.setMat(50, 0.0, 0.01);
++// 创建多边形滑体模型
++var polygonCoords = new Array(6);
++polygonCoords[0] = [-24.834, 30.4117];
++polygonCoords[1] = [-27.2767, 37.7105];
++polygonCoords[2] = [-27.2767, 49.0642];
++polygonCoords[3] = [-17.5059, 45.8203];
++polygonCoords[4] = [-11.8063, 37.7105];
++polygonCoords[5] = [-15.0, 37.7105];
+ 
+-gflow.setTerrainByEllipsoid( 70, 80, 10, 20, 10, 45, 0);
++gflow.setSlidingBodyByPolygon(polygonCoords, 10, 1);
+ 
++// 创建椭球体滑床模型
++gflow.setSlidingBodyByEllipsoid(-93, 37, 20, 15, 20, 0);
++
++// 设置监测点记录厚度时程信息
++gflow.hist("Thickness", 605.455, 471.579);
++gflow.hist("Thickness", 753.455, 633.263);
++
++// 导出计算后的网格及结果数据文件
+ gflow.exportGrid();
+ 
+-gflow.hist("Thickness", 30, 50);
+-gflow.hist("Thickness", 50, 50);
+-gflow.hist("Thickness", 80, 50);
+-
++// 执行求解
+ gflow.solve();
+ 
+-//gflow.resultImport();
++// 绘制监测点的历史曲线图
++gflow.drawHistPos();
+ 
++// 打印提示信息
+ print("Solution is OK!");
+-
+-

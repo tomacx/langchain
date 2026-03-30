@@ -1,0 +1,134 @@
+--- 案例库-CDyna案例-块体模块案例-扩展案例-土体饱水后强度降低诱发边坡失稳-土体饱水后强度降低诱发边坡失稳.js (ground_truth)
++++ 案例库-CDyna案例-块体模块案例-扩展案例-土体饱水后强度降低诱发边坡失稳-土体饱水后强度降低诱发边坡失稳.js (generated)
+@@ -5,80 +5,96 @@
+ dyna.Clear();
+ doc.clearResult();
+ 
++// 定义边坡几何模型坐标点
+ var acoord = new Array(6);
++var size = 1.0;
++acoord[0] = [0, 0, 0, size];
++acoord[1] = [40, 0, 0, size];
++acoord[2] = [40, 25, 0, size];
++acoord[3] = [20, 25, 0, size];
++acoord[4] = [10, 10, 0, size];
++acoord[5] = [0, 10, 0, size];
+ 
+-var size = 1.0;
+-acoord[0] = [0,0,0,  size];
+-acoord[1] = [40,0,0,  size];
+-acoord[2] = [40,25,0,  size];
+-acoord[3] = [20,25,0,  size];
+-acoord[4] = [10,10,0,  size];
+-acoord[5] = [0,10,0,  size];
+-
+-igeo.genPloygenS(acoord,1);
++igeo.genPloygenS(acoord, 1);
+ 
+ imeshing.genMeshByGmsh(2);
+ 
++// 设置输出间隔
+ dyna.Set("Output_Interval 1000");
+ 
++// 设置重力加速度
+ dyna.Set("Gravity 0 -9.8 0");
+ 
+-//包含孔隙渗流计算功能，开辟渗流相关的内存
++// 包含孔隙渗流计算功能，开辟渗流相关的内存
+ dyna.Set("Config_PoreSeepage 1");
+ 
+-//开启孔隙渗流开关
++// 开启孔隙渗流开关（初始关闭）
+ dyna.Set("PoreSeepage_Cal 0");
+ 
+ blkdyn.GetMesh(imeshing);
+ 
++// 设置块体模型为线性弹性
+ blkdyn.SetModel("linear");
+-blkdyn.SetMat(2200,1e9,0.3,5e4,5e4,25,15);
+ 
++// 设置土体力学参数：密度、弹性模量、泊松比、抗拉强度、粘聚力、内摩擦角、局部阻尼
++blkdyn.SetMat(2200, 1e9, 0.3, 5e4, 5e4, 25, 15);
+ 
+-//定义X、Y、Z三个方向的渗透系数
++// 定义X、Y、Z三个方向的渗透系数
+ var arrayK = new Array(1e-10, 1e-10, 1e-10);
+ 
+-//指定坐标控制范围内的孔隙渗流参数，依次为流体密度、体积模量、饱和度、孔隙率、渗透系数、比奥系数
+-poresp.SetPropByCoord (1000.0, 1e6, 0.0, 0.3, arrayK, 0.5, -500, 500, -500, 500, -500, 500);
++// 指定坐标控制范围内的孔隙渗流参数
++// 依次为：流体密度、体积模量、饱和度、孔隙率、渗透系数、比奥系数
++poresp.SetPropByCoord(1000.0, 1e6, 0.0, 0.3, arrayK, 1.0, -500, 500, -500, 500, -500, 500);
+ 
+-blkdyn.FixV("x",0,"x",-0.001,0.001);
+-blkdyn.FixV("x",0,"x",39.99,41);
+-blkdyn.FixV("y",0,"y",-0.001,0.001);
++// 施加底部及侧向无反射边界条件
++blkdyn.FixV("x", 0, "x", -0.001, 0.001);
++blkdyn.FixV("x", 0, "x", 39.99, 41);
++blkdyn.FixV("y", 0, "y", -0.001, 0.001);
+ 
+-dyna.Monitor("block","xdis",10,10,0);
+-dyna.Monitor("block","xdis",14.2,16.3,0);
+-dyna.Monitor("block","xdis",20,25,0);
++// 设置边坡关键部位位移监测点
++dyna.Monitor("block", "xdis", 10, 10, 0);
++dyna.Monitor("block", "xdis", 14.2, 16.3, 0);
++dyna.Monitor("block", "xdis", 20, 25, 0);
+ 
++// 第一阶段：初始状态计算（排水条件）
+ dyna.Solve();
+ 
+-blkdyn.SetModel("MC");
++// 设置强度软化参数，实现饱水后土体强度降低
++dyna.Set("Block_Soften_Value 3e-3 9e-3");
++blkdyn.SetModel("SoftenMC");
+ 
++// 第二阶段：软化后计算
+ dyna.Solve();
+ 
+-blkdyn.InitConditionByGroup("displace", [0,0,0], [0,0,0,0,0,0,0,0,0], 1,1);
++// 初始化位移场
++blkdyn.InitConditionByGroup("displace", [0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0], 1, 1);
+ 
++// 开启孔隙渗流计算
+ dyna.Set("PoreSeepage_Cal 1");
+ 
++// 开启Biot耦合计算
+ dyna.Set("If_Biot_Cal 1");
+ 
++// 设置当前时间
+ dyna.Set("Time_Now 0");
+ 
++// 调整时间步长
+ dyna.TimeStepCorrect(0.9);
+ 
+-//给一个渗流场条件
+-poresp.InitConditionByCoord("pp", 1.96e5, [0,-9800,0], -100,100,-1,20.01,-1,1,false);
+-poresp.InitConditionByCoord("sat", 1.1, [0,0.0,0], -100,100,-1,20.01,-1,1,false);
+-poresp.ApplyConditionByCoord("pp", 1.96e5, [0,-9800,0], -100,100,-1,20.01,-1,1,true);
++// 施加渗流压力边界条件（模拟降雨入渗）
++poresp.ApplyConditionByCoord("pp", 2.156e5, [0, -9800, 0], -100, 100, -100, 100);
+ 
++// 施加底部渗流速度边界条件（驱动饱水过程）
++poresp.ApplyConditionByCoord("FVelocity", [0, 0, 0.01], [-500, 500, -500, 500]);
++
++// 第三阶段：饱水后强度降低计算
+ dyna.Solve();
+ 
+-//设置土体吸水弱化参数，饱和度等于1，即开始吸水
+-dyna.Set("If_Cal_AbsorbErosion 1 1 0.5 1e6 0.8 0.05");
++// 导出VTK格式结果文件
++doc.ExportResult("vtk");
+ 
+-dyna.Set("Time_Now 0");
++// 导出文本型颗粒运动轨迹数据
++doc.ExportInfo("txt");
+ 
+-//关闭渗流开关，仅考虑吸水引起的强度降低
+-dyna.Set("PoreSeepage_Cal 0");
+-dyna.Set("If_Biot_Cal 0");
+-
+-dyna.DynaCycle(2.3e6);
++// 输出计算完成信息
++console.log("边坡失稳模拟计算完成，结果已导出");

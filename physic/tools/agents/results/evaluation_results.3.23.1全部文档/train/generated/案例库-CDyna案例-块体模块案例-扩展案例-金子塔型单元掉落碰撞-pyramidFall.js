@@ -1,0 +1,79 @@
+setCurDir(getSrcDir());
+
+// 初始化全局仿真参数
+dyna.Set("Output_Interval 500");
+dyna.Set("Large_Displace 1");
+dyna.Set("If_Renew_Contact 1");
+dyna.Set("If_Cal_EE_Contact 1");
+dyna.Set("Contact_Detect_Tol 1e-2");
+dyna.Set("Renew_Interval 10");
+
+// 设置重力加速度（自由掉落）
+dyna.Set("Gravity 0.0 -9.8 0.0");
+
+// 创建金字塔型单元几何
+var fCoord = new Array();
+fCoord[0] = new Array(-5, -0.1, -5);
+fCoord[1] = new Array(6, -0.1, -5);
+fCoord[2] = new Array(6, -0.1, 6);
+fCoord[3] = new Array(-5, -0.1, 6);
+rdface.Create(2, 10, 4, fCoord);
+
+// 导入网格数据（示例：从ANSYS格式导入）
+blkdyn.ImportGrid("ansys", "3col.dat");
+
+// 创建界面并更新
+blkdyn.CrtIFace();
+blkdyn.UpdateIFaceMesh();
+
+// 设置模型类型为线性弹性
+blkdyn.SetModel("linear");
+
+// 设置材料参数：密度、弹性模量、泊松比、抗拉强度、抗压强度、内摩擦角、粘聚力
+blkdyn.SetMat(2500, 3e9, 0.25, 1e6, 1e7, 30, 10);
+
+// 设置单元破坏模型为脆性Mohr-Coulomb
+blkdyn.SetIModel("brittleMC");
+
+// 设置单元刚度系数
+blkdyn.SetIStiffByElem(0.5);
+
+// 设置单元强度参数
+blkdyn.SetIStrengthByElem();
+
+// 设置局部阻尼
+blkdyn.SetLocalDamp(0.01);
+
+// 设置底部刚性约束面（碰撞面）
+var fCoordBottom = new Array();
+fCoordBottom[0] = new Array(-5, -2, -5);
+fCoordBottom[1] = new Array(6, -2, -5);
+rdface.Create(1, 1, 2, fCoordBottom);
+
+// 设置顶部释放高度（初始位置已定义）
+// 通过重力作用实现自由掉落
+
+// 计算前初始化检查
+dyna.BeforeCal();
+
+// 执行求解，30000步对应约0.3秒仿真时间
+dyna.Solve(30000);
+
+// 输出监测数据（可选：在求解过程中自动输出）
+// dyna.OutputMonitorData();
+
+// 获取关键节点位移和速度信息示例
+var nodeID = blkdyn.GetNodeID(new Array(0, 0, 0));
+if (nodeID > 0) {
+    var dispX = blkdyn.GetNodeValue(nodeID, "disp", "x");
+    var velZ = blkdyn.GetNodeValue(nodeID, "vel", "z");
+}
+
+// 获取关键单元状态信息示例
+var elemID = blkdyn.GetElemID(new Array(0, -0.1, 0));
+if (elemID > 0) {
+    var state = blkdyn.GetElemValue(elemID, "State");
+}
+
+// 导出结果文件（通过GiD_Out参数自动处理）
+dyna.Set("GiD_Out 1");

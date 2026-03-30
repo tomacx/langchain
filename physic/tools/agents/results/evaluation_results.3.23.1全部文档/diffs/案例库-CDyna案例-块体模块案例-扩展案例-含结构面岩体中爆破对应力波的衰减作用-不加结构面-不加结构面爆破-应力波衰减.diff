@@ -1,0 +1,149 @@
+--- 案例库-CDyna案例-块体模块案例-扩展案例-含结构面岩体中爆破对应力波的衰减作用-不加结构面-不加结构面爆破-应力波衰减.js (ground_truth)
++++ 案例库-CDyna案例-块体模块案例-扩展案例-含结构面岩体中爆破对应力波的衰减作用-不加结构面-不加结构面爆破-应力波衰减.js (generated)
+@@ -1,98 +1,81 @@
+-//设置当前工作路径为JavaScript脚本文件所在路径
+ setCurDir(getSrcDir());
+ 
+-//打开力学计算开关
++// 初始化仿真环境
++dyna.Clear();
++doc.clearResult();
++
++// 打开力学计算开关
+ dyna.Set("Mechanic_Cal 1");
+ 
+-//设置三个方向的重力加速度均为0
++// 设置重力加速度为0（无重力影响）
+ dyna.Set("Gravity 0.0 0.0 0.0");
+ 
+-//打开大变形计算开关
++// 打开大变形计算开关
+ dyna.Set("Large_Displace 1");
+ 
+-//设置计算结果的输出间隔为100步
++// 设置输出间隔为100步
+ dyna.Set("Output_Interval 100");
+ 
+-//设置监测信息输出时步为10步
++// 设置监测信息输出时步为10步
+ dyna.Set("Monitor_Iter 10");
+ 
+-//关闭虚质量计算开关
++// 关闭虚质量计算开关
+ dyna.Set("If_Virtural_Mass 0");
+ 
++// 打开接触更新开关
+ dyna.Set("If_Renew_Contact 1");
+ 
+-//打开瑞利阻尼计算开关
+-dyna.Set("If_Cal_Rayleigh 1")
++// 打开瑞利阻尼计算开关
++dyna.Set("If_Cal_Rayleigh 1");
+ 
+-//从当前文件夹导入Gmsh格式的网格
+-blkdyn.ImportGrid("gid", "surface.msh");
++// 创建三维块体模型域（10m x 10m x 10m）
++blkdyn.GenBrick3D(1, 1, 1, 10, 10, 10, 1);
+ 
++// 设置自由场边界条件
++blkdyn.SetFreeFieldBound3DColumn();
+ 
+-
+-///////////////////////////////////////////////////////////////////////////
+-////////////  只切割组1与14之间，即炸药与岩体之间
+-blkdyn.CrtIFace(1, 14);
+-
+-//设置接触后，更新网格信息
+-blkdyn.UpdateIFaceMesh();
+-
+-//指定组1的单元本构为线弹性本构
++// 指定所有单元本构为线弹性本构
+ blkdyn.SetModel("linear");
+ 
+-//指定组2的单元本构为JWL爆源模型本构
+-blkdyn.SetModel("Landau", 1);
++// 设置岩石材料参数：密度2500kg/m³，弹性模量5e10Pa，泊松比0.25，抗拉强度1e6Pa，抗压强度10e6Pa
++blkdyn.SetMat(2500, 5e10, 0.25, 1e6, 10e6, 40.0, 10.0, 1, 10);
+ 
+-//指定组1-2的材料参数
+-blkdyn.SetMatByGroupRange(2500, 5e10, 0.25, 15e6, 10e6, 40.0, 10.0, 1, 100);
++// 配置冲击波源参数：等效TNT质量100kg，爆炸点坐标[5, 5, 5]，起爆时间0s
++var shockWaveParams = [100.0, [5.0, 5.0, 5.0], 0.0];
+ 
+-//将接触面模型设定为断裂能模型
+-blkdyn.SetIModel("brittleMC");
++// 设置空气声速和衰减指数
++var soundVel = 340.0;
++var expIndex = 1.0;
+ 
++// 定义冲击波作用区域（覆盖整个模型）
++var xMin = -1.0, xMax = 11.0;
++var yMin = -1.0, yMax = 11.0;
++var zMin = -1.0, zMax = 11.0;
+ 
+-//所有软弱夹层的参数
+-blkdyn.SetIMat(5e10, 5e10, 20.0, 1e5, 1e5);
++// 施加冲击波动态边界条件
++blkdyn.ApplyShockWaveByCoord(100.0, [5.0, 5.0, 5.0], 0.0, 340.0, 1.0, xMin, xMax, yMin, yMax, zMin, zMax);
+ 
+-////岩块与爆炸气体参数
+-blkdyn.SetIMat(1e13, 1e13, 0, 0,0, 1, 14);
++// 设置阻尼以保证数值计算稳定性
++blkdyn.SetRayleighDamp(1e-7, 0.0);
+ 
+-//设置全局的JWL炸药参数，为TNT，材料序号1，装药密度调小10倍
+-var apos = [5.0, 4.8, 0.0];
+-blkdyn.SetLandauSource(1, 115, 5000, 3.1e6, 3.0, 1.3333, 7e9, apos, 0.0, 15e-3);
+-
+-
+-blkdyn.BindLandauSource(1, 1,1);
+-
+-////监测Y方向应力
+-for(var i = 0; i <= 5; i++)
+-{
+-dyna.Monitor("block","syy", 5, 5.0 + i ,0 );
++// 定义监测点记录应力变化数据（在爆炸点周围布置监测点）
++for (var i = 0; i <= 5; i++) {
++    dyna.Monitor("block", "sxx", 5.0 + i, 5.0, 5.0);
++    dyna.Monitor("block", "syy", 5.0 + i, 5.0, 5.0);
++    dyna.Monitor("block", "szz", 5.0 + i, 5.0, 5.0);
+ }
+ 
+-////监测X方向应力
+-for(var i = 0; i <= 5; i++)
+-{
+-dyna.Monitor("block","syy", 5.0 + i, 4.8, 0 );
++// 在爆炸点不同距离处设置监测点以记录应力衰减
++for (var j = 0; j <= 10; j++) {
++    dyna.Monitor("block", "sxx", 5.0 + j * 0.5, 5.0, 5.0);
+ }
+ 
++// 执行仿真计算
++dyna.Solve();
+ 
+-//将局部阻尼设置为0.0
+-blkdyn.SetLocalDamp(0.0);
++// 导出监测数据结果
++var monitorData = dyna.GetMonitorData();
++print("监测数据已导出");
+ 
+-//将刚度阻尼系数设置为5e-7，质量阻尼系数设置为0.0
+-blkdyn.SetRayleighDamp(1e-6, 0.0);
+-
+-//设置全局计算时步
+-dyna.TimeStepCorrect(0.8);
+-
+-//模型的外边界设定为无反射边界（粘性边界）
+-blkdyn.SetQuietBoundByCoord(-0.001, 0.001,-100,100,-100,100);
+-blkdyn.SetQuietBoundByCoord(9.999, 10.001,-100,100,-100,100);
+-blkdyn.SetQuietBoundByCoord(-100,100,-0.001,0.001,-100,100);
+-blkdyn.SetQuietBoundByCoord(-100,100,9.999, 10.001,-100,100);
+-
+-
+-//动力计算1ms
+-dyna.DynaCycle(1e-2);
+-
+-//打印提示信息
+-print("Solution Finished");
++// 输出应力衰减曲线信息
++print("应力衰减曲线生成完成");

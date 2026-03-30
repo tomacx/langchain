@@ -1,0 +1,73 @@
+setCurDir(getSrcDir());
+
+// 初始化环境
+igeo.clear();
+imeshing.clear();
+dyna.Clear();
+doc.clearResult();
+
+// 关闭力学计算开关
+dyna.Set("Mechanic_Cal 0");
+
+// 包含热传导计算模块，开辟相应内存
+dyna.Set("Config_Heat 1");
+
+// 打开热传导计算开关
+dyna.Set("Heat_Cal 1");
+
+// 设置输出间隔
+dyna.Set("Output_Interval 1000");
+
+// 定义一维杆件几何参数
+var length = 1.0;      // 杆件长度 (m)
+var height = 0.1;      // 杆件高度 (m)
+var width = 0.1;       // 杆件宽度 (m)
+var nElem = 50;        // 单元数量
+
+// 创建一维杆件几何（使用块体生成）
+igeo.genBrickV(0, 0, 0, length, height, width, 1);
+
+// 生成网格
+imeshing.genMeshByGmsh(3);
+
+// 获取网格到块体模块
+blkdyn.GetMesh(imeshing);
+
+// 设置热传导材料参数（密度、初始温度、热传导系数、比热容、体膨胀系数）
+heatcd.SetPropByGroup(2700.0, 20.0, 3.125, 1000, 1e-3, 1);
+
+// 定义梯度数组（用于边界条件）
+var fArrayGrad = new Array(0.0, 0.0, 0.0);
+
+// 设置两端节点固定温度边界条件
+// 左端 (x=0) 固定温度 50°C
+heatcd.ApplyConditionByCoord("temp", 50.0, fArrayGrad, -100, 100, -100, 100, -100, 100, true);
+
+// 右端 (x=length) 固定温度 20°C
+heatcd.ApplyConditionByCoord("temp", 20.0, fArrayGrad, length + (-100), length + 100, -100, 100, -100, 100, true);
+
+// 设置计算步长 (s)
+dyna.Set("Time_Step 500");
+
+// 配置接触面间热量传递开关及放大因子参数
+dyna.Set("If_Contact_Transf_Heat 1");
+dyna.Set("Contact_Transf_Heat_Factor 10.0");
+
+// 设置监测点（在杆件中间位置）
+dyna.Monitor("block", "temperature", length / 2, 0, 0);
+
+// 求解器执行热传导迭代计算
+dyna.Solve(50000);
+
+// 获取指定监测点的节点温度值
+var tempValue = heatcd.GetNodeValue(length / 2, 0, 0);
+print("中间节点温度: " + tempValue);
+
+// 计算单元热流速以验证能量守恒与传热效率分布
+heatcd.CalElemHeatTransfer();
+
+// 打印提示信息
+print("Solution Finished");
+
+// 释放动态链接库资源并结束脚本执行流程清理环境
+dyna.FreeUDF();

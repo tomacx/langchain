@@ -1,0 +1,206 @@
+--- 案例库-CDyna案例-块体模块案例-扩展案例-压水灌浆过程模拟-注浆快速模拟-注浆过程-带吕荣值统计.js (ground_truth)
++++ 案例库-CDyna案例-块体模块案例-扩展案例-压水灌浆过程模拟-注浆快速模拟-注浆过程-带吕荣值统计.js (generated)
+@@ -1,6 +1,4 @@
+-//设置当前工作路径为JavaScript脚本文件所在路径
+ setCurDir(getSrcDir());
+-
+ 
+ igeo.clear();
+ imeshing.clear();
+@@ -8,22 +6,19 @@
+ dyna.Clear();
+ doc.clearResult();
+ 
+-
+-
+-
+-//关闭力学计算开关
++// 关闭力学计算开关
+ dyna.Set("Mechanic_Cal 0");
+ 
+-//包含裂隙计算模块，开辟相应内存
++// 包含裂隙计算模块，开辟相应内存
+ dyna.Set("Config_FracSeepage 1");
+ 
+-//打开裂隙渗流计算开关
++// 打开裂隙渗流计算开关
+ dyna.Set("FracSeepage_Cal 1");
+ 
+-//设置3个方向的重力加速度
++// 设置3个方向的重力加速度
+ dyna.Set("Gravity 0.0 0.0 -9.8");
+ 
+-//设置结果输出时步
++// 设置结果输出时步
+ dyna.Set("Output_Interval 10000000");
+ 
+ dyna.Set("Liquid_Seepage_Law 2");
+@@ -34,102 +29,91 @@
+ 
+ dyna.Set("FS_CirInject_Width 1e-5");
+ 
+-fracsp.ImportGrid("Gmsh","GDEM-200new.msh");
++// 创建岩石颗粒体系
++var xMin = -10.0;
++var xMax = 10.0;
++var yMin = -10.0;
++var yMax = 10.0;
++var zMin = 0.0;
++var zMax = 20.0;
+ 
+-//fracsp.ImportGrid("ansys","tri.dat");
++var particleCount = 5000;
++var particleSize = 0.05;
+ 
+-//dyna.GetMesh();
++// 使用CreateByCoord生成颗粒体系
++igeo.GeneratePoint([xMin, yMin, zMin]);
++igeo.GeneratePoint([xMax, yMax, zMax]);
+ 
+-fracsp.SetPropByGroup(1810.0,1e6,3.33333e-6,2e-4,1,11);
++// 设置材料参数：密度、杨氏模量、泊松比、抗拉强度、粘聚力、摩擦系数
++fracsp.SetPropByGroup(1810.0, 1e6, 3.33333e-6, 2e-4, 1, 11);
+ 
++// 设置裂隙宽度随机化参数
++fracsp.RandomizeWidthByGroup("normal", 2e-4, 0.5e-4, 1, 2, 2);
++fracsp.RandomizeWidthByGroup("normal", 2e-4, 0.5e-4, 2, 2, 2);
++fracsp.RandomizeWidthByGroup("normal", 2e-4, 0.5e-4, 3, 2, 2);
++fracsp.RandomizeWidthByGroup("normal", 2e-4, 0.5e-4, 4, 2, 2);
+ 
+-fracsp.SetSinglePropByGroup ("Strength", 11.75, 1, 11);
++// 设置注浆孔属性：ID=1，计算开关=1，类型=1(液体)，长度=10m，直径=0.2m
++fracsp.SetJetBoreHoleProp(1, 1, 1, 10.0, 0.2, 0.0, 0.0, 5e-3);
+ 
++// 准备吕荣值统计参数：孔径=0.1m，高程下限=2.5m，高程上限=7.5m，开度比=5.0，组号=10
++fracsp.SetLvRongProp(0.1, 2.5, 7.5, 5.0, 10, 10);
+ 
++// 设置注浆液流量边界条件（优化流量和极限流量）
++var fQOpti = 20.0 * 1e-3 / 60.0; // m³/s
++var fQLimt = 30.0 * 1e-3 / 60.0; // m³/s
+ 
+-fracsp.RandomizeWidthByGroup("normal", 2e-4, 0.5e-4, 1,2,2);
++// 设置压力边界条件（注入压力）
++var injectPressure = 2e6; // Pa
++fracsp.ApplyConditionByCoord("pp", injectPressure, [0, 0, 0], xMin - 0.1, xMax + 0.1, yMin - 0.1, yMax + 0.1, zMin - 0.1, zMax + 0.1, true);
+ 
+-fracsp.RandomizeWidthByGroup("normal", 2e-4, 0.5e-4, 2,2,2);
++// 设置外部压力边界条件
++var ambientPressure = 1e5; // Pa
++fracsp.ApplyConditionByCoord("pp", ambientPressure, [0, 0, 0], xMin - 2.0, xMax + 2.0, yMin - 2.0, yMax + 2.0, zMin - 2.0, zMax + 2.0, true);
+ 
+-fracsp.RandomizeWidthByGroup("normal", 2e-4, 0.5e-4, 3,2,2);
++// 初始化节点饱和度和压力信息
++fracsp.SetNodeValue(1.0, "Saturation", 1, 11); // 饱和度初始化为1
++fracsp.SetNodeValue(0.0, "Pressure", 1, 11);   // 压力初始化为0
+ 
+-fracsp.RandomizeWidthByGroup("normal", 2e-4, 0.5e-4, 4,2,2);
+-
+-
+-var nodeid =  fracsp.GetNodeID (5.0, 5.0, 5.0);
+-
++// 获取注浆孔节点位置用于监测
++var nodeid = fracsp.GetNodeID(xMin + 0.1, yMin + 0.1, zMin + 5.0);
+ var fx = fracsp.GetNodeValue(nodeid, "Coord", 1);
+ var fy = fracsp.GetNodeValue(nodeid, "Coord", 2);
+ var fz = fracsp.GetNodeValue(nodeid, "Coord", 3);
+-var tol = 1e-5;
+ 
+-//var grad = new Array(0, 0, 0); 
+-//fracsp.ApplyConditionByCoord("pp", 2e6, grad, fx - tol, fx + tol, fy - tol, fy + tol, fz - tol, fz + tol);
++// 设置监测点位置
++dyna.Set("Monitor_Pos " + fx + " " + fy + " " + fz);
+ 
++// 启动时间步长循环进行耦合计算
++var totalTime = 10.0; // 总时间10秒
++var timeStep = 0.001; // 时间步长1ms
++var totalSteps = Math.floor(totalTime / timeStep);
+ 
+-
+-
+-
+-//注入点动力粘度
+-var aVisc = new Array(3);
+-aVisc[0] = [0, 7.5e-3];
+-aVisc[1] = [3e2, 3.1e-2];
+-aVisc[2] = [1e8, 3.1e-2];
+-
+-//注入点流体剪切强度的变化
+-var aStre = new Array(3);
+-aStre[0] = [0, 0.26];
+-aStre[1] = [3e2, 11.75];
+-aStre[2] = [1e8, 11.75];
+-
+-//注入点流体密度的变化
+-var aDens= new Array(3);
+-aDens[0] = [0, 1510];
+-aDens[1] = [3e2, 1810];
+-aDens[2] = [1e8, 1810];
+-
+-var id3 = fracsp.SetJetProp (0.0, aVisc, aStre, aDens);
+-
+-
+-//fracsp. BindJetProp (id3, fx - tol, fx + tol, fy - tol, fy + tol, fz - tol, fz + tol);
+-
+-
+-
+-var afValue = [0, 2e6, 1e6, 2e6];
+-var fArrayGrad = [0,0,0,0,0,0,0,0,0];
+-fracsp.ApplyDynaConditionByLine("pp",afValue, fArrayGrad, 5,5,2.5, 5, 5, 7.5);
+-
+-
+-
+-fracsp.ElemConnection();
+-
+-dyna.Monitor("fracsp", "sc_magvel", fx, fy, fz);
+-dyna.Monitor("fracsp", "sc_pp",  fx, fy, fz);
+-dyna.Monitor("fracsp", "sc_discharge",  fx, fy, fz);
+-
+-dyna.Monitor("gvalue", "gv_fracsp_total_mass");
+-
+-dyna.Monitor("gvalue", "gv_fracsp_eff_rad");
+-
+-
+-dyna.Set("Time_Step 2");
+-
+-print("开始搜索吕荣相关单元! ");
+-
+-fracsp.SetLvRongProp(0.1, 2.5, 7.5, 5.0, 10, 10);
+-
+-print("吕荣性质施加完毕! ");
+-
+-dyna.Solve(0);
+-dyna.Plot("FSNode","UserDefNodeValue");
+-
+-for(var i = 1; i < 38; i++)
+-{
+-dyna.DynaCycle(500 * i);
+-dyna.Plot("FSNode","UserDefNodeValue");
++for (var step = 0; step < totalSteps; step++) {
++    // 执行求解器迭代
++    dyna.Solver();
++    
++    // 每100步输出一次结果
++    if ((step + 1) % 100 === 0) {
++        // 输出当前时步结果
++        dyna.PutStep();
++        
++        // 监测吕荣值、水力导度及裂隙密度变化
++        var lvRong = fracsp.GetNodeValue(nodeid, "UserDefNodeValue", 1);
++        var hydraulicConductivity = fracsp.GetNodeValue(nodeid, "UserDefNodeValue", 2);
++        var fissureDensity = fracsp.GetNodeValue(nodeid, "UserDefNodeValue", 5);
++        
++        // 打印监测信息
++        print("Step: " + (step + 1) + ", LvRong: " + lvRong.toFixed(4) + 
++              ", Hydraulic Conductivity: " + hydraulicConductivity.toFixed(6) + 
++              ", Fissure Density: " + fissureDensity.toFixed(4));
++    }
+ }
+ 
++// 导出最终结果文件
++dyna.OutputModelResult();
+ 
++// 保存包含统计指标的sav重启动文件
++fracsp.SaveRestart("restart.sav");
+ 
+-//打印提示信息
+ print("Solution Finished");

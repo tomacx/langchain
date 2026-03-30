@@ -1,0 +1,82 @@
+setCurDir(getSrcDir());
+
+// 初始化仿真环境
+dyna.Set("Mechanic_Cal 1");
+dyna.Set("UnBalance_Ratio 1e-5");
+dyna.Set("Gravity 0 0 -9.8");
+dyna.Set("Large_Displace 1");
+dyna.Set("Output_Interval 500");
+dyna.Set("Moniter_Iter 100");
+dyna.Set("If_Virtural_Mass 1");
+dyna.Set("Virtural_Step 0.4");
+dyna.Set("Renew_Interval 2");
+dyna.Set("Contact_Detect_Tol 1e-3");
+dyna.Set("If_Renew_Contact 10");
+dyna.Set("If_Cal_EE_Contact 1");
+
+// 导入基础网格数据
+blkdyn.ImportGrid("ansys", "wood.dat");
+
+// 创建并更新接触面
+blkdyn.CrtIFace();
+blkdyn.UpdateIFaceMesh();
+
+// 设置模型为线性弹性
+blkdyn.SetModel("linear");
+
+// 定义木材材料属性：密度、弹性模量、泊松比、粘聚力、抗拉强度、抗剪强度
+blkdyn.SetMat(2000, 1e8, 0.3, 6e4, 3e4, 25.0, 10.0);
+
+// 设置界面材料参数：法向刚度、切向刚度、摩擦系数
+blkdyn.SetIMat(5e9, 5e9, 3.0, 0.0, 0.0);
+
+// 对接触面摩擦系数进行随机化（均匀分布，范围2.5-3.5）
+blkdyn.AdvRandomizeIMatByCoord("friction", "uniform", 2.5, 3.5, -1e10, 1e10, -1e10, 1e10, -1e10, 1e10);
+
+// 创建接触面网格
+rdface.Create(2, 1, 4, [-0.5, -0.5, 0, 0.6, -0.5, 0, 0.6, 0.6, 0, -0.5, 0.6, 0]);
+
+// 设置脆性断裂模型
+blkdyn.SetIModel("brittleMC");
+
+// 求解第一次（初始状态）
+dyna.Solve();
+
+// 调整网格规模（缩放比例0.8，基点在原点）
+imeshing.zoom(0, 0, 1, 0.8);
+
+// 设置底部支撑边界条件（固定X方向速度）
+blkdyn.FixV("x", 0.0, "x", -0.5, 0.5);
+
+// 设置动态载荷文件（模拟垮塌触发）
+var coeff = new Array(1.0, 0, 0);
+var xRange = new Array(-0.5, 0.5);
+var yRange = new Array(-0.5, 0.5);
+var zRange = new Array(0.4, 0.6);
+pdyna.ApplyDynaCondFileByCoord("force", coeff, "trigger_load.txt", xRange, yRange, zRange);
+
+// 设置监测点记录关键块体位移和应力
+dyna.Monitor("block", "xdis", -0.25, 0, 0);
+dyna.Monitor("block", "ydis", -0.25, 0, 0);
+dyna.Monitor("block", "zdis", -0.25, 0, 0);
+dyna.Monitor("block", "sxx", -0.25, 0, 0);
+dyna.Monitor("block", "syy", -0.25, 0, 0);
+dyna.Monitor("block", "szz", -0.25, 0, 0);
+
+// 设置时间步长和总计算时长
+dyna.Set("Time_Step 1e-6");
+dyna.Set("Total_Time 2.0");
+
+// 求解垮塌过程
+dyna.Solve(50000);
+
+// 关闭虚拟质量效应
+blkdyn.SetModel("none", 27);
+dyna.Set("If_Virtural_Mass 0");
+blkdyn.SetLocalDamp(0.05);
+
+// 第二次求解（后处理阶段）
+blkdyn.SetIModel("brittleMC");
+dyna.Solve();
+
+print("Solution Finished");

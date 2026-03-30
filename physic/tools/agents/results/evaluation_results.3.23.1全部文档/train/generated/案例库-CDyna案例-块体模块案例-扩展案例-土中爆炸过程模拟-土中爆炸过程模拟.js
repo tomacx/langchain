@@ -1,0 +1,80 @@
+setCurDir(getSrcDir());
+
+// 初始化环境
+igeo.clear();
+imeshing.clear();
+dyna.Clear();
+doc.clearResult();
+
+// ========== 1. 几何定义 ==========
+var fx = 10.0;      // 土体域长度(m)
+var fy = 5.0;       // 土体域高度(m)
+var frad = 0.3;     // 炸药半径(m)
+var size = 0.1;     // 单元尺寸(m)
+
+// 创建矩形土体域
+var id1 = igeo.genRect(0, 0, 0, fx, fy, 0, size);
+
+// 创建圆形炸药区域
+var id2 = igeo.genCircle(fx * 0.5, fy * 0.6, 0, frad, size);
+
+// 生成表面
+igeo.genSurface([id1, id2], 1);
+igeo.genSurface(id2, 2);
+
+// ========== 2. 网格划分 ==========
+imeshing.genMeshByGmsh(2);
+
+// ========== 3. 全局参数设置 ==========
+dyna.Set("Output_Interval 500");
+dyna.Set("If_Virtural_Mass 0");
+dyna.Set("Gravity 0 0 0");
+dyna.Set("Large_Displace 1");
+dyna.Set("Time_Step 1e-8");
+
+// ========== 4. 块体模型设置 ==========
+blkdyn.GetMesh(imeshing);
+
+// 创建土体与炸药界面
+blkdyn.CrtIFace(1, 2);
+blkdyn.UpdateIFaceMesh();
+
+// ========== 5. 材料参数设置 ==========
+// 土体材料参数 (密度, 弹性模量, 泊松比, 抗拉强度, 抗压强度, 内摩擦角, 粘聚力)
+blkdyn.SetModel("MC");
+blkdyn.SetMat(2200, 2.1e10, 0.3, 3e5, 1e5, 30, 15);
+
+// 设置块体模型为脆性连续介质
+blkdyn.SetIModel("brittleMC");
+
+// 设置界面材料参数
+blkdyn.SetIMat(1e12, 1e12, 0, 0, 0);
+
+// ========== 6. 朗道爆源设置 ==========
+// 设置炸药起爆点位置、能量及朗道爆源参数
+var apos = [fx * 0.5, fy * 0.6, 0];
+blkdyn.SetLandauSource(1, 1150, 5000, 3.1e6, 3.0, 1.3333, 7e9, apos, 0.0, 15e-3);
+
+// 绑定朗道爆源到炸药单元
+blkdyn.BindLandauSource(1, 2, 2);
+
+// ========== 7. 边界条件设置 ==========
+// 底部固定约束 (x方向)
+blkdyn.FixV("x", 0, "x", -0.01, 0.001);
+blkdyn.FixV("x", 0, "x", fx - 0.001, fx + 0.001);
+
+// 底部固定约束 (y方向)
+blkdyn.FixV("y", 0, "y", -0.001, 0.001);
+
+// ========== 8. 气体逸散参数设置 ==========
+// 设置ID号为1-2的朗道爆源的气体逸散参数
+pdyna.SetLandauGasLeakMat(5e-4, 1.2, 1, 2);
+
+// ========== 9. 阻尼设置 ==========
+blkdyn.SetLocalDamp(0.05);
+
+// ========== 10. 时步修正 ==========
+dyna.TimeStepCorrect(0.01);
+
+// ========== 11. 执行计算 ==========
+dyna.DynaCycle(2e-3);

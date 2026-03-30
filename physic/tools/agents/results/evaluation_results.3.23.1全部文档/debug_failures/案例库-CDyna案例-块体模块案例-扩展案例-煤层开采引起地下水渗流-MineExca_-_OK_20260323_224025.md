@@ -1,0 +1,639 @@
+# Failure Analysis: 案例库-CDyna案例-块体模块案例-扩展案例-煤层开采引起地下水渗流-MineExca_-_OK.js
+
+## Query
+请编写一个CDyna仿真脚本，实现煤层开采引起地下水渗流-MineExca - OK，并输出必要的结果与监测。
+
+## Generated Code
+```javascript
+setCurDir(getSrcDir());
+
+// 清除模块数据
+dyna.Clear();
+doc.clearResult();
+
+// 打开固体计算开关
+dyna.Set("Mechanic_Cal 1");
+
+// 包含裂隙渗流计算模块，开辟相应内存
+dyna.Set("Config_FracSeepage 1");
+
+// 打开裂隙渗流计算开关
+dyna.Set("FracSeepage_Cal 1");
+
+// 设置3个方向的重力加速度
+dyna.Set("Gravity 0 -9.8 0");
+
+// 设置计算结果的输出间隔为500步
+dyna.Set("Output_Interval 500");
+
+// 打开接触更新开关
+dyna.Set("If_Renew_Contact 1");
+
+// 创建煤层模型，长400m，高200m，长度方向50个网格，高度方向25个网格，组号为1
+blkdyn.GenBrick2D(400, 200, 50, 25, 1);
+
+// 将设定范围内的单元变成组2，便于开挖（煤层区域）
+blkdyn.SetGroupByCoord(2, 80, 320, 24, 40, -1, 1);
+
+// 接触面离散，全部单元离散
+blkdyn.CrtIFace();
+
+// 更新接触拓扑
+blkdyn.UpdateIFaceMesh();
+
+// 将单元模型设置为线弹性模型
+blkdyn.SetModel("linear");
+
+// 设置围岩材料参数（组1）：密度、弹性模量、泊松比、剪切模量、杨氏模量、热膨胀系数
+blkdyn.SetMat(2500, 1e10, 0.25, 1e6, 0.8e6, 40.0, 10.0);
+
+// 设置煤层材料参数（组2）：密度、弹性模量、泊松比、剪切模量、杨氏模量、热膨胀系数
+blkdyn.SetMat(2300, 8e9, 0.3, 3e5, 4.6e5, 35.0, 12.0);
+
+// 设置裂隙渗流参数，依次为密度、体积模量、渗透系数、裂隙初始开度、组号下限及组号上限
+fracsp.SetPropByGroup(1000.0, 1e7, 1e-9, 1e-6, 1, 1);
+
+// 设置煤层区域渗流参数（密度、体积模量、渗透系数、裂隙初始开度）
+fracsp.SetPropByCylinder(1000.0, 1e7, 1e-8, 1e-5, 80, 320, -1, 80, 320, 1.0, 0, 60);
+
+// 设置孔隙渗流模式为瞬态可压缩液体渗流
+dyna.Set("Seepage_Mode 1");
+
+// 设置液体渗流定律为牛顿流体
+dyna.Set("Liquid_Seepage_Law 1");
+
+// 配置是否更新单元的孔隙率（0-不更新，1-更新）
+dyna.Set("If_Renew_Porosity 1");
+
+// 设置最小孔隙开度
+fracsp.SetPropByGroup(1e-6, 1, 1);
+
+// 模型底部施加全约束
+blkdyn.FixV("y", 0.0, "y", -0.01, 0.01);
+
+// 模型左右两侧施加法向约束
+blkdyn.FixV("x", 0.0, "x", -0.01, 0.01);
+blkdyn.FixV("x", 0.0, "x", 399.99, 401);
+
+// 设置初始压力条件（组1围岩区域）
+fracsp.InitConditionByGroup(1, [0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0], 1, 1);
+
+// 设置初始饱和度条件（组2煤层区域）
+fracsp.InitConditionByGroup(2, [0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0], 1, 1);
+
+// 设置监测点获取节点压力值及饱和度信息
+dyna.Monitor("block", "pore_pressure", 10, 10, 0);
+dyna.Monitor("block", "saturation", 25, 10, 0);
+dyna.Monitor("block", "pore_pressure", 14.2, 16.3, 0);
+
+// 设置吕荣参数用于统计分析
+fracsp.SetLvRongProp(1e-6, 1);
+
+// 求解至稳定（初始力学平衡）
+dyna.Solve();
+
+// 设置单元模型为Mohr-Coulomb模型以模拟破裂
+blkdyn.SetModel("MC");
+
+// 设置接触模型为脆性断裂模型
+dyna.Set("Interface_Soften_Value 1e-3 1e-3");
+blkdyn.SetIModel("brittle");
+
+// 重新开启渗流计算并耦合固体破裂
+dyna.Set("PoreSeepage_Cal 1");
+dyna.Set("If_Biot_Cal 1");
+
+// 设置时间步长
+dyna.TimeStepCorrect(1.0);
+
+// 模拟开采边界（移除煤层区域约束）
+blkdyn.FixVByCoord("x", 0.0, 80.0, 90.0, -0.1, 0.1, 0, 0);
+blkdyn.FixVByCoord("y", 0.0, 24.0, 30.0, -0.1, 0.1, 0, 0);
+
+// 在仿真循环中调用渗流计算函数更新节点状态
+var step = 0;
+while (step < 500) {
+    // 计算节点压力及饱和度（每一步执行）
+    fracsp.CalNodePressure();
+    
+    // 动态单元流速、流量（每一步执行）
+    fracsp.CalElemDischarge();
+    
+    // 计算与固体破裂的耦合（每一步执行）
+    fracsp.CalIntSolid();
+    
+    // 计算渗流动态边界（每一步执行）
+    fracsp.CalDynaBound();
+    
+    step++;
+}
+
+// 获取节点压力值用于结果输出
+var nodePressure = fracsp.GetNodeValue(10, 10, 0, "pore_pressure");
+var nodeSaturation = fracsp.GetNodeValue(25, 10, 0, "saturation");
+
+// 获取单元流速与流量数据
+var elemDischarge = fracsp.GetElemValue(1, "discharge");
+
+// 导出监测结果文件供分析使用
+doc.ExportResult("seepage_mineexca_result.txt", ["pore_pressure", "saturation", "discharge"]);
+```
+
+## Ground Truth
+```javascript
+////设置结果保存路径为JS文件所在路径
+setCurDir(getSrcDir());
+
+////几何建模清除
+igeo.clear();
+
+////网格剖分清除
+imeshing.clear();
+
+////Dyna模块清除
+dyna.Clear();
+
+////平台显示结果清除
+doc.clearResult();
+
+
+////打开大变形计算开关
+dyna.Set("Large_Displace 1");
+
+////设置重力加速度值
+dyna.Set("Gravity 0 -9.8 0");
+
+////打开虚拟时步计算开关
+dyna.Set("If_Virtural_Mass 1");
+
+////设置虚拟时步
+dyna.Set("Virtural_Step 0.2");
+
+////设置不平衡率
+dyna.Set("UnBalance_Ratio 0.0001");
+
+////设置云图输出间隔
+dyna.Set("Output_Interval 1000");
+
+////设置监测信息输出间隔
+dyna.Set("Moniter_Iter 100");
+
+////打开设置接触开关
+dyna.Set("If_Renew_Contact 1");
+
+////设置接触容差
+dyna.Set("Contact_Detect_Tol 2e-2");
+
+
+////设置虚拟界面拉伸断裂位移及剪切断裂位移
+dyna.Set("Interface_Soften_Value 1e-005  3e-005");
+
+//包含裂隙渗流计算模块，开辟相应内存
+dyna.Set("Config_FracSeepage 1");
+
+//关闭裂隙渗流计算开关
+dyna.Set("FracSeepage_Cal 0");
+
+//数值最大裂隙开度为2um
+//dyna.Set("FS_MaxWid 2e-5");
+
+//设置裂隙流模型为可压缩流体模型
+dyna.Set("Seepage_Mode 1");
+
+//关闭裂隙渗流与固体耦合开关（孔隙渗流无此开关）
+dyna.Set("FS_Solid_Interaction 0");
+
+//打开仅接触面破裂或接触面为预设面时进行压力传递及更新开度
+//dyna.Set("FS_Frac_Start_Cal 1");
+
+
+
+//导入计算网格
+blkdyn.ImportGrid("gmsh", "GDEM.msh");
+
+////所有单元边界均设置为接触面
+blkdyn.CrtIFace();
+
+////设置接触面后更新拓扑关系
+blkdyn.UpdateIFaceMesh();
+
+
+
+////设置单元模型为线弹性模型
+blkdyn.SetModel("linear");
+
+////设置材料参数，分别为密度，弹性模量，泊松比，粘聚力、抗拉强度、内摩擦角、剪胀角、组号
+////第1层，地层名称：第四系松散砂层
+blkdyn.SetMat(1072, 0.06e9, 0.31, 57.8e3, 9.29e3, 17.7, 10, 6);
+
+////第2层，地层名称：离石组黄土层
+blkdyn.SetMat(1800, 0.02e9, 0.25, 50e3, 30e3,28.0, 10, 5);
+
+////第3层，地层名称：静乐组红土层
+blkdyn.SetMat(2000, 0.04e9, 0.28, 70e3, 35e3, 20, 10, 4);
+
+////第4层，地层名称：基岩风化带
+blkdyn.SetMat(2040, 0.02e9, 0.3, 70e3, 35e3, 27, 10, 3);
+
+////第5层，地层名称：延安组砂泥岩互层
+blkdyn.SetMat(1770, 0.09e8, 0.35, 50e3, 30e3, 25, 10, 2);
+
+////第6层，地层名称：煤
+blkdyn.SetMat(1400, 0.02e9, 0.3, 25e3, 30e3, 20, 10, 1);
+
+////第7层，地层名称：基岩
+blkdyn.SetMat(2500, 2e9, 0.25, 6e6, 3e6, 35, 10, 7);
+
+
+////设置接触面本构模型为线弹性模型
+blkdyn.SetIModel("linear");
+
+////接触面刚度从单元中继承
+blkdyn.SetIStiffByElem(1);
+//k = E * A / (L / ahpha);
+
+////接触面强度从单元中继承
+blkdyn.SetIStrengthByElem();
+
+//blkdyn.SetIMat();
+
+////设置层间接触强度系数
+//blkdyn.SetIMatReductionByGroupInterface("cohesion", 5.000000e-001, -1, -1);
+//blkdyn.SetIMatReductionByGroupInterface("tension", 5.000000e-001, -1, -1);
+//blkdyn.SetIMatReductionByGroupInterface("friction", 5.000000e-001, -1, -1);
+
+////模型左侧法向位移约束
+blkdyn.FixV("x", 0.0, "x", -1, 1);
+
+////模型右侧法向位移约束
+blkdyn.FixV("x", 0.0, "x", 399, 401);
+
+////模型底部法向位移约束
+blkdyn.FixV("y", 0.0, "y", -10.1, -9.9);
+
+
+////////////////裂隙渗流
+//裂隙单元从固体单元中继承
+fracsp.CreateGridFromBlock(2);
+
+//设置裂隙渗流参数，依次为密度、体积模量、渗透系数、裂隙初始开度、组号下限及组号上限
+var k = 12e-15;
+var w = Math.sqrt(12 * 1e-3 * k);
+fracsp.SetPropByGroup(1000,1e7,k,w,1,11);
+fracsp.SetPropByGroup(1000,1e7,1e-14,1.1e-8,4,4);
+
+//对坐标范围内的裂隙压力进行初始化
+fracsp.InitConditionByGroup("pp", 16900, [0, -100, 0], 5, 5);
+fracsp.InitConditionByGroup("sat", 1.01, [0,0,0], 5, 5);
+
+
+////弹性求解至稳定，获得弹性应力场
+dyna.Solve();
+
+////设置单元模型
+blkdyn.SetModel("MC");
+
+////塑性及破裂场求解至稳定
+dyna.Solve();
+
+////存储Save文件
+dyna.Save("Plastic.sav");
+//dyna.Restore("Plastic.sav");
+
+
+
+
+//打开裂隙渗流计算开关
+dyna.Set("FracSeepage_Cal 1");
+
+//打开裂隙渗流与固体耦合开关（孔隙渗流无此开关）
+dyna.Set("FS_Solid_Interaction 1");
+
+
+dyna.Set("Time_Now 0.0");
+
+dyna.Set("Time_Step 1");
+
+////设置接触面模型
+blkdyn.SetIModel("SSMC");
+
+////设置局部阻尼
+blkdyn.SetLocalDamp(1.000000e-002);
+
+////位移清零
+var values = new Array(0, 0, 0);
+var gradient = new Array(0, 0, 0, 0, 0, 0, 0, 0, 0);
+blkdyn.InitConditionByCoord("displace", values, gradient, -1e10, 1e10, -1e10, 1e10, -1e10, 1e10);
+
+//////////////////////////开采计算
+for(var i = 0; i < 10; i++)
+{
+    ////开挖区段煤层
+    blkdyn.SetModelByGroupAndCoord("none", 1, 1, 50 + i * 5, 50 + (i + 1) * 5, -1e20, 1e20, -1e20, 1e20);
+
+    ////迭代求解设定步数
+    dyna.Solve(10000);
+
+    ////存储Save文件
+    var fileName = "Excav_" + (i+1) + ".sav"
+    dyna.Save(fileName);
+}
+print("本次煤层开采垮落数值模拟正常结束!");
+```
+
+## Unified Diff
+```diff
+--- 案例库-CDyna案例-块体模块案例-扩展案例-煤层开采引起地下水渗流-MineExca_-_OK.js (ground_truth)
++++ 案例库-CDyna案例-块体模块案例-扩展案例-煤层开采引起地下水渗流-MineExca_-_OK.js (generated)
+@@ -1,198 +1,132 @@
+-////设置结果保存路径为JS文件所在路径
+ setCurDir(getSrcDir());
+ 
+-////几何建模清除
+-igeo.clear();
+-
+-////网格剖分清除
+-imeshing.clear();
+-
+-////Dyna模块清除
++// 清除模块数据
+ dyna.Clear();
+-
+-////平台显示结果清除
+ doc.clearResult();
+ 
++// 打开固体计算开关
++dyna.Set("Mechanic_Cal 1");
+ 
+-////打开大变形计算开关
+-dyna.Set("Large_Displace 1");
++// 包含裂隙渗流计算模块，开辟相应内存
++dyna.Set("Config_FracSeepage 1");
+ 
+-////设置重力加速度值
++// 打开裂隙渗流计算开关
++dyna.Set("FracSeepage_Cal 1");
++
++// 设置3个方向的重力加速度
+ dyna.Set("Gravity 0 -9.8 0");
+ 
+-////打开虚拟时步计算开关
+-dyna.Set("If_Virtural_Mass 1");
++// 设置计算结果的输出间隔为500步
++dyna.Set("Output_Interval 500");
+ 
+-////设置虚拟时步
+-dyna.Set("Virtural_Step 0.2");
+-
+-////设置不平衡率
+-dyna.Set("UnBalance_Ratio 0.0001");
+-
+-////设置云图输出间隔
+-dyna.Set("Output_Interval 1000");
+-
+-////设置监测信息输出间隔
+-dyna.Set("Moniter_Iter 100");
+-
+-////打开设置接触开关
++// 打开接触更新开关
+ dyna.Set("If_Renew_Contact 1");
+ 
+-////设置接触容差
+-dyna.Set("Contact_Detect_Tol 2e-2");
++// 创建煤层模型，长400m，高200m，长度方向50个网格，高度方向25个网格，组号为1
++blkdyn.GenBrick2D(400, 200, 50, 25, 1);
+ 
++// 将设定范围内的单元变成组2，便于开挖（煤层区域）
++blkdyn.SetGroupByCoord(2, 80, 320, 24, 40, -1, 1);
+ 
+-////设置虚拟界面拉伸断裂位移及剪切断裂位移
+-dyna.Set("Interface_Soften_Value 1e-005  3e-005");
++// 接触面离散，全部单元离散
++blkdyn.CrtIFace();
+ 
+-//包含裂隙渗流计算模块，开辟相应内存
+-dyna.Set("Config_FracSeepage 1");
++// 更新接触拓扑
++blkdyn.UpdateIFaceMesh();
+ 
+-//关闭裂隙渗流计算开关
+-dyna.Set("FracSeepage_Cal 0");
++// 将单元模型设置为线弹性模型
++blkdyn.SetModel("linear");
+ 
+-//数值最大裂隙开度为2um
+-//dyna.Set("FS_MaxWid 2e-5");
++// 设置围岩材料参数（组1）：密度、弹性模量、泊松比、剪切模量、杨氏模量、热膨胀系数
++blkdyn.SetMat(2500, 1e10, 0.25, 1e6, 0.8e6, 40.0, 10.0);
+ 
+-//设置裂隙流模型为可压缩流体模型
++// 设置煤层材料参数（组2）：密度、弹性模量、泊松比、剪切模量、杨氏模量、热膨胀系数
++blkdyn.SetMat(2300, 8e9, 0.3, 3e5, 4.6e5, 35.0, 12.0);
++
++// 设置裂隙渗流参数，依次为密度、体积模量、渗透系数、裂隙初始开度、组号下限及组号上限
++fracsp.SetPropByGroup(1000.0, 1e7, 1e-9, 1e-6, 1, 1);
++
++// 设置煤层区域渗流参数（密度、体积模量、渗透系数、裂隙初始开度）
++fracsp.SetPropByCylinder(1000.0, 1e7, 1e-8, 1e-5, 80, 320, -1, 80, 320, 1.0, 0, 60);
++
++// 设置孔隙渗流模式为瞬态可压缩液体渗流
+ dyna.Set("Seepage_Mode 1");
+ 
+-//关闭裂隙渗流与固体耦合开关（孔隙渗流无此开关）
+-dyna.Set("FS_Solid_Interaction 0");
++// 设置液体渗流定律为牛顿流体
++dyna.Set("Liquid_Seepage_Law 1");
+ 
+-//打开仅接触面破裂或接触面为预设面时进行压力传递及更新开度
+-//dyna.Set("FS_Frac_Start_Cal 1");
++// 配置是否更新单元的孔隙率（0-不更新，1-更新）
++dyna.Set("If_Renew_Porosity 1");
+ 
++// 设置最小孔隙开度
++fracsp.SetPropByGroup(1e-6, 1, 1);
+ 
++// 模型底部施加全约束
++blkdyn.FixV("y", 0.0, "y", -0.01, 0.01);
+ 
+-//导入计算网格
+-blkdyn.ImportGrid("gmsh", "GDEM.msh");
++// 模型左右两侧施加法向约束
++blkdyn.FixV("x", 0.0, "x", -0.01, 0.01);
++blkdyn.FixV("x", 0.0, "x", 399.99, 401);
+ 
+-////所有单元边界均设置为接触面
+-blkdyn.CrtIFace();
++// 设置初始压力条件（组1围岩区域）
++fracsp.InitConditionByGroup(1, [0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0], 1, 1);
+ 
+-////设置接触面后更新拓扑关系
+-blkdyn.UpdateIFaceMesh();
++// 设置初始饱和度条件（组2煤层区域）
++fracsp.InitConditionByGroup(2, [0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0], 1, 1);
+ 
++// 设置监测点获取节点压力值及饱和度信息
++dyna.Monitor("block", "pore_pressure", 10, 10, 0);
++dyna.Monitor("block", "saturation", 25, 10, 0);
++dyna.Monitor("block", "pore_pressure", 14.2, 16.3, 0);
+ 
++// 设置吕荣参数用于统计分析
++fracsp.SetLvRongProp(1e-6, 1);
+ 
+-////设置单元模型为线弹性模型
+-blkdyn.SetModel("linear");
+-
+-////设置材料参数，分别为密度，弹性模量，泊松比，粘聚力、抗拉强度、内摩擦角、剪胀角、组号
+-////第1层，地层名称：第四系松散砂层
+-blkdyn.SetMat(1072, 0.06e9, 0.31, 57.8e3, 9.29e3, 17.7, 10, 6);
+-
+-////第2层，地层名称：离石组黄土层
+-blkdyn.SetMat(1800, 0.02e9, 0.25, 50e3, 30e3,28.0, 10, 5);
+-
+-////第3层，地层名称：静乐组红土层
+-blkdyn.SetMat(2000, 0.04e9, 0.28, 70e3, 35e3, 20, 10, 4);
+-
+-////第4层，地层名称：基岩风化带
+-blkdyn.SetMat(2040, 0.02e9, 0.3, 70e3, 35e3, 27, 10, 3);
+-
+-////第5层，地层名称：延安组砂泥岩互层
+-blkdyn.SetMat(1770, 0.09e8, 0.35, 50e3, 30e3, 25, 10, 2);
+-
+-////第6层，地层名称：煤
+-blkdyn.SetMat(1400, 0.02e9, 0.3, 25e3, 30e3, 20, 10, 1);
+-
+-////第7层，地层名称：基岩
+-blkdyn.SetMat(2500, 2e9, 0.25, 6e6, 3e6, 35, 10, 7);
+-
+-
+-////设置接触面本构模型为线弹性模型
+-blkdyn.SetIModel("linear");
+-
+-////接触面刚度从单元中继承
+-blkdyn.SetIStiffByElem(1);
+-//k = E * A / (L / ahpha);
+-
+-////接触面强度从单元中继承
+-blkdyn.SetIStrengthByElem();
+-
+-//blkdyn.SetIMat();
+-
+-////设置层间接触强度系数
+-//blkdyn.SetIMatReductionByGroupInterface("cohesion", 5.000000e-001, -1, -1);
+-//blkdyn.SetIMatReductionByGroupInterface("tension", 5.000000e-001, -1, -1);
+-//blkdyn.SetIMatReductionByGroupInterface("friction", 5.000000e-001, -1, -1);
+-
+-////模型左侧法向位移约束
+-blkdyn.FixV("x", 0.0, "x", -1, 1);
+-
+-////模型右侧法向位移约束
+-blkdyn.FixV("x", 0.0, "x", 399, 401);
+-
+-////模型底部法向位移约束
+-blkdyn.FixV("y", 0.0, "y", -10.1, -9.9);
+-
+-
+-////////////////裂隙渗流
+-//裂隙单元从固体单元中继承
+-fracsp.CreateGridFromBlock(2);
+-
+-//设置裂隙渗流参数，依次为密度、体积模量、渗透系数、裂隙初始开度、组号下限及组号上限
+-var k = 12e-15;
+-var w = Math.sqrt(12 * 1e-3 * k);
+-fracsp.SetPropByGroup(1000,1e7,k,w,1,11);
+-fracsp.SetPropByGroup(1000,1e7,1e-14,1.1e-8,4,4);
+-
+-//对坐标范围内的裂隙压力进行初始化
+-fracsp.InitConditionByGroup("pp", 16900, [0, -100, 0], 5, 5);
+-fracsp.InitConditionByGroup("sat", 1.01, [0,0,0], 5, 5);
+-
+-
+-////弹性求解至稳定，获得弹性应力场
++// 求解至稳定（初始力学平衡）
+ dyna.Solve();
+ 
+-////设置单元模型
++// 设置单元模型为Mohr-Coulomb模型以模拟破裂
+ blkdyn.SetModel("MC");
+ 
+-////塑性及破裂场求解至稳定
+-dyna.Solve();
++// 设置接触模型为脆性断裂模型
++dyna.Set("Interface_Soften_Value 1e-3 1e-3");
++blkdyn.SetIModel("brittle");
+ 
+-////存储Save文件
+-dyna.Save("Plastic.sav");
+-//dyna.Restore("Plastic.sav");
++// 重新开启渗流计算并耦合固体破裂
++dyna.Set("PoreSeepage_Cal 1");
++dyna.Set("If_Biot_Cal 1");
+ 
++// 设置时间步长
++dyna.TimeStepCorrect(1.0);
+ 
++// 模拟开采边界（移除煤层区域约束）
++blkdyn.FixVByCoord("x", 0.0, 80.0, 90.0, -0.1, 0.1, 0, 0);
++blkdyn.FixVByCoord("y", 0.0, 24.0, 30.0, -0.1, 0.1, 0, 0);
+ 
++// 在仿真循环中调用渗流计算函数更新节点状态
++var step = 0;
++while (step < 500) {
++    // 计算节点压力及饱和度（每一步执行）
++    fracsp.CalNodePressure();
++    
++    // 动态单元流速、流量（每一步执行）
++    fracsp.CalElemDischarge();
++    
++    // 计算与固体破裂的耦合（每一步执行）
++    fracsp.CalIntSolid();
++    
++    // 计算渗流动态边界（每一步执行）
++    fracsp.CalDynaBound();
++    
++    step++;
++}
+ 
+-//打开裂隙渗流计算开关
+-dyna.Set("FracSeepage_Cal 1");
++// 获取节点压力值用于结果输出
++var nodePressure = fracsp.GetNodeValue(10, 10, 0, "pore_pressure");
++var nodeSaturation = fracsp.GetNodeValue(25, 10, 0, "saturation");
+ 
+-//打开裂隙渗流与固体耦合开关（孔隙渗流无此开关）
+-dyna.Set("FS_Solid_Interaction 1");
++// 获取单元流速与流量数据
++var elemDischarge = fracsp.GetElemValue(1, "discharge");
+ 
+-
+-dyna.Set("Time_Now 0.0");
+-
+-dyna.Set("Time_Step 1");
+-
+-////设置接触面模型
+-blkdyn.SetIModel("SSMC");
+-
+-////设置局部阻尼
+-blkdyn.SetLocalDamp(1.000000e-002);
+-
+-////位移清零
+-var values = new Array(0, 0, 0);
+-var gradient = new Array(0, 0, 0, 0, 0, 0, 0, 0, 0);
+-blkdyn.InitConditionByCoord("displace", values, gradient, -1e10, 1e10, -1e10, 1e10, -1e10, 1e10);
+-
+-//////////////////////////开采计算
+-for(var i = 0; i < 10; i++)
+-{
+-    ////开挖区段煤层
+-    blkdyn.SetModelByGroupAndCoord("none", 1, 1, 50 + i * 5, 50 + (i + 1) * 5, -1e20, 1e20, -1e20, 1e20);
+-
+-    ////迭代求解设定步数
+-    dyna.Solve(10000);
+-
+-    ////存储Save文件
+-    var fileName = "Excav_" + (i+1) + ".sav"
+-    dyna.Save(fileName);
+-}
+-print("本次煤层开采垮落数值模拟正常结束!");
++// 导出监测结果文件供分析使用
++doc.ExportResult("seepage_mineexca_result.txt", ["pore_pressure", "saturation", "discharge"]);
+```

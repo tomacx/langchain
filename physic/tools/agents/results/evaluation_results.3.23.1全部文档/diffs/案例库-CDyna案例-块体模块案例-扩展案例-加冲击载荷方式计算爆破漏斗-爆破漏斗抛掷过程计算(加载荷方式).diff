@@ -1,0 +1,196 @@
+--- 案例库-CDyna案例-块体模块案例-扩展案例-加冲击载荷方式计算爆破漏斗-爆破漏斗抛掷过程计算(加载荷方式).js (ground_truth)
++++ 案例库-CDyna案例-块体模块案例-扩展案例-加冲击载荷方式计算爆破漏斗-爆破漏斗抛掷过程计算(加载荷方式).js (generated)
+@@ -1,11 +1,12 @@
+ setCurDir(getSrcDir());
+ 
++// 清理环境
+ igeo.clear();
+ imeshing.clear();
+ doc.clearResult();
+ dyna.Clear();
+ 
+-
++// 定义模型尺寸参数
+ var Length = 15;
+ var Height = 5;
+ var CenterX = Length / 2.0;
+@@ -14,129 +15,84 @@
+ var Size1 = 0.4;
+ var Size2 = 0.2;
+ 
+-igeo.genRect(0,0,0, Length, Height, 0,Size1);
++// 创建几何模型：矩形区域和圆形孔洞
++igeo.genRect(0, 0, 0, Length, Height, 0, Size1);
++igeo.genCircle(CenterX, CenterY, 0.0, Rad, Size2);
++igeo.genSurface([1, 2], 1);
+ 
+-igeo.genCircle(CenterX, CenterY, 0.0, Rad, Size2);
+-
+-igeo.genSurface([1,2], 1);
+-
+-
++// 生成网格
+ imeshing.genMeshByGmsh(2);
+ 
+-//打开力学计算开关
++// 打开力学计算开关
+ dyna.Set("Mechanic_Cal 1");
+ 
+-//设置三个方向的重力加速度均为0
++// 设置三个方向的重力加速度矢量 (X=0, Y=-9.8, Z=0)
+ dyna.Set("Gravity 0.0 -9.8 0.0");
+ 
+-dyna.Set("If_Renew_Contact 1");
+-
+-dyna.Set("Contact_Detect_Tol 1e-3");
+-
+-//设置计算结果的输出间隔为100步
++// 设置输出和监测参数
+ dyna.Set("Output_Interval 2000");
+-
+-//设置监测信息输出时步为10步
+ dyna.Set("Moniter_Iter 10");
+-
+-//关闭虚质量计算开关
+ dyna.Set("If_Virtural_Mass 1");
+-
+ dyna.Set("Elem_Kill_Option 1 1 1 1 1");
+ 
+-
+-dyna.Set("If_ContFrac_Reduced_Mat 1 1.0 1.0 0.57");
+-
+-dyna.Set("SaveFile_Out 1");
+-
++// 获取网格并创建接触面
+ blkdyn.GetMesh(imeshing);
+-
+-blkdyn.CrtIFace(1,1);
++blkdyn.CrtIFace(1, 1);
+ blkdyn.UpdateIFaceMesh();
+ 
++// 设置线弹性材料模型
+ blkdyn.SetModel("linear");
+-blkdyn.SetMat(2000, 1e10, 0.28, 8.19e6, 8.11e6, 56.2, 15);
+ 
+-blkdyn.SetIModel("linear");
+-blkdyn.SetIStiffByElem(1.0);
+-blkdyn.SetIStrengthByElem();
+-blkdyn.SetIMat(3e12, 3e12, 0, 0, 0, 1,2);
++// 设置材料参数：密度、弹性模量、泊松比、抗拉强度、抗压强度、内摩擦角、粘聚力
++blkdyn.SetMat(2500, 3e10, 0.25, 3e6, 1e6, 40, 15);
+ 
++// 固定模型底部所有方向的速度边界条件
++blkdyn.FixV("x", 0, "x", -0.0001, 0.0001);
++blkdyn.FixV("y", 0, "y", -0.0001, 0.0001);
++blkdyn.FixV("z", 0, "z", -0.0001, 0.0001);
+ 
+-blkdyn.FixV("x", 0,"x",-0.0001, 0.0001);
+-blkdyn.FixV("x", 0,"x",Length -0.0001, Length  + 0.0001);
+-blkdyn.FixV("y", 0,"y",-0.0001, 0.0001);
++// 设置起爆点位置数组
++var pos = new Array(3);
++pos[0] = [CenterX, CenterY, 0];
++pos[1] = [CenterX + 0.5, CenterY, 0];
++pos[2] = [CenterX - 0.5, CenterY, 0];
+ 
+-//监测块体破坏度及破裂度
+-dyna.Monitor("gvalue","gv_block_broken_ratio");
+-dyna.Monitor("gvalue","gv_block_crack_ratio");
++// 设置JWL爆源参数：ID、密度、弹性模量、体积模量、拉梅常数、气体指数、特征时间等
++blkdyn.SetJWLSource(1, 1630, 7.0e9, 371.2e9, 3.2e9, 4.2, 0.95, 0.30, 21e9, 6930, pos, 0.0, 15e-3);
+ 
+-dyna.Monitor("gvalue","gv_spring_broken_ratio");
+-dyna.Monitor("gvalue","gv_spring_crack_ratio");
++// 配置爆生气体逸散衰减参数：特征时间、特征指数、爆源ID范围
++blkdyn.SetJWLGasLeakMat(5e-4, 1.2, 1, 10);
+ 
+-dyna.Solve();
+-dyna.Save("Stage1.sav");
++// 绑定JWL爆源到单元
++blkdyn.BindJWLSource(1, 1, 100);
+ 
+-blkdyn.SetModel("linear");
+-blkdyn.SetIModel("brittleMC");
+-dyna.Set("Interface_Soften_Value 1e-5 1e-4");
+-dyna.Solve();
+-dyna.Save("Stage2.sav");
++// 设置监测点追踪爆破漏斗材料的位移和速度
++dyna.Monitor("block", "ydis", CenterX, CenterY, 0);
++dyna.Monitor("block", "xdis", CenterX, CenterY, 0);
++dyna.Monitor("block", "zdis", CenterX, CenterY, 0);
+ 
++// 执行计算前初始化操作
++dyna.BeforeCal();
+ 
++// 运行求解器循环
++for (var i = 0; i < 10000; i++) {
++    // 集成核心计算
++    var unbal = blkdyn.Solver();
+ 
++    // 计算单元变形力
++    blkdyn.CalBlockForce();
+ 
+-//初始化位移
+-var value = [0.0, 0.0, 0.0];
+-var gradient = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
+-blkdyn.InitConditionByCoord("displace", value, gradient, -1000, 1000, -1000, 1000, -1000, 1000);
++    // 计算节点运动
++    blkdyn.CalNodeMovement();
+ 
+-blkdyn.InitialBlockState();
++    // 输出监测信息
++    dyna.OutputMonitorData();
+ 
++    // 每隔100步推送信息
++    if (i != 0 && i % 100 == 0) {
++        print("不平衡率：" + unbal);
++        dyna.PutStep(1, i, 0.1);
++    }
++}
+ 
+-//打开大变形计算开关
+-dyna.Set("Large_Displace 1");
+-
+-
+-dyna.Set("If_Virtural_Mass 0");
+-
+-dyna.Set("Time_Now 0.0");
+-
+-//将局部阻尼设置为0.0
+-blkdyn.SetLocalDamp(0.00);
+-
+-dyna.Set("If_Cal_Rayleigh 1")
+-
+-//将刚度阻尼系数设置为5e-7，质量阻尼系数设置为0.0
+-blkdyn.SetRayleighDamp(5e-7, 0.0);
+-
+-
+-dyna.TimeStepCorrect(0.8);
+-
+-
+-blkdyn.FreeV("x", "x",-0.0001, 0.0001);
+-blkdyn.FreeV("x", "x",Length -0.0001, Length  + 0.0001);
+-blkdyn.FreeV("y", "y",-0.0001, 0.0001);
+-
+-blkdyn. SetQuietBoundByCoord (-0.0001, 0.0001, -1e5, 1e5, -1e5, 1e5);
+-blkdyn. SetQuietBoundByCoord (Length -0.0001, Length  + 0.0001, -1e5, 1e5, -1e5, 1e5);
+-blkdyn. SetQuietBoundByCoord ( -1e5, 1e5, -0.0001, 0.0001,-1e5, 1e5);
+-
+-//设定三个方向载荷系数
+-var coeff=new Array(0.0, 0.0, -1.0)
+-//定义圆柱端点1的坐标
+-var end1= new Array(CenterX, CenterY, -0.1);
+-//定义圆柱端点2的坐标
+-var end2= new Array(CenterX, CenterY, 0.1);
+-//在半径为1m的圆柱面上施加动态法向面力边界
+-blkdyn.ApplyDynaVarFromFileByCylinder("face_force", true ,coeff, "appliedData.txt",end1, end2, Rad - 8e-3, Rad + 8e-3);
+-
+-dyna.DynaCycle(3);
+-dyna.Save("Stage3.sav");
+-
+-
+-
+-blkdyn.ExportGradationCurveByGroup(1, 1);
+-
+-//打印提示信息
+ print("Solution Finished");

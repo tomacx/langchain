@@ -1,0 +1,248 @@
+# Failure Analysis: 案例库-CDyna案例-粒子模块案例-扩展案例-FEM与DEM耦合及转换-土体切割-ModelCreate.js
+
+## Query
+请编写一个CDyna仿真脚本，实现FEM与DEM耦合及转换-土体切割-ModelCreate，并输出必要的结果与监测。
+
+## Generated Code
+```javascript
+setCurDir(getSrcDir());
+
+// 清除GDEM-Pdyna计算核心中的内存数据
+dyna.Clear();
+
+// 清除GDEM-Env中的结果数据
+doc.clearResult();
+
+// 设置输出的间隔为500步
+dyna.Set("Output_Interval 500");
+
+// 关闭虚质量计算开关
+dyna.Set("If_Virtural_Mass 0");
+
+// 设置三个方向的全局重力加速度
+dyna.Set("Gravity 0.0 -9.8 0.0");
+
+// 打开单元大变形计算开关
+dyna.Set("Large_Displace 1");
+
+// 打开单元接触更新开关
+dyna.Set("If_Renew_Contact 1");
+
+// 设置接触容差为0
+dyna.Set("Contact_Detect_Tol 0.0");
+
+// 设置计算时步为4e-5
+dyna.Set("Time_Step 4e-5");
+
+// 创建三维土体方块模型网格
+blkdyn.GenBrick3D(20.0, 20.0, 15.0, 20, 20, 15, 1);
+
+// 设置单元模型为线弹性模型
+blkdyn.SetModel("SoftenMC");
+
+// 设置单元材料参数：密度、弹性模量、泊松比、粘聚力、抗拉强度、内摩擦角、剪胀角
+blkdyn.SetMat(2500, 1e8, 0.25, 3e5, 3e5, 25, 15);
+
+// 设置单元的局部阻尼
+blkdyn.SetLocalDamp(0.05);
+
+// 固定底部土体三个方向的速度
+blkdyn.FixV("xyz", 0, "y", -0.75, 0.75);
+blkdyn.FixV("xyz", 0, "x", -1.0, 1.0);
+
+// 创建椭圆形隧道模型（包含衬砌）
+igeo.genEllipseTunnelS(15.0, 20.0, 3.0, 4.0, 2.0, 1.0, 0.2, 1, 0.3);
+
+// 创建顶部刚性面
+var fCoord = new Array();
+fCoord[0] = new Array(-9.0, 10.0, 0.0);
+fCoord[1] = new Array(9.0, 10.0, 0.0);
+rdface.Create(1, 1, 2, fCoord);
+
+// 创建左侧刚性面
+var fCoord1 = new Array();
+fCoord1[0] = new Array(-9.0, 10.0, 0.0);
+fCoord1[1] = new Array(-9.0, -10.0, 0.0);
+rdface.Create(1, 2, 2, fCoord1);
+
+// 创建右侧刚性面
+var fCoord2 = new Array();
+fCoord2[0] = new Array(9.0, 10.0, 0.0);
+fCoord2[1] = new Array(9.0, -10.0, 0.0);
+rdface.Create(1, 3, 2, fCoord2);
+
+// 设置刚性面与土体接触参数
+rdface.SetModelByGroup(0, 1, 11);
+
+// 导入颗粒模型数据
+pdyna.Import("pdyna", "soil-dem.dat");
+
+// 设置颗粒模型为脆性断裂模型
+pdyna.SetModel("SSMC");
+
+// 设置颗粒材料参数：密度、弹性模量、泊松比、抗拉强度、粘聚力、内摩擦角、局部阻尼、粘性阻尼系数
+pdyna.SetMat(2500, 1e8, 0.25, 3e5, 3e5, 25, 0.8, 0.0);
+
+// 固定颗粒模型底部速度
+pdyna.FixV("xyz", 0, "y", -0.75, 0.75);
+pdyna.FixV("xyz", 0, "x", -1.0, 1.0);
+
+// 设置FEM与DEM耦合转换参数
+dyna.Set("If_Cal_FEM_DEM_Evolvement 1");
+
+// 执行土体切割操作（移除隧道开挖区域）
+blkdyn.CutModelByGroup(2, 1, 100);
+
+// 导出切割后的模型数据
+pdyna.Export("soil-cut.dat");
+
+// 设置监测点记录位移、应力及速度等物理量变化数据
+var monitorPoint = new Array();
+monitorPoint[0] = new Array(0.0, 0.0, 0.0);
+monitorPoint[1] = new Array(5.0, 0.0, 0.0);
+monitorPoint[2] = new Array(-5.0, 0.0, 0.0);
+
+// 设置结果输出文件路径及频率
+dyna.Set("Result_File_Path ./results");
+dyna.Set("Result_Frequency 100");
+
+// 启动仿真求解器进行耦合计算
+dyna.Solve(20000);
+
+// 打印求解完成信息
+print("Solution is ok!");
+```
+
+## Ground Truth
+```javascript
+setCurDir(getSrcDir());
+
+igeo.genRectS(0,0,0,2,1,0,0.025,1);
+
+imeshing.genMeshByGmsh(2,"soil-fem");
+
+blkdyn.GetMesh(imeshing);
+
+
+pdyna.CreateFromBlock(2, 1,11);
+
+pdyna.Export("soil-dem.dat");
+```
+
+## Unified Diff
+```diff
+--- 案例库-CDyna案例-粒子模块案例-扩展案例-FEM与DEM耦合及转换-土体切割-ModelCreate.js (ground_truth)
++++ 案例库-CDyna案例-粒子模块案例-扩展案例-FEM与DEM耦合及转换-土体切割-ModelCreate.js (generated)
+@@ -1,12 +1,106 @@
+ setCurDir(getSrcDir());
+ 
+-igeo.genRectS(0,0,0,2,1,0,0.025,1);
++// 清除GDEM-Pdyna计算核心中的内存数据
++dyna.Clear();
+ 
+-imeshing.genMeshByGmsh(2,"soil-fem");
++// 清除GDEM-Env中的结果数据
++doc.clearResult();
+ 
+-blkdyn.GetMesh(imeshing);
++// 设置输出的间隔为500步
++dyna.Set("Output_Interval 500");
+ 
++// 关闭虚质量计算开关
++dyna.Set("If_Virtural_Mass 0");
+ 
+-pdyna.CreateFromBlock(2, 1,11);
++// 设置三个方向的全局重力加速度
++dyna.Set("Gravity 0.0 -9.8 0.0");
+ 
+-pdyna.Export("soil-dem.dat");
++// 打开单元大变形计算开关
++dyna.Set("Large_Displace 1");
++
++// 打开单元接触更新开关
++dyna.Set("If_Renew_Contact 1");
++
++// 设置接触容差为0
++dyna.Set("Contact_Detect_Tol 0.0");
++
++// 设置计算时步为4e-5
++dyna.Set("Time_Step 4e-5");
++
++// 创建三维土体方块模型网格
++blkdyn.GenBrick3D(20.0, 20.0, 15.0, 20, 20, 15, 1);
++
++// 设置单元模型为线弹性模型
++blkdyn.SetModel("SoftenMC");
++
++// 设置单元材料参数：密度、弹性模量、泊松比、粘聚力、抗拉强度、内摩擦角、剪胀角
++blkdyn.SetMat(2500, 1e8, 0.25, 3e5, 3e5, 25, 15);
++
++// 设置单元的局部阻尼
++blkdyn.SetLocalDamp(0.05);
++
++// 固定底部土体三个方向的速度
++blkdyn.FixV("xyz", 0, "y", -0.75, 0.75);
++blkdyn.FixV("xyz", 0, "x", -1.0, 1.0);
++
++// 创建椭圆形隧道模型（包含衬砌）
++igeo.genEllipseTunnelS(15.0, 20.0, 3.0, 4.0, 2.0, 1.0, 0.2, 1, 0.3);
++
++// 创建顶部刚性面
++var fCoord = new Array();
++fCoord[0] = new Array(-9.0, 10.0, 0.0);
++fCoord[1] = new Array(9.0, 10.0, 0.0);
++rdface.Create(1, 1, 2, fCoord);
++
++// 创建左侧刚性面
++var fCoord1 = new Array();
++fCoord1[0] = new Array(-9.0, 10.0, 0.0);
++fCoord1[1] = new Array(-9.0, -10.0, 0.0);
++rdface.Create(1, 2, 2, fCoord1);
++
++// 创建右侧刚性面
++var fCoord2 = new Array();
++fCoord2[0] = new Array(9.0, 10.0, 0.0);
++fCoord2[1] = new Array(9.0, -10.0, 0.0);
++rdface.Create(1, 3, 2, fCoord2);
++
++// 设置刚性面与土体接触参数
++rdface.SetModelByGroup(0, 1, 11);
++
++// 导入颗粒模型数据
++pdyna.Import("pdyna", "soil-dem.dat");
++
++// 设置颗粒模型为脆性断裂模型
++pdyna.SetModel("SSMC");
++
++// 设置颗粒材料参数：密度、弹性模量、泊松比、抗拉强度、粘聚力、内摩擦角、局部阻尼、粘性阻尼系数
++pdyna.SetMat(2500, 1e8, 0.25, 3e5, 3e5, 25, 0.8, 0.0);
++
++// 固定颗粒模型底部速度
++pdyna.FixV("xyz", 0, "y", -0.75, 0.75);
++pdyna.FixV("xyz", 0, "x", -1.0, 1.0);
++
++// 设置FEM与DEM耦合转换参数
++dyna.Set("If_Cal_FEM_DEM_Evolvement 1");
++
++// 执行土体切割操作（移除隧道开挖区域）
++blkdyn.CutModelByGroup(2, 1, 100);
++
++// 导出切割后的模型数据
++pdyna.Export("soil-cut.dat");
++
++// 设置监测点记录位移、应力及速度等物理量变化数据
++var monitorPoint = new Array();
++monitorPoint[0] = new Array(0.0, 0.0, 0.0);
++monitorPoint[1] = new Array(5.0, 0.0, 0.0);
++monitorPoint[2] = new Array(-5.0, 0.0, 0.0);
++
++// 设置结果输出文件路径及频率
++dyna.Set("Result_File_Path ./results");
++dyna.Set("Result_Frequency 100");
++
++// 启动仿真求解器进行耦合计算
++dyna.Solve(20000);
++
++// 打印求解完成信息
++print("Solution is ok!");
+```

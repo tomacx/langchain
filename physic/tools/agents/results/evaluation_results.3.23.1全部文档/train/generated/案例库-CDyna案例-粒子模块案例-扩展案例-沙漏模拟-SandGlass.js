@@ -1,0 +1,45 @@
+setCurDir(getSrcDir());
+
+// 初始化仿真环境
+dyna.Set("Output_Interval 500");
+dyna.Set("If_Virtural_Mass 0");
+dyna.Set("Gravity 0.0 -9.8 0.0");
+dyna.Set("Contact_Detect_Tol 0.0");
+
+// 导入刚性面边界（假设存在sandBound.msh文件）
+rdface.Import(2, "sandBound.msh");
+
+// 导入颗粒数据（假设存在pdyna.dat文件）
+pdyna.Import("pdyna", "pdyna.dat");
+
+// 设置颗粒模型为脆性断裂模型
+pdyna.SetModel("brittleMC");
+
+// 设置沙漏阻尼因子（动态真实质量问题取0.15）
+dyna.Set("HourGlass_Damp_Factor 0.15");
+
+// 设置颗粒材料参数：密度、弹性模量、泊松比、抗拉强度、粘聚力、内摩擦角、局部阻尼、粘性阻尼系数
+pdyna.SetMat(2500, 1e6, 0.25, 0.0, 0.0, 25, 0.0, 0.3);
+
+// 设置接触模型参数（全局参数）
+dyna.Set("If_Contact_Use_GlobMat 1 2 1e9 1e9 0.0 0.0 0.0");
+
+// 自动计算时步，安全因子0.8
+dyna.TimeStepCorrect(0.8);
+
+// 创建表面网格（使用点云文件生成四边形网格）
+imeshing.genSurfMesh("sandSurface", "point_cloud.txt", 100, 100, "quad", "invdist1");
+
+// 求解计算2万步
+dyna.Solve(20000);
+
+// 导出地面颗粒统计信息（圆心坐标0,0,0，起始半径20m，步长5m，共20环，颗粒组号1-10）
+pfly.ExportGroundStatiInfo(0.0, 0.0, 0.0, 20.0, 5.0, 20, 1, 10);
+
+// 设置输出文件路径（位移、速度、能量监测数据）
+dyna.Set("Output_Disp_File disp.dat");
+dyna.Set("Output_Vel_File vel.dat");
+dyna.Set("Output_Energy_File energy.dat");
+
+// 验证结果文件生成
+var fileCheck = dyna.RunUDFCmd("CheckFile GroundStatiInfo.dat");

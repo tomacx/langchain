@@ -1,0 +1,138 @@
+--- 案例库-CDyna案例-块体模块案例-扩展案例-冲击起爆模拟-冲击起爆--压力点火-cal.js (ground_truth)
++++ 案例库-CDyna案例-块体模块案例-扩展案例-冲击起爆模拟-冲击起爆--压力点火-cal.js (generated)
+@@ -1,94 +1,75 @@
+ setCurDir(getSrcDir());
+ 
++// 初始化环境
+ igeo.clear();
+ imeshing.clear();
+ dyna.Clear();
+ doc.clearResult();
+ 
+-//打开力学计算开关
++// 打开力学计算开关
+ dyna.Set("Mechanic_Cal 1");
+ 
+-//设置三个方向的重力加速度均为0
++// 设置重力加速度为0
+ dyna.Set("Gravity 0.0 0.0 0.0");
+ 
+-//打开大变形计算开关
++// 打开大变形计算开关
+ dyna.Set("Large_Displace 1");
+ 
+-//设置计算结果的输出间隔为500步
++// 设置计算结果输出间隔
+ dyna.Set("Output_Interval 100");
+ 
+-//设置监测信息输出时步为10步
++// 设置监测信息输出时步
+ dyna.Set("Monitor_Iter 10");
+ 
+-//关闭虚质量计算开关
+-dyna.Set("If_Virtural_Mass 1");
++// 关闭虚质量计算开关
++dyna.Set("If_Virtural_Mass 0");
+ 
+-//打开接触更新开关
++// 打开接触更新开关
+ dyna.Set("If_Renew_Contact 1");
+ 
+-//设置接触容差为0
++// 设置接触容差
+ dyna.Set("Contact_Detect_Tol 0.001");
+ 
++// 定义流体域网格（冲击波模块）
++skwave.DefMesh(3, [500, 500, 500], [100, 100, 100]);
+ 
+-blkdyn.ImportGrid("gmsh", "GDEM.msh");
++// 设置固体边界（可选，用于模拟容器壁）
++skwave.SetSolid(1, -1e5, 1e5, -1e5, 1e5, -1e5, 1e5);
+ 
+-blkdyn.CrtIFace(1);
+-blkdyn.CrtIFace(-1, -1);
+-blkdyn.UpdateIFaceMesh();
++// 定义炸药装药区域（圆柱形装药）
++skwave.SetGasCloudByCylinder(1, [0, 0, 0], [0, 0, 20], 0, 10);
+ 
+-blkdyn.SetModel("linear");
+-blkdyn.SetModel("LeeTarver", 2);
+-// blkdyn.SetModel("JWL", 2);
++// 设置流体域初始状态：压力、密度、流速
++skwave.Init(1.013e5, 1.225, [0, 0, 0]);
+ 
+-//岩体参数
+-blkdyn.SetMat(2009, 8e9, 0.307, 10e7, 6e7, 35, 15);
++// 配置炸药JWL状态方程参数（TNT典型参数）
++// 序号、装药密度、初始比内能、fA、fB、fR1、fA、fA、fA、爆速、点火坐标、点火时间、持续时间
++blkdyn.SetJWLSource(1, 1630, 7.0e9, 371.2e9, 3.2e9, 4.2, 0.95, 0.30, 21e9, 7830, [0, 0, 0], 0, 15e-3);
+ 
+-//炸药参数
+-blkdyn.SetMat(1680, 8e9, 0.307, 3e6, 1e6, 35, 15, 1);
++// 绑定JWL源到流体域
++blkdyn.BindJWLSource(1, 1, 1);
+ 
+-//序号、装药密度、初始比内能、fA、fB、fR1、fA、fA、fA、爆速、点火坐标、点火时间、持续时间
+-//冲击起爆下(LeeTarver模型) 点火时间和点火坐标不起作用
+-blkdyn.SetJWLSource(1, 1680, 7.0e9, 371.2e9, 3.2e9, 4.2, 0.95, 0.30, 21e9, 7830, [5,5+0.5,0], 1e-4, 15e-3);
+-blkdyn.BindJWLSource(1,2,2);
++// 设置爆生气体逸散参数（特征时间、特征指数、ID范围）
++blkdyn.SetJWLGasLeakMat(5e-4, 1.2, 1, 10);
+ 
+-//blkdyn.SetLeeTarverSource(iNumber, fI, fa, fb, fc, fd, fe, fg, 
+-//fx, fy, fz, fG1, fG2, fLamda_igmax, fLamda_G1max, fLamda_G2min[, iFireMode]);\n")
+-blkdyn.SetLeeTarverSource(1, 7.43e11, 0.0005, 0.667, 0.667, 0.111, 0.333, 1.0, 20.0, 1.0, 2.0, 3.1, 400, 0.3, 0.50, 0.0, 1);
+-blkdyn.BindLeeTarverSource(1,2,2);
++// 设置点火位置及点火后气体参数
++// x=0, y=0, z=0, 半径=5m, 密度=1.945kg/m³, 径向速度=416.2m/s, 压力=6.27e5Pa
++skwave.SetFirePos(0, 0, 0, 5, 1.945, 416.2, 6.27e5);
+ 
++// 设置起爆时间（点火延迟）
++dyna.Set("SK_ActT 0.0");
+ 
+-blkdyn.SetIModel("brittleMC");
++// 设置监测点记录压力、密度、温度等物理量
++for (var i = 1; i <= 20; i++) {
++    dyna.Monitor("skwave", "sw_dens", i * 5, 250, 0);
++    dyna.Monitor("skwave", "sw_pp", i * 5, 250, 0);
++    dyna.Monitor("skwave", "sw_temp", i * 5, 250, 0);
++}
+ 
+-blkdyn.SetIStrengthByElem();
+-blkdyn.SetIMat(0, 0, 0, 0, 0, -1, -1);
+-blkdyn.SetIStiffByElem(10);
++// 设置并行计算选项（千万单元级工程问题）
++dyna.Set("Parallel_Cal 1");
+ 
++// 执行计算循环
++dyna.DynaCycle(100);
+ 
+-
+-//设置静态无反射边界条件
+-blkdyn.SetQuietBoundByCoord(-1e-3, 1e-3, -1e5, 1e5, -1e5, 1e5);
+-blkdyn.SetQuietBoundByCoord(9.999, 11, -1e5, 1e5, -1e5, 1e5);
+-blkdyn.SetQuietBoundByCoord(-1e5, 1e5, -1e-3, 1e-3, -1e5, 1e5);
+-
+-
+-//*****************施加动态边界条件，面力边界
+-var coeff=new Array(0, -30e6, 0);
+-//x方向下限及上限
+-var x= new Array(-1, 11);
+-//y方向下限及上限
+-var y= new Array(9.99, 10.1);
+-//z方向下限及上限
+-var z= new Array(-1.0,1.0);
+-//设定动态速度边界
+-blkdyn.ApplyDynaSinVarByCoord("face_force", false, coeff, 0.0, 1.0, 0.01 ,0,0,0.005, x, y, z);
+-
+-
+-blkdyn.SetLocalDamp(0.0);
+-
+-dyna.Set("Time_Step 1.0e-7");
+-
+-dyna.Set("If_Cal_Rayleigh 1");
+-blkdyn.SetRayleighDamp(1e-5, 0);
+-
+-
+-dyna.Solve(3500);
++print("冲击起爆-压力点火仿真完成");

@@ -1,0 +1,89 @@
+--- 案例库-CDyna案例-冲击波模块案例-高压气仓阀门突然打开-高压气仓阀门突然打开.js (ground_truth)
++++ 案例库-CDyna案例-冲击波模块案例-高压气仓阀门突然打开-高压气仓阀门突然打开.js (generated)
+@@ -1,35 +1,62 @@
+ setCurDir(getSrcDir());
+ 
+-//设置计算时步
+-dyna.Set("Time_Step 2e-6");
+-//设置云图输出间隔
+-dyna.Set("Output_Interval 500");
++// ==================== 1. 初始化仿真环境 ====================
++dyna.Clear();
++dyna.Set("Gravity 0 0 0");
++dyna.Set("Large_Displace 1");
++dyna.Set("If_Renew_Contact 1");
++dyna.Set("Output_Interval 50");
++dyna.Set("Time_Step 2e-4");
+ 
+-//定义一个二维的流体域
+-skwave.DefMesh(2, [3, 3], [300, 300]);
++// ==================== 2. 定义计算域网格 ====================
++// 定义三维空气自由场网格（气仓外部区域）
++skwave.DefMesh(3, [100, 100, 100], [5, 5, 5], [0, 0, 0]);
+ 
+-skwave.SetSolid(1, -1e3, 1e3, -1e3, 1e3, -1e-3, 1e3);
+-skwave.SetSolid(0, 0.05 , 1.0, 0.05, 2.95, -1, 1);
+-skwave.SetSolid(0, 0.9, 2.0, 1.45, 1.55, -1, 1);
+-skwave.SetSolid(0, 1.9, 2.9, 1.35, 1.65, -1, 1);
++// ==================== 3. 设置固体边界（高压气仓壁） ====================
++// 气仓主体区域（x: -2~2, y: -2~2, z: -1~1）
++skwave.SetSolid(1, -2, 2, -2, 2, -1, 1);
+ 
+-skwave.InitBySphere(1.01e5, 1.02, [0,0,0], [0,0, 0], 100.0);
++// 阀门位置（在气仓顶部开口处）
++skwave.SetSolid(0, -2, 2, -2, 2, 1.5, 1.5);
+ 
+-skwave.Init(1.01e7, 102, [0,0,0], 0.05 , 1.5, 0.05, 2.95, -1, 1);
++// ==================== 4. 设置气体初始条件 ====================
++// 气仓内部高压气体（x: -2~2, y: -2~2, z: -1~0.8）
++skwave.InitByCoord(1e6, 300, [-2, -2, -1], [2, 2, 0.8], 5);
+ 
+-dyna.Monitor("skwave","sw_dens", 0.5, 1.5, 0);
+-dyna.Monitor("skwave","sw_dens", 1.0, 1.5, 0);
+-dyna.Monitor("skwave","sw_dens", 1.5, 1.5, 0);
+-dyna.Monitor("skwave","sw_dens", 2.0, 1.5, 0);
+-dyna.Monitor("skwave","sw_dens", 2.5, 1.5, 0);
++// 气仓外部常压空气（x: -2~2, y: -2~2, z: 0.8~1）
++skwave.InitByCoord(1e5, 300, [-2, -2, 0.8], [2, 2, 1], 5);
+ 
+-dyna.Monitor("skwave","sw_pp", 0.5, 1.5, 0);
+-dyna.Monitor("skwave","sw_pp", 1.0, 1.5, 0);
+-dyna.Monitor("skwave","sw_pp", 1.5, 1.5, 0);
+-dyna.Monitor("skwave","sw_pp", 2.0, 1.5, 0);
+-dyna.Monitor("skwave","sw_pp", 2.5, 1.5, 0);
++// ==================== 5. 设置气体物性参数 ====================
++dyna.Set("SK_GasModel 2");
++dyna.Set("SK_ActT 502.0");
++dyna.Set("SK_HeatQ 0.5196e6");
++dyna.Set("SK_MolMass 29");
++dyna.Set("SK_Gama 1.4");
+ 
++// ==================== 6. 设置冲击波源条件 ====================
++// 阀门打开瞬间的冲击波源坐标（气仓顶部中心）
++// 等效TNT质量：5kg，起爆时间：0s，声速：340m/s，衰减指数：1.2
++blkdyn.ApplyShockWaveByCoord(5, [0, 0, 1], 0, 340, 1.2, -100, 100, -100, 100, -100, 100);
+ 
+-dyna.DynaCycle(2e-2);
++// ==================== 7. 设置监测变量 ====================
++// 监测冲击波压力（沿Z轴传播路径）
++for(var i = 1; i <= 20; i++) {
++    dyna.Monitor("skwave", "sw_pp", 0, (i - 1) * 5, 0);
++}
+ 
+-print("求解完毕");
++// 监测冲击波X方向流速（沿X轴传播路径）
++for(var i = 1; i <= 20; i++) {
++    dyna.Monitor("skwave", "sw_xvel", 0, (i - 1) * 5, 0);
++}
++
++// 监测中心点压力时程曲线
++dyna.Monitor("skwave", "sw_pp", 0, 0, 0);
++
++// ==================== 8. 设置边界条件 ====================
++// 设置自由场边界（允许冲击波向外传播）
++skwave.SetBound(0, 0, 1, 0, 1, 0);
++
++// ==================== 9. 执行求解 ====================
++dyna.DynaCycle(0.5);
++
++print("高压气仓阀门打开-冲击波传播模拟完成");

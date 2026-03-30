@@ -1,0 +1,105 @@
+setCurDir(getSrcDir());
+
+// 清除dyna模块数据
+dyna.Clear();
+
+// 清除平台结果模块数据
+doc.clearResult();
+
+// 打开固体计算开关
+dyna.Set("Mechanic_Cal 1");
+
+// 设置系统不平衡率为1e-5
+dyna.Set("UnBalance_Ratio 1e-5");
+
+// 设置3个方向的重力加速度
+dyna.Set("Gravity 0 -9.8 0");
+
+// 打开大变形计算开关
+dyna.Set("Large_Displace 1");
+
+// 设置计算结果的输出间隔为500步
+dyna.Set("Output_Interval 500");
+
+// 打开接触更新开关
+dyna.Set("If_Renew_Contact 1");
+
+// 创建三维块体网格，长400m，高200m，宽200m
+blkdyn.GenBrick3D(400, 200, 200, 50, 25, 25, 1);
+
+// 将煤层区域（Y方向80-120m）设置为组2，便于开挖
+blkdyn.SetGroupByCoord(2, 80, 120, -1, 40, -1, 1);
+
+// 创建接触面
+blkdyn.CrtIFace();
+
+// 更新接触拓扑
+blkdyn.UpdateIFaceMesh();
+
+// 将单元模型设置为线弹性模型
+blkdyn.SetModel("linear");
+
+// 设置组1（围岩）材料参数：密度2500kg/m³，弹性模量1e10Pa，泊松比0.25，抗拉强度1e6Pa，抗压强度8e6Pa，内聚力40MPa，摩擦角10度
+blkdyn.SetMat(2500, 1e10, 0.25, 1e6, 8e6, 40.0, 10.0);
+
+// 设置组2（煤层）材料参数：密度1300kg/m³，弹性模量5e9Pa，泊松比0.3，抗拉强度5e5Pa，抗压强度3e6Pa，内聚力20MPa，摩擦角8度
+blkdyn.SetMat(1300, 5e9, 0.3, 5e5, 3e6, 20.0, 8.0);
+
+// 设置接触模型为线弹性
+blkdyn.SetIModel("linear");
+
+// 设置接触参数从单元中继承
+blkdyn.SetIStiffByElem(1);
+blkdyn.SetIStrengthByElem();
+
+// 模型底部施加全约束（Y方向）
+blkdyn.FixV("y", 0.0, "y", -0.01, 0.01);
+
+// 模型左右两侧施加法向约束（X方向）
+blkdyn.FixV("x", 0.0, "x", -0.1, 0.1);
+blkdyn.FixV("x", 399.9, "x", -0.1, 0.1);
+
+// 监测块体破坏度
+dyna.Monitor("gvalue", "gv_block_broken_ratio");
+
+// 监测竖直应力（Y方向）
+dyna.Monitor("block", "syy", 200, 150, 0);
+
+// 监测水平位移（X方向）
+dyna.Monitor("block", "xdis", 200, 150, 0);
+
+// 计算前初始平衡
+dyna.BeforeCal();
+
+// 循环求解
+for(var i = 0; i < 10000; i++) {
+    // 集成核心计算
+    var unbal = blkdyn.Solver();
+
+    // 计算单元变形力
+    blkdyn.CalBlockForce();
+
+    // 计算节点运动
+    blkdyn.CalNodeMovement();
+
+    // 输出监测信息
+    dyna.OutputMonitorData();
+
+    // 每隔100步推送信息
+    if(i != 0 && i % 100 == 0) {
+        print("不平衡率：" + unbal);
+        print("计算步数：" + i);
+
+        // 推送结果信息至GDEM-Env
+        dyna.PutStep(1, i, 0.1);
+    }
+
+    // 检查稳定性，若不稳定则退出
+    if(unbal > 100) {
+        print("模型失稳，不平衡率超过阈值");
+        break;
+    }
+}
+
+// 求解至稳定（可选）
+dyna.Solve();

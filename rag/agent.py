@@ -65,6 +65,7 @@ document_ids = vector_store.add_documents(documents=all_splits)
 
 # RAG 代理
 from langchain.tools import tool
+import re
 
 # 创建检索工具
 @tool(response_format="content_and_artifact")
@@ -76,6 +77,31 @@ def retrieve_content(query: str) -> str:
         for doc in retrieved_docs
     )
     return serialized, retrieved_docs
+
+def evaluate_script_quality(script_content: str) -> list[str]:
+    """
+    评估生成的脚本质量。
+    返回错误信息列表。如果列表为空，说明质量合格。
+    """
+    errors = []
+    
+    # 提取可能包含在 markdown 里的代码块
+    code_blocks = re.findall(r"```(?:python|javascript|js)?\s*\n(.*?)```", script_content, re.DOTALL | re.IGNORECASE)
+    code_to_check = code_blocks[0] if code_blocks else script_content
+
+    # 1. 长度检查：如果代码太短，认为没有真正完成任务
+    if len(code_to_check.strip()) < 50:
+        errors.append("生成的脚本过短，缺少实质性逻辑。")
+        
+    # 2. 是否输出了无法执行的内容（比如 JSON 格式说明）
+    if code_to_check.strip().startswith("{") and '"' in code_to_check:
+        errors.append("输出了 JSON 格式的文本，要求必须是可执行的代码。")
+
+    # 3. 未完成的标志（如 "TODO" 或 "..."）
+    if "TODO" in code_to_check or "..." in code_to_check:
+         errors.append("生成的代码中包含未完成的占位符(TODO或...)。")
+         
+    return errors
 
 # 创建 RAG 代理
 from langchain.agents import create_agent
@@ -122,12 +148,53 @@ def prompt_with_context(request: ModelRequest) -> str:
 agent = create_agent(model, tools=[], middleware=[prompt_with_context])
 
 # 测试
-query = "What is task decomposition?"
-# for step in agent.stream(
-#     {"messages": [{"role": "user", "content": query}]},
-#     stream_mode="values",
-# ):
-#     step["messages"][-1].pretty_print()
+query = "Can you write a python script about Task Decomposition? The script should be runnable and complete."
+
+def generate_with_retry(query: str, max_retries: int = 2) -> str:
+    current_query = query
+    
+    for attempt in range(max_retries + 1):
+        print(f"\n--- 尝试第 {attempt + 1} 次生成 ---")
+        
+        # 运行 Agent
+        final_answer = ""
+        for step in agent.stream(
+            {"messages": [{"role": "user", "content": current_query}]},
+            stream_mode="values",
+        ):
+            last_message = step["messages"][-1]
+            if hasattr(last_message, "content") and last_message.content:
+                final_answer = last_message.content
+                
+        # 验证质量
+        errors = evaluate_script_quality(final_answer)
+        
+        if not errors:
+            print("\n✅ 生成质量合格！")
+            return final_answer
+            
+        # 如果质量不合格，打印警告信息并准备重试
+        print(f"\n⚠️ 警告: 脚本生成质量过低 (尝试 {attempt + 1}/{max_retries + 1})")
+        for err in errors:
+            print(f"   - {err}")
+            
+        if attempt < max_retries:
+            print("🔄 正在准备根据反馈信息重新生成...")
+            feedback = "\n".join(errors)
+            current_query = (
+                f"{query}\n\n"
+                f"【注意】你上次生成的脚本存在以下问题，请在这次生成中务必修正：\n{feedback}\n"
+                "请提供一段完整、可执行的代码，不要有TODO占位符，且逻辑要充分。"
+            )
+        else:
+            print("❌ 已达到最大重试次数，返回最后一次生成的结果。")
+            
+    return final_answer
+
+# 执行带重试的生成
+final_result = generate_with_retry(query)
+print("\n=== 最终结果 ===")
+print(final_result)
 
 # 跟着部分跟新
 # for chunk in agent.stream(

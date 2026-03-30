@@ -1,0 +1,67 @@
+setCurDir(getSrcDir());
+
+// 清除所有模块数据
+dyna.Clear();
+doc.clearResult();
+igeo.clear();
+imeshing.clear();
+
+// 设置计算参数
+dyna.Set("Output_Interval 500");
+dyna.Set("Large_Displace 1");
+dyna.Set("If_Renew_Contact 1");
+dyna.Set("If_Virtural_Mass 0");
+dyna.Set("If_Cal_EE_Contact 1");
+dyna.Set("If_Contact_Use_GlobMat 1 2 1e9 1e9 0 0 0");
+dyna.Set("Gravity 0.0 -9.8 0.0");
+
+// 创建球体（半径1.0，中心位置）
+igeo.genBallV(0, 0, 0, 1.0, 0.5, 1);
+
+// 创建斜坡（砖块形式）
+igeo.genBrickV(-4, -3, -2, 4.5, 2, 2, 0.5, 2);
+
+// 创建土墙（砖块形式）
+igeo.genBrickV(4, -3, -2, 8, 2, 2, 0.5, 2);
+
+// 生成网格
+imeshing.genMeshByGmsh(3);
+
+// 获取网格到块体模块
+blkdyn.GetMesh(imeshing);
+
+// 创建接触面
+blkdyn.CrtIFace(2);
+blkdyn.CrtBoundIFaceByGroup(1);
+blkdyn.UpdateIFaceMesh();
+
+// 设置单元模型为线弹性
+blkdyn.SetModel("linear");
+
+// 设置球体材料参数（钢球）
+blkdyn.SetMat(7800, 3e8, 0.3, 1e6, 1e6, 35, 5, 1);
+
+// 设置斜坡和土墙材料参数（土体）
+blkdyn.SetMat(2500, 3e8, 0.25, 5e5, 5e5, 35, 5, 2);
+
+// 设置块体断裂模型
+blkdyn.SetIModel("brittleMC");
+blkdyn.SetIStiffByElem(1);
+blkdyn.SetIStrengthByElem();
+
+// 设置局部阻尼
+blkdyn.SetLocalDamp(0.01);
+
+// 设置底部固定约束（限制Y方向速度）
+blkdyn.FixV("xyz", 0, "y", -3.01, -2.99);
+blkdyn.FixV("xyz", 0, "x", -3.01, -2.99);
+
+// 创建接触面定义
+rdface.Create(2, 3, 4, [2, -3, -4, 8, -3, -4, 8, -3, 4, 2, -3, 4]);
+rdface.Create(2, 3, 4, [2, -3, -4, 2, -3, 4, -3, 1, 4, -3, 1, -4]);
+
+// 设置时间步长修正因子
+dyna.TimeStepCorrect(0.5);
+
+// 求解计算
+dyna.Solve(10000);

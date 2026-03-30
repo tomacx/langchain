@@ -1,0 +1,92 @@
+--- 案例库-CDyna案例-块体模块案例-扩展案例-多点起爆过程模拟-多点起爆过程模拟.js (ground_truth)
++++ 案例库-CDyna案例-块体模块案例-扩展案例-多点起爆过程模拟-多点起爆过程模拟.js (generated)
+@@ -1,44 +1,58 @@
+ setCurDir(getSrcDir());
+ 
+-igeo.clear();
+-imeshing.clear();
+-dyna.Clear();
+-doc.clearResult();
++// ==================== 1. 初始化仿真环境 ====================
++dyna.Set("Mechanic_Cal 1");
++dyna.Set("Gravity 0.0 0.0 0.0");
++dyna.Set("Large_Displace 1");
++dyna.Set("Output_Interval 100");
++dyna.Set("Monitor_Iter 50");
++dyna.Set("If_Virtural_Mass 0");
++dyna.Set("If_Renew_Contact 1");
++dyna.Set("Time_Step 1e-7");
+ 
+-//geo.GenRectS(0,0,0,1,1,0,0.025,1);
++// ==================== 2. 定义多点起爆位置 ====================
++var numSources = 5;
++var pos = new Array(numSources);
++pos[0] = [0, 0, 0];
++pos[1] = [5, 0, 0];
++pos[2] = [10, 0, 0];
++pos[3] = [15, 0, 0];
++pos[4] = [20, 0, 0];
+ 
+-//mesh.GenMeshByGmsh(2);
++// ==================== 3. 导入炸药网格并设置材料 ====================
++blkdyn.ImportGrid("gmsh", "explosive.msh");
+ 
+-imeshing.genBrick2D("f1",1,1,50,50);
++// 设置炸药单元本构为 JWL
++blkdyn.SetModel("JWL");
+ 
+-dyna.Set("Large_Displace 1");
++// 设置炸药基本材料参数：密度、杨氏模量、泊松比、拉伸强度、粘聚力、摩擦角、阻尼、粘度
++blkdyn.SetMat(1630, 7e9, 0.25, 3e6, 1e6, 35, 0.01, 0);
+ 
++// ==================== 4. 为每个起爆点设置 JWL 爆源参数 ====================
++// 参数说明：ID, 密度, fA, fB, fR1, fR2, fR3, fGamma1, fGamma2, Pinf, C0, 坐标数组, t0, duration
++for (var i = 0; i < numSources; i++) {
++    var id = i + 1;
++    blkdyn.SetJWLSource(id, 1630, 7.0e9, 371.2e9, 3.2e9, 4.2, 0.95, 0.30, 21e9, 7830, pos[i], 0.0, 15e-3);
++}
+ 
+-dyna.Set("Output_Interval 500");
++// ==================== 5. 绑定爆源到单元 ====================
++blkdyn.BindJWLSource(1, 1, numSources);
+ 
+-dyna.Set("If_Virtural_Mass 0");
++// ==================== 6. 设置气体逸散衰减参数 ====================
++// 特征时间 5e-4s，特征指数 1.2，应用于 ID 1-numSources 的爆源
++blkdyn.SetJWLGasLeakMat(5e-4, 1.2, 1, numSources);
+ 
+-blkdyn.GetMesh(imeshing);
++// ==================== 7. 设置监测区域 ====================
++// 在 x=250 处设置压力监测点（可根据需要调整）
++for (var i = 1; i <= 10; i++) {
++    dyna.Monitor("skwave", "sw_pp", 100 * i, 250, 0);
++}
+ 
++// ==================== 8. 配置输出文件路径 ====================
++// 设置结果输出目录（可选，根据实际需求调整）
++// dyna.Set("Result_Path ./output");
+ 
+-blkdyn.SetModel("Landau");
++// ==================== 9. 启动仿真计算 ====================
++dyna.DynaCycle(5e-3);
+ 
+-blkdyn.SetMat(1150,3e8, 0.2, 3e5,3e5,30, 15);
+-
+-var apos = [0.2, 0.2, 0, 0.8, 0.2, 0, 0.8, 0.8 ,0, 0.2, 0.8, 0];
+-blkdyn.SetLandauSource(1, 1150, 5000, 3.1e6, 3.0, 1.3333, 21e9, apos, 0.0, 10);
+-blkdyn.BindLandauSource(1, 1, 1);
+-blkdyn.SetModel("Landau", 1);
+-
+-
+-//blkdyn.SetJWLSource(1, 1630, 7.0e9, 371.2e9, 3.2e9, 4.2, 0.95, 0.30, 21e9, 6930, apos, 0.0, 15e-3 );
+-//blkdyn.BindJWLSource(1, 1, 1);
+-//blkdyn.SetModel("JWL", 1);
+-
+-
+-blkdyn.SetLocalDamp(0.01);
+-
+-
+-dyna.Set("Time_Step 1e-8");
+-
+-dyna.Solve(10000);
++print("多点起爆仿真完成");

@@ -1,0 +1,86 @@
+setCurDir(getSrcDir());
+
+// 导入 Ansys 网格文件（默认路径为当前目录下的 ansys.dat）
+var omsh1 = imesh.importAnsys("ansys.dat");
+
+// 检查导入后的网格信息
+if (omsh1) {
+    print("网格导入成功！");
+    print("节点数量: " + omsh1.nodeCount);
+    print("单元数量: " + omsh1.elemCount);
+} else {
+    print("网格导入失败，请检查文件路径或文件格式");
+}
+
+// 设置监测点位置（在网格区域内设置3个监测点）
+var monitorPoint1 = [0.5, 0.5, 0.5];
+var monitorPoint2 = [1.0, 1.0, 1.0];
+var monitorPoint3 = [1.5, 1.5, 1.5];
+
+// 配置仿真结果输出格式与保存路径
+scdem.outputInterval = 5000;
+scdem.monitorIter = 100;
+scdem.set("isVtk", 1);
+
+// 设置单元模型为线弹性模型
+scdem.setModel("Linear");
+
+// 设置材料参数 [密度, 弹性模量, 泊松比, 屈服强度, 断裂能, 摩擦系数]
+scdem.setMat([2700, 60e9, 0.2, 25e6, 15e6, 0.3]);
+
+// 设置交界面模型为断裂模型
+scdem.setIModel("FracE");
+scdem.setContactFractureEnergy(5, 50);
+
+// 设置局部阻尼
+scdem.localDamp = 0.8;
+
+// 设置时间步长
+scdem.timeStep = 1e-9;
+
+// 施加边界条件（底部节点约束）
+var oSel = new SelNodes(scdem);
+oSel.box(-1e10, -0.0301, -1e10, 1e10, -0.0299, 1e10);
+scdem.setVel(oSel, "y", 0);
+
+// 设置顶部节点速度载荷（准静态加载）
+oSel = new SelNodes(scdem);
+oSel.box(-1e10, 0.0299, -1e10, 1e10, 0.0301, 1e10);
+scdem.setVel(oSel, "y", -5e-9);
+
+// 设置监测变量（节点位移、应力等）
+oSel = new SelNodes(scdem);
+oSel.box(-1e10, 0.0299, -1e10, 1e10, 0.0301, 1e10);
+scdem.regionMonitor("node", "yForce", 1, oSel);
+
+// 执行物理场计算（计算10万步）
+scdem.solveGpu(100000);
+
+// 读取监测点数据并验证数值范围
+var monitorData = scdem.getMonitorData();
+if (monitorData) {
+    print("监测数据读取成功！");
+    print("最大位移: " + Math.max.apply(null, monitorData.displacement));
+    print("最大应力: " + Math.max.apply(null, monitorData.stress));
+
+    // 验证数值合理性（位移应在合理范围内）
+    if (Math.max.apply(null, monitorData.displacement) < 0.1) {
+        print("位移数值在合理范围内");
+    } else {
+        print("警告：位移数值可能超出预期范围");
+    }
+}
+
+// 释放 GPU 端内存
+scdem.releaseGpuMem();
+
+// 导出当前网格状态或计算结果至指定文件
+imesh.exportGenvi(omsh1, "result.gvx");
+
+// 打印脚本执行日志与最终报告
+print("========================================");
+print("CDEM 网格导入导出案例执行完成！");
+print("网格文件: ansys.dat");
+print("输出文件: result.gvx");
+print("计算步数: 100000");
+print("========================================");

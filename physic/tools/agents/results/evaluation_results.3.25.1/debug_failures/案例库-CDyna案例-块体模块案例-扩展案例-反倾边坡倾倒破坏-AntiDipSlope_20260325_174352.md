@@ -1,0 +1,240 @@
+# Failure Analysis: 案例库-CDyna案例-块体模块案例-扩展案例-反倾边坡倾倒破坏-AntiDipSlope.js
+
+## Query
+请编写一个CDyna仿真脚本，实现扩展案例-反倾边坡倾倒破坏-AntiDipSlope，并输出必要的结果与监测。
+
+## Generated Code
+```javascript
+//设置当前路径为JavaScript脚本所在的路径
+setCurDir(getSrcDir());
+
+//定义观察点坐标
+var coord = new Array(10.0, 10.0, 0.0);
+
+//设置计算时步
+dyna.Set("Time_Step 1e-3");
+
+//设置输出的间隔为500步
+dyna.Set("Output_Interval 500");
+
+//设置三个方向的重力加速度
+dyna.Set("Gravity 0.0  0.0 -9.8");
+
+//设置接触容差为0.001m
+dyna.Set("Contact_Detect_Tol 0.001");
+
+//导入gid格式的刚性面边界
+rdface.Import(2, "bound-mesh.msh");
+
+//导入gid格式的颗粒
+pdyna.Import("gid", "particle-coarse.msh");
+
+//根据颗粒的ID号重新设置颗粒的组号
+//pdyna.SetGroupByID(3, 1, 1111111);
+
+//设置颗粒模型为脆性断裂模型
+pdyna.SetModel("brittleMC");
+
+//设置颗粒的材料参数，依次为密度、弹性模量、泊松比、抗拉强度、粘聚力、内摩擦角、局部阻尼、粘性阻尼系数（临界阻尼比）
+pdyna.SetMat(2500, 1e8, 0.25, 0.0, 0.0, 25, 0.0, 0.3);
+
+//设置计算时步
+dyna.Set("Time_Step 5e-3");
+
+//求解至稳定
+dyna.Solve();
+
+//设置颗粒模型为脆性断裂模型
+pdyna.SetModel("brittleMC");
+
+//设置颗粒的材料参数，依次为密度、弹性模量、泊松比、抗拉强度、粘聚力、内摩擦角、局部阻尼、粘性阻尼系数（临界阻尼比）
+pdyna.SetMat(2500, 1e7, 0.25, 0.0, 0.0, 10, 0.0, 0.1);
+
+//迭代1万步
+dyna.Solve(100000);
+
+//计算安全系数
+var fos = dyna.SolveFosByCriDisp(6000, 1e-3, coord, "static.sav");
+
+//输出结果
+print(fos);
+```
+
+## Ground Truth
+```javascript
+setCurDir(getSrcDir());
+
+dyna.Set("Mechanic_Cal 1");
+
+
+dyna.Set("UnBalance_Ratio 2e-3");
+dyna.Set("Gravity 0 -9.8 0");
+
+dyna.Set("Large_Displace 1");
+
+dyna.Set("Output_Interval 500");
+
+
+
+dyna.Set("Moniter_Iter 100");
+
+dyna.Set("If_Virtural_Mass 1");
+
+dyna.Set("Virtural_Step 0.5");
+
+dyna.Set("Renew_Interval 100");
+
+dyna.Set("Contact_Detect_Tol 5e-3");
+
+dyna.Set("If_Renew_Contact 1");
+
+
+
+blkdyn.ImportGrid("ansys", "AntiDipRockSlope.dat");
+
+
+blkdyn.CrtIFace();
+blkdyn.UpdateIFaceMesh();
+
+blkdyn.SetModel("linear");
+blkdyn.SetMat(2500, 2e10, 0.25, 3e6, 1e6, 35.0, 10.0, 0,10000);
+
+
+blkdyn.SetIModel("linear");
+
+blkdyn.SetIMat(1e10, 1e10, 35.0, 1e6, 3e5);
+
+blkdyn.SetIMat(1e10, 1e10, 20.0, 6e4, 1e4,  -1,-1);
+
+blkdyn.FixVByCoord("x", 0.0, -1e10, 0.01, -1e10, 1e10, -1e10, 1e10);
+
+blkdyn.FixVByCoord("x", 0.0, 119.99, 121, -1e10, 1e10, -1e10, 1e10);
+
+blkdyn.FixVByCoord("y", 0.0, -1e10, 1e10, -1e10, 0.01, -1e10, 1e10);
+
+blkdyn.SetLocalDamp(0.8);
+
+dyna.Monitor("block", "xdis", 30, 30, 0);	
+dyna.Monitor("block", "xdis", 50, 70, 0);
+
+
+dyna.Solve()
+
+
+blkdyn.SetIModel("brittleMC");
+
+blkdyn.SetLocalDamp(0.01);
+
+dyna.Solve(100000);
+
+
+print("Solution Finished");
+
+```
+
+## Unified Diff
+```diff
+--- 案例库-CDyna案例-块体模块案例-扩展案例-反倾边坡倾倒破坏-AntiDipSlope.js (ground_truth)
++++ 案例库-CDyna案例-块体模块案例-扩展案例-反倾边坡倾倒破坏-AntiDipSlope.js (generated)
+@@ -1,67 +1,53 @@
++//设置当前路径为JavaScript脚本所在的路径
+ setCurDir(getSrcDir());
+ 
+-dyna.Set("Mechanic_Cal 1");
++//定义观察点坐标
++var coord = new Array(10.0, 10.0, 0.0);
+ 
++//设置计算时步
++dyna.Set("Time_Step 1e-3");
+ 
+-dyna.Set("UnBalance_Ratio 2e-3");
+-dyna.Set("Gravity 0 -9.8 0");
+-
+-dyna.Set("Large_Displace 1");
+-
++//设置输出的间隔为500步
+ dyna.Set("Output_Interval 500");
+ 
++//设置三个方向的重力加速度
++dyna.Set("Gravity 0.0  0.0 -9.8");
+ 
++//设置接触容差为0.001m
++dyna.Set("Contact_Detect_Tol 0.001");
+ 
+-dyna.Set("Moniter_Iter 100");
++//导入gid格式的刚性面边界
++rdface.Import(2, "bound-mesh.msh");
+ 
+-dyna.Set("If_Virtural_Mass 1");
++//导入gid格式的颗粒
++pdyna.Import("gid", "particle-coarse.msh");
+ 
+-dyna.Set("Virtural_Step 0.5");
++//根据颗粒的ID号重新设置颗粒的组号
++//pdyna.SetGroupByID(3, 1, 1111111);
+ 
+-dyna.Set("Renew_Interval 100");
++//设置颗粒模型为脆性断裂模型
++pdyna.SetModel("brittleMC");
+ 
+-dyna.Set("Contact_Detect_Tol 5e-3");
++//设置颗粒的材料参数，依次为密度、弹性模量、泊松比、抗拉强度、粘聚力、内摩擦角、局部阻尼、粘性阻尼系数（临界阻尼比）
++pdyna.SetMat(2500, 1e8, 0.25, 0.0, 0.0, 25, 0.0, 0.3);
+ 
+-dyna.Set("If_Renew_Contact 1");
++//设置计算时步
++dyna.Set("Time_Step 5e-3");
+ 
++//求解至稳定
++dyna.Solve();
+ 
++//设置颗粒模型为脆性断裂模型
++pdyna.SetModel("brittleMC");
+ 
+-blkdyn.ImportGrid("ansys", "AntiDipRockSlope.dat");
++//设置颗粒的材料参数，依次为密度、弹性模量、泊松比、抗拉强度、粘聚力、内摩擦角、局部阻尼、粘性阻尼系数（临界阻尼比）
++pdyna.SetMat(2500, 1e7, 0.25, 0.0, 0.0, 10, 0.0, 0.1);
+ 
+-
+-blkdyn.CrtIFace();
+-blkdyn.UpdateIFaceMesh();
+-
+-blkdyn.SetModel("linear");
+-blkdyn.SetMat(2500, 2e10, 0.25, 3e6, 1e6, 35.0, 10.0, 0,10000);
+-
+-
+-blkdyn.SetIModel("linear");
+-
+-blkdyn.SetIMat(1e10, 1e10, 35.0, 1e6, 3e5);
+-
+-blkdyn.SetIMat(1e10, 1e10, 20.0, 6e4, 1e4,  -1,-1);
+-
+-blkdyn.FixVByCoord("x", 0.0, -1e10, 0.01, -1e10, 1e10, -1e10, 1e10);
+-
+-blkdyn.FixVByCoord("x", 0.0, 119.99, 121, -1e10, 1e10, -1e10, 1e10);
+-
+-blkdyn.FixVByCoord("y", 0.0, -1e10, 1e10, -1e10, 0.01, -1e10, 1e10);
+-
+-blkdyn.SetLocalDamp(0.8);
+-
+-dyna.Monitor("block", "xdis", 30, 30, 0);	
+-dyna.Monitor("block", "xdis", 50, 70, 0);
+-
+-
+-dyna.Solve()
+-
+-
+-blkdyn.SetIModel("brittleMC");
+-
+-blkdyn.SetLocalDamp(0.01);
+-
++//迭代1万步
+ dyna.Solve(100000);
+ 
++//计算安全系数
++var fos = dyna.SolveFosByCriDisp(6000, 1e-3, coord, "static.sav");
+ 
+-print("Solution Finished");
++//输出结果
++print(fos);
+```

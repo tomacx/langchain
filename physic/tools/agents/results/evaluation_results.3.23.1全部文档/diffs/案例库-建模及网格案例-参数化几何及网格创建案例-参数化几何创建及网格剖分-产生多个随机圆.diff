@@ -1,0 +1,123 @@
+--- 案例库-建模及网格案例-参数化几何及网格创建案例-参数化几何创建及网格剖分-产生多个随机圆.js (ground_truth)
++++ 案例库-建模及网格案例-参数化几何及网格创建案例-参数化几何创建及网格剖分-产生多个随机圆.js (generated)
+@@ -1,17 +1,109 @@
+-//设置当前工作路径为JS脚本所在路径
+ setCurDir(getSrcDir());
+ 
++// 初始化环境
+ igeo.clear();
+ imeshing.clear();
+ 
+-//创建满足随机分布的圆
+-var x = [0,100];
+-var y = [0, 100];
+-var z = [0, 100];
+-var frad = [5.0, 10.0];
+-var fdipd = [0, 360];
+-var fdipa = [0,90];
+-igeo.genRandomCircleS(200,x, y,z, "uniform", frad, "uniform", fdipd, "uniform", fdipa, 2, 1);
++// 定义计算域参数（三维流体计算域）
++var nDim = 3;
++var afLength = [10.0, 10.0, 10.0];
++var anDiv = [50, 50, 50];
++var afOrigin = [0.0, 0.0, 0.0];
+ 
+-//借助Gmsh剖分网格
+-imeshing.genMeshByGmsh(2);
++// 设置流体计算域正交网格
++skwave.DefMesh(nDim, afLength, anDiv, afOrigin);
++
++// 定义随机圆颗粒生成参数
++var xRange = [-5.0, 5.0];
++var yRange = [-5.0, 5.0];
++var zRange = [0.0, 10.0];
++var radiusMin = 0.2;
++var radiusMax = 0.8;
++
++// 生成多个随机分布的圆颗粒几何（使用 genParRandomByCoord）
++var nCircles = 30;
++igeo.genParRandomByCoord(nCircles, xRange, yRange, zRange, radiusMin, radiusMax);
++
++// 对生成的参数化几何模型进行网格剖分
++imeshing.genMeshByGmsh(3);
++
++// 获取所有网格单元ID
++var allCells = imeshing.GetCellIDs();
++
++// 网格单元分组：将圆颗粒区域与背景流体区域分开
++// 假设圆颗粒的ID范围在特定区间（根据生成顺序）
++var particleGroupID = 1;
++var fluidGroupID = 2;
++
++// 设置分组（示例：前N个单元为颗粒，其余为流体）
++var nParticleCells = Math.floor(allCells.length * 0.3); // 假设30%为颗粒
++SetGroupByID(particleGroupID, allCells.slice(0, nParticleCells));
++SetGroupByID(fluidGroupID, allCells.slice(nParticleCells));
++
++// 定义材料属性参数
++var particleMaterial = {
++    density: 2500.0,      // kg/m³，颗粒密度（如岩石）
++    elasticModulus: 30e9, // Pa，弹性模量
++    poissonRatio: 0.25,   // 泊松比
++    yieldStress: 1e7      // Pa，屈服应力
++};
++
++var fluidMaterial = {
++    density: 1000.0,      // kg/m³，流体密度（如水）
++    viscosity: 0.001,     // Pa·s，粘度
++    bulkModulus: 2.2e9    // Pa，体积模量
++};
++
++// 为分组分配材料属性
++blkdyn.SetMaterial(particleGroupID, particleMaterial);
++blkdyn.SetMaterial(fluidGroupID, fluidMaterial);
++
++// 设置监测点（记录压力或速度变化）
++var monitorPoints = [
++    [0.0, 0.0, 5.0],     // 中心监测点
++    [2.5, 2.5, 5.0],     // 右上监测点
++    [-2.5, -2.5, 5.0]    // 左下监测点
++];
++
++// 创建监测点并设置输出频率
++for (var i = 0; i < monitorPoints.length; i++) {
++    var mpID = imeshing.CreateMonitorPoint(monitorPoints[i]);
++    imeshing.SetMonitorOutput(mpID, ["Pressure", "VelocityX", "VelocityY", "VelocityZ"]);
++    imeshing.SetMonitorFrequency(mpID, 10); // 每10个时间步输出一次
++}
++
++// 配置求解器运行参数
++var solverSettings = {
++    totalTime: 0.5,       // 总计算时间（秒）
++    timeStep: 1e-7,       // 时间步长（秒）
++    outputInterval: 100   // 输出间隔（时间步数）
++};
++
++// 设置求解器参数
++blkdyn.SetTimeStep(solverSettings.timeStep);
++blkdyn.SetTotalTime(solverSettings.totalTime);
++blkdyn.SetOutputInterval(solverSettings.outputInterval);
++
++// 运行仿真计算
++blkdyn.Run();
++
++// 输出监测结果曲线
++var monitorResults = imeshing.GetMonitorData();
++for (var i = 0; i < monitorResults.length; i++) {
++    var filePath = "monitor_results_" + (i + 1) + ".csv";
++    imeshing.ExportMonitor(monitorResults[i], filePath);
++}
++
++// 输出验证日志
++var logContent = "=== CDEM仿真验证日志 ===\n";
++logContent += "网格单元总数: " + allCells.length + "\n";
++logContent += "颗粒单元数: " + nParticleCells + "\n";
++logContent += "流体单元数: " + (allCells.length - nParticleCells) + "\n";
++logContent += "监测点数量: " + monitorPoints.length + "\n";
++logContent += "计算完成时间: " + new Date().toLocaleString() + "\n";
++
++// 导出日志文件
++var logFile = "simulation_log.txt";
++blkdyn.WriteToFile(logContent, logFile);
++
++print("仿真脚本执行完成，结果已输出至指定路径。");

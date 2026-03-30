@@ -1,0 +1,372 @@
+# Failure Analysis: 案例库-CDyna案例-块体模块案例-扩展案例-露天矿二维平面爆破-SurfaceBlast.js
+
+## Query
+请编写一个CDyna仿真脚本，实现扩展案例-露天矿二维平面爆破-SurfaceBlast，并输出必要的结果与监测。
+
+## Generated Code
+```javascript
+setCurDir(getSrcDir());
+
+// ==================== 1. 初始化仿真环境 ====================
+dyna.Set("Mechanic_Cal 1");
+dyna.Set("Gravity 0.0 -9.8 0.0");
+dyna.Set("Large_Displace 1");
+dyna.Set("Output_Interval 500");
+dyna.Set("Monitor_Iter 10");
+dyna.Set("If_Renew_Contact 1");
+dyna.Set("Contact_Detect_Tol 0.0");
+dyna.Set("UnBalance_Ratio 1e-2");
+dyna.Set("If_Cal_EE_Contact 1");
+
+// ==================== 2. 清除旧数据 ====================
+igeo.clear();
+imeshing.clear();
+dyna.Clear();
+doc.clearResult();
+
+// ==================== 3. 几何建模 - 创建露天矿模型 ====================
+var ModelL = 60.0;   // 模型长度(m)
+var ModelH = 40.0;   // 模型高度(m)
+var CaveL = 20.0;    // 采空区长度(m)
+var CaveH = 15.0;    // 采空区高度(m)
+var BaseH = 8.0;     // 基础高度(m)
+
+// 创建外边界矩形环（左侧）
+var iloop1 = igeo.genRect(-ModelL * 0.5, 0, 0, ModelL * 0.5, ModelH, 0, 2.0);
+
+// 创建采空区边界矩形环
+var iloop2 = igeo.genRect(-CaveL * 0.5, BaseH, 0, CaveL * 0.5, BaseH + CaveH, 0, 1.5);
+
+// 创建表面网格（包含采空区）
+igeo.genSurface([iloop1, iloop2], 1);
+
+// ==================== 4. 生成二维网格 ====================
+imeshing.genMeshByGmsh(2);
+
+// ==================== 5. 获取网格到块体模块 ====================
+blkdyn.GetMesh(imeshing);
+
+// ==================== 6. 创建接触面 ====================
+blkdyn.CrtIFace();
+blkdyn.UpdateIFaceMesh();
+
+// ==================== 7. 设置模型类型和材料参数 ====================
+blkdyn.SetModel("linear");
+
+// 岩石材料参数（密度、弹性模量、泊松比、屈服强度、断裂能等）
+blkdyn.SetMat(2600, 5e10, 0.25, 30e6, 15e6, 40.0, 20.0);
+
+// ==================== 8. 设置接触面属性 ====================
+blkdyn.SetIModel("linear");
+blkdyn.SetIStiffByElem(1.0);
+blkdyn.SetIStrengthByElem();
+
+// ==================== 9. 设置爆破参数 - 朗道爆源 ====================
+var BlastTopC = [0, BaseH + CaveH + 25.0, 0]; // 炮孔中心位置
+
+// 设置朗道爆源参数（ID, 起爆速度, 能量释放率, 密度, 指数等）
+pdyna.SetLandauSource(1, 6000, 3.4e9, 1200, 3.0, 1.3333, 9e9, [BlastTopC[0], BlastTopC[1], BlastTopC[2]], 0.0, 1e-2);
+
+// ==================== 10. 设置边界条件 - 自由表面 ====================
+// 顶部自由面（不施加约束）
+blkdyn.FixV("y", 0.0, "x", -ModelL * 0.5 - 1e-3, ModelL * 0.5 + 1e-3, ModelH - 1e-3, ModelH + 1e-3);
+
+// 左右侧边界固定X方向位移
+blkdyn.FixV("x", 0.0, "x", -ModelL * 0.5 - 1e-3, -ModelL * 0.5 + 1e-3, 0, ModelH);
+blkdyn.FixV("x", 0.0, "x", ModelL * 0.5 - 1e-3, ModelL * 0.5 + 1e-3, 0, ModelH);
+
+// ==================== 11. 设置初始地应力 ====================
+blkdyn.ApplyConditionByCoord("face_force", [0, -2600 * 9.8, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0], -ModelL * 0.5 - 1e-3, ModelL * 0.5 + 1e-3, -ModelH * 0.5 - 1e-3, ModelH * 0.5 + 1e-3, false);
+
+// ==================== 12. 设置监测点 ====================
+blkdyn.SetMonitor("stress", "x", [0, 0, 0], 100);
+blkdyn.SetMonitor("velocity", "y", [0, 0, 0], 100);
+blkdyn.SetMonitor("displacement", "all", [0, 0, 0], 100);
+
+// ==================== 13. 设置计算时长和输出频率 ====================
+dyna.Set("Total_Time 2.0");
+dyna.Set("Output_Interval 500");
+
+// ==================== 14. 执行求解器 ====================
+blkdyn.Solve();
+
+// ==================== 15. 导出结果 ====================
+doc.ExportResult();
+```
+
+## Ground Truth
+```javascript
+//设置当前工作路径为JavaScript脚本文件所在路径
+setCurDir(getSrcDir());
+
+//打开力学计算开关
+dyna.Set("Mechanic_Cal 1");
+
+//设置三个方向的重力加速度均为0
+dyna.Set("Gravity 0.0 0.0 0.0");
+
+//打开大变形计算开关
+dyna.Set("Large_Displace 1");
+
+//设置计算结果的输出间隔为100步
+dyna.Set("Output_Interval 100");
+
+//设置监测信息输出时步为10步
+dyna.Set("Monitor_Iter 10");
+
+//关闭虚质量计算开关
+dyna.Set("If_Virtural_Mass 0");
+
+dyna.Set("If_Renew_Contact 1");
+
+//打开瑞利阻尼计算开关
+dyna.Set("If_Cal_Rayleigh 0")
+
+//从当前文件夹导入Gmsh格式的网格
+blkdyn.ImportGrid("gid", "surface.msh");
+
+//对两侧单元均为组1的公共面进行切割，设置为接触面
+blkdyn.CrtIFace(1, 1);
+
+//不同组间离散
+blkdyn.CrtIFace(-1, -1);
+
+//设置接触后，更新网格信息
+blkdyn.UpdateIFaceMesh();
+
+//指定组1的单元本构为线弹性本构
+blkdyn.SetModel("linear", 1);
+
+//指定组2的单元本构为JWL爆源模型本构
+blkdyn.SetModel("Landau", 2, 100);
+
+//指定组1-2的材料参数
+blkdyn.SetMatByGroupRange(2500, 5e10, 0.25, 15e6, 10e6, 40.0, 10.0, 1, 100);
+
+//将接触面模型设定为断裂能模型
+blkdyn.SetIModel("FracE");
+
+//指定所有接触面的基础材料参数
+blkdyn.SetIMat(1e13, 1e13, 40.0, 15e6, 10e6);
+
+//指定组1与组2交界面的材料参数，摩擦角、粘聚力及抗拉强度均为0.0
+blkdyn.SetIMatByGroupInterface(1e13, 1e13, 0.0, 0.0, 0.0, -1, -1);
+
+//指定组1与组2交界面上的断裂能，均为0
+blkdyn.SetIFracEnergyByGroupInterface(0.0, 0.0, -1, -1);
+
+//指定组1内部交界面的断裂能，拉伸断裂能100Pa.m，剪切断裂能1000Pa.m
+blkdyn.SetIFracEnergyByGroupInterface(100, 1000, 1, 1);
+
+//设置全局的JWL炸药参数，为TNT，材料序号1
+var apos = [5.0, 5.0, 0.0];
+blkdyn.SetLandauSource(1, 1150, 5000, 3.1e6, 3.0, 1.3333, 7e9, apos, 0.0, 15e-3);
+
+var apos = [10.0, 5.0, 0.0];
+blkdyn.SetLandauSource(2, 1150, 5000, 3.1e6, 3.0, 1.3333, 7e9, apos, 25e-3, 15e-3);
+
+var apos = [15.0, 5.0, 0.0];
+blkdyn.SetLandauSource(3, 1150, 5000, 3.1e6, 3.0, 1.3333, 7e9, apos, 50e-3, 15e-3);
+
+
+blkdyn.BindLandauSource(1, 2, 2);
+blkdyn.BindLandauSource(2, 3, 3);
+blkdyn.BindLandauSource(3, 4, 4);
+
+
+
+dyna.Monitor("gvalue","gv_spring_broken_ratio");
+dyna.Monitor("gvalue","gv_spring_crack_ratio");
+
+//将局部阻尼设置为0.0
+blkdyn.SetLocalDamp(0.05);
+
+//将刚度阻尼系数设置为5e-7，质量阻尼系数设置为0.0
+//blkdyn.SetRayleighDamp(5e-7, 0.0);
+
+//设置全局计算时步
+dyna.Set("Time_Step 2e-6");
+
+//模型的外边界设定为无反射边界（粘性边界）
+blkdyn.SetQuietBoundByCoord(19.999, 31,-100,100,-100,100);
+blkdyn.SetQuietBoundByCoord(-100,100,-0.001,0.001,-100,100);
+
+
+//动力计算1ms
+dyna.DynaCycle(1);
+
+//打印提示信息
+print("Solution Finished");
+
+```
+
+## Unified Diff
+```diff
+--- 案例库-CDyna案例-块体模块案例-扩展案例-露天矿二维平面爆破-SurfaceBlast.js (ground_truth)
++++ 案例库-CDyna案例-块体模块案例-扩展案例-露天矿二维平面爆破-SurfaceBlast.js (generated)
+@@ -1,101 +1,87 @@
+-//设置当前工作路径为JavaScript脚本文件所在路径
+ setCurDir(getSrcDir());
+ 
+-//打开力学计算开关
++// ==================== 1. 初始化仿真环境 ====================
+ dyna.Set("Mechanic_Cal 1");
++dyna.Set("Gravity 0.0 -9.8 0.0");
++dyna.Set("Large_Displace 1");
++dyna.Set("Output_Interval 500");
++dyna.Set("Monitor_Iter 10");
++dyna.Set("If_Renew_Contact 1");
++dyna.Set("Contact_Detect_Tol 0.0");
++dyna.Set("UnBalance_Ratio 1e-2");
++dyna.Set("If_Cal_EE_Contact 1");
+ 
+-//设置三个方向的重力加速度均为0
+-dyna.Set("Gravity 0.0 0.0 0.0");
++// ==================== 2. 清除旧数据 ====================
++igeo.clear();
++imeshing.clear();
++dyna.Clear();
++doc.clearResult();
+ 
+-//打开大变形计算开关
+-dyna.Set("Large_Displace 1");
++// ==================== 3. 几何建模 - 创建露天矿模型 ====================
++var ModelL = 60.0;   // 模型长度(m)
++var ModelH = 40.0;   // 模型高度(m)
++var CaveL = 20.0;    // 采空区长度(m)
++var CaveH = 15.0;    // 采空区高度(m)
++var BaseH = 8.0;     // 基础高度(m)
+ 
+-//设置计算结果的输出间隔为100步
+-dyna.Set("Output_Interval 100");
++// 创建外边界矩形环（左侧）
++var iloop1 = igeo.genRect(-ModelL * 0.5, 0, 0, ModelL * 0.5, ModelH, 0, 2.0);
+ 
+-//设置监测信息输出时步为10步
+-dyna.Set("Monitor_Iter 10");
++// 创建采空区边界矩形环
++var iloop2 = igeo.genRect(-CaveL * 0.5, BaseH, 0, CaveL * 0.5, BaseH + CaveH, 0, 1.5);
+ 
+-//关闭虚质量计算开关
+-dyna.Set("If_Virtural_Mass 0");
++// 创建表面网格（包含采空区）
++igeo.genSurface([iloop1, iloop2], 1);
+ 
+-dyna.Set("If_Renew_Contact 1");
++// ==================== 4. 生成二维网格 ====================
++imeshing.genMeshByGmsh(2);
+ 
+-//打开瑞利阻尼计算开关
+-dyna.Set("If_Cal_Rayleigh 0")
++// ==================== 5. 获取网格到块体模块 ====================
++blkdyn.GetMesh(imeshing);
+ 
+-//从当前文件夹导入Gmsh格式的网格
+-blkdyn.ImportGrid("gid", "surface.msh");
+-
+-//对两侧单元均为组1的公共面进行切割，设置为接触面
+-blkdyn.CrtIFace(1, 1);
+-
+-//不同组间离散
+-blkdyn.CrtIFace(-1, -1);
+-
+-//设置接触后，更新网格信息
++// ==================== 6. 创建接触面 ====================
++blkdyn.CrtIFace();
+ blkdyn.UpdateIFaceMesh();
+ 
+-//指定组1的单元本构为线弹性本构
+-blkdyn.SetModel("linear", 1);
++// ==================== 7. 设置模型类型和材料参数 ====================
++blkdyn.SetModel("linear");
+ 
+-//指定组2的单元本构为JWL爆源模型本构
+-blkdyn.SetModel("Landau", 2, 100);
++// 岩石材料参数（密度、弹性模量、泊松比、屈服强度、断裂能等）
++blkdyn.SetMat(2600, 5e10, 0.25, 30e6, 15e6, 40.0, 20.0);
+ 
+-//指定组1-2的材料参数
+-blkdyn.SetMatByGroupRange(2500, 5e10, 0.25, 15e6, 10e6, 40.0, 10.0, 1, 100);
++// ==================== 8. 设置接触面属性 ====================
++blkdyn.SetIModel("linear");
++blkdyn.SetIStiffByElem(1.0);
++blkdyn.SetIStrengthByElem();
+ 
+-//将接触面模型设定为断裂能模型
+-blkdyn.SetIModel("FracE");
++// ==================== 9. 设置爆破参数 - 朗道爆源 ====================
++var BlastTopC = [0, BaseH + CaveH + 25.0, 0]; // 炮孔中心位置
+ 
+-//指定所有接触面的基础材料参数
+-blkdyn.SetIMat(1e13, 1e13, 40.0, 15e6, 10e6);
++// 设置朗道爆源参数（ID, 起爆速度, 能量释放率, 密度, 指数等）
++pdyna.SetLandauSource(1, 6000, 3.4e9, 1200, 3.0, 1.3333, 9e9, [BlastTopC[0], BlastTopC[1], BlastTopC[2]], 0.0, 1e-2);
+ 
+-//指定组1与组2交界面的材料参数，摩擦角、粘聚力及抗拉强度均为0.0
+-blkdyn.SetIMatByGroupInterface(1e13, 1e13, 0.0, 0.0, 0.0, -1, -1);
++// ==================== 10. 设置边界条件 - 自由表面 ====================
++// 顶部自由面（不施加约束）
++blkdyn.FixV("y", 0.0, "x", -ModelL * 0.5 - 1e-3, ModelL * 0.5 + 1e-3, ModelH - 1e-3, ModelH + 1e-3);
+ 
+-//指定组1与组2交界面上的断裂能，均为0
+-blkdyn.SetIFracEnergyByGroupInterface(0.0, 0.0, -1, -1);
++// 左右侧边界固定X方向位移
++blkdyn.FixV("x", 0.0, "x", -ModelL * 0.5 - 1e-3, -ModelL * 0.5 + 1e-3, 0, ModelH);
++blkdyn.FixV("x", 0.0, "x", ModelL * 0.5 - 1e-3, ModelL * 0.5 + 1e-3, 0, ModelH);
+ 
+-//指定组1内部交界面的断裂能，拉伸断裂能100Pa.m，剪切断裂能1000Pa.m
+-blkdyn.SetIFracEnergyByGroupInterface(100, 1000, 1, 1);
++// ==================== 11. 设置初始地应力 ====================
++blkdyn.ApplyConditionByCoord("face_force", [0, -2600 * 9.8, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0], -ModelL * 0.5 - 1e-3, ModelL * 0.5 + 1e-3, -ModelH * 0.5 - 1e-3, ModelH * 0.5 + 1e-3, false);
+ 
+-//设置全局的JWL炸药参数，为TNT，材料序号1
+-var apos = [5.0, 5.0, 0.0];
+-blkdyn.SetLandauSource(1, 1150, 5000, 3.1e6, 3.0, 1.3333, 7e9, apos, 0.0, 15e-3);
++// ==================== 12. 设置监测点 ====================
++blkdyn.SetMonitor("stress", "x", [0, 0, 0], 100);
++blkdyn.SetMonitor("velocity", "y", [0, 0, 0], 100);
++blkdyn.SetMonitor("displacement", "all", [0, 0, 0], 100);
+ 
+-var apos = [10.0, 5.0, 0.0];
+-blkdyn.SetLandauSource(2, 1150, 5000, 3.1e6, 3.0, 1.3333, 7e9, apos, 25e-3, 15e-3);
++// ==================== 13. 设置计算时长和输出频率 ====================
++dyna.Set("Total_Time 2.0");
++dyna.Set("Output_Interval 500");
+ 
+-var apos = [15.0, 5.0, 0.0];
+-blkdyn.SetLandauSource(3, 1150, 5000, 3.1e6, 3.0, 1.3333, 7e9, apos, 50e-3, 15e-3);
++// ==================== 14. 执行求解器 ====================
++blkdyn.Solve();
+ 
+-
+-blkdyn.BindLandauSource(1, 2, 2);
+-blkdyn.BindLandauSource(2, 3, 3);
+-blkdyn.BindLandauSource(3, 4, 4);
+-
+-
+-
+-dyna.Monitor("gvalue","gv_spring_broken_ratio");
+-dyna.Monitor("gvalue","gv_spring_crack_ratio");
+-
+-//将局部阻尼设置为0.0
+-blkdyn.SetLocalDamp(0.05);
+-
+-//将刚度阻尼系数设置为5e-7，质量阻尼系数设置为0.0
+-//blkdyn.SetRayleighDamp(5e-7, 0.0);
+-
+-//设置全局计算时步
+-dyna.Set("Time_Step 2e-6");
+-
+-//模型的外边界设定为无反射边界（粘性边界）
+-blkdyn.SetQuietBoundByCoord(19.999, 31,-100,100,-100,100);
+-blkdyn.SetQuietBoundByCoord(-100,100,-0.001,0.001,-100,100);
+-
+-
+-//动力计算1ms
+-dyna.DynaCycle(1);
+-
+-//打印提示信息
+-print("Solution Finished");
++// ==================== 15. 导出结果 ====================
++doc.ExportResult();
+```

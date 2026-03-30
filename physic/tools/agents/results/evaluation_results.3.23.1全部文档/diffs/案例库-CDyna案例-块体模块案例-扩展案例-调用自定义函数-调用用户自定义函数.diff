@@ -1,0 +1,26 @@
+--- 案例库-CDyna案例-块体模块案例-扩展案例-调用自定义函数-调用用户自定义函数.js (ground_truth)
++++ 案例库-CDyna案例-块体模块案例-扩展案例-调用自定义函数-调用用户自定义函数.js (generated)
+@@ -1,13 +1,19 @@
+ setCurDir(getSrcDir());
+ 
+-dyna.LoadUDF("CustomModel.dll");
++dyna.LoadUDF("CustomModel");
+ 
+-dyna.RunUDFCmd("CalDist 0 0 0 10 10 0");
++dyna.Set("If_Allow_UDF_Kernel", 1);
+ 
++var dist = dyna.RunUDFCmdAdv("CalDist", [0, 0, 0, 10, 10, 0]);
+ 
+-var dist = dyna.RunUDFCmdAdv("CalDist", [0, 0, 0, 10, 10 ,0]);
++if (dist === -1) {
++    print("没有这样的用户自定义命令，已终止");
++} else {
++    print("Dist is ", dist);
++}
+ 
+-print("Dist is ", dist);
++dyna.Solve();
+ 
+ dyna.FreeUDF();
+ 
++print("仿真脚本运行结束成功");

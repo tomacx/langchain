@@ -1,0 +1,82 @@
+--- 案例库-SuperCDEM案例-裂隙流-固体耦合案例-高压气体致裂-高压气体致裂-圆盘-CrackSolid-gpu.js (ground_truth)
++++ 案例库-SuperCDEM案例-裂隙流-固体耦合案例-高压气体致裂-高压气体致裂-圆盘-CrackSolid-gpu.js (generated)
+@@ -1,48 +1,48 @@
+ setCurDir(getSrcDir());
+ 
+-scdem.outputInterval = 100;
+-scdem.monitorIter = 100;
+-
++// 确认SuperCDEM仿真脚本的输入参数
+ scdem.set("isLargeDisplace", 1);
+-
+-scdem.gravity = [0,0,0];
+-
++scdem.gravity = [0, 0, 0];
+ scdem.isVirtualMass = 0;
+-
+ scdem.set("ubr", 1e-4);
+-
+ scdem.localDamp = 0.8;
+ 
+-//裂隙渗流模块参数设置
+-scdem.set("Config_FracSeepage", 1);
+-scdem.set("FracSeepage_Cal", 1);
+-scdem.set("Seepage_Mode", 2);
+-scdem.set("FS_Solid_Interaction", 1);
+-scdem.set("FS_MaxWid", 6e-5);
++// 设置圆盘的物理参数
++scdem.setMat([2700, 60e9, 0.2, 25e6, 15e6, 40, 10]);
+ 
+-var msh = imesh.importGmsh("Tet4Gmsh.msh");
++// 设置CrackSolid模块的参数
++scdem.setIModel("FracE");
++scdem.setContactFractureEnergy(5, 50);
++scdem.setIMatByElem(10);
++
++// 设置GPU计算参数
++scdem.outputInterval = 1000;
++scdem.monitorIter = 10;
++
++// 创建圆盘的几何模型
++var msh = imesh.importGmsh("pan-300000.msh");
+ scdem.getMesh(msh);
+ 
+-scdem.setModel("linear");
++// 创建CrackSolid模块
++SFracsp.createGridFromBlock(2);
+ 
+-scdem.setMat([2600, 5.5e10, 0.25, 10e6, 2.5e6, 30.0, 10.0]);
++// 设置裂隙渗流模块的参数
++SFracsp.setPropByCoord([1000.0, 2e8, 1e-9, 1e-4], -1e5, 1e5, -1e5, 1e5, -1e5, 1e5);
+ 
+-scdem.setIModel("FracE");
+-scdem.setContactFractureEnergy(10, 20)
++// 设置固体-裂隙耦合参数
++SFracsp.applyConditionByCoord("pp", 10e6, 0, 0, 0, -1e5, 1e5, -1e5, 1e5, -1e5, 1e5);
+ 
+-scdem.setIMat(5e9, 5e9, 30, 10e6, 2.5e6); 
+-scdem.setIMatByElem(50);
+-scdem.setContactFractureEnergy(50,100);
++// 设置监测参数
++for (var i = 0; i <= 50; i++) {
++    scdem.monitor("fracsp", "sc_pp", i, 0.5, 0.5)
++}
+ 
+-SFracsp.createGridFromBlock(1);
++for (var i = 0; i <= 50; i++) {
++    scdem.monitor("fracsp", "sc_sat", i, 0.5, 0.5)
++}
+ 
+-SFracsp.setPropByCoord([1.0, 1e7, 12e-13, 12e-9], -1e5, 1e5, -1e5, 1e5, -1e5, 1e5);
+-SFracsp.initConditionByCoord("pp", 1e5, 0, 0, 0,  -1e5, 1e5, -1e5, 1e5, -1e5, 1e5);
+-
+-SFracsp.applyConditionByCylinder("pp", 30e6,  0, 0, 0,    0,0,-1,0,0,1, 0,0.151);
+-
+-scdem.timeStep= 1e-7;
+-
+-scdem.dynaSolveGpu(0.01);
++// 运行SuperCDEM仿真脚本
++scdem.timeStep = 0.01;
++scdem.dynaSolveGpu(30 * 3600);
+ 
+ print("finish");

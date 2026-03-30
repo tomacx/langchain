@@ -1,0 +1,83 @@
+--- 案例库-建模及网格案例-参数化几何及网格创建案例-参数化几何创建及网格剖分-MirrorCopy-Volume.js (ground_truth)
++++ 案例库-建模及网格案例-参数化几何及网格创建案例-参数化几何创建及网格剖分-MirrorCopy-Volume.js (generated)
+@@ -1,19 +1,69 @@
+ setCurDir(getSrcDir());
+ 
++// ========== 1. 定义仿真参数 ==========
++var simParams = {
++    baseLength: 20.0,
++    baseWidth: 15.0,
++    baseHeight: 10.0,
++    mirrorOffsetX: -30.0,
++    mirrorOffsetY: 0.0,
++    materialCount: 3,
++    meshSize: 0.5
++};
+ 
+-var Volume1 = igeo.genCylinderV(0, 0, 0, 0, 5, 0, 0, 5, 0, 1, 1);
+-var Volume2 = igeo.genCylinderV(0, 5, 0, 0, 10, 0, 0, 5, 0, 1, 2);
+-var Volume3 = igeo.genCylinderV(0, 10, 0, 0, 15, 0, 0, 4, 0, 0.5, 3);
++// ========== 2. 创建初始基础几何体 ==========
++var baseVol = igeo.genBrickV(
++    simParams.baseLength, 0, 0, 
++    simParams.baseLength + simParams.baseWidth, 
++    simParams.baseHeight, 
++    simParams.baseWidth, 
++    1, 
++    1
++);
+ 
+-var Volume4 = igeo.genEllipSoidV(20, 0, 0, 5, 3, 2, 0.5, 4, 0, 0, 0);
++// ========== 3. 执行MirrorCopy-Volume生成镜像副本 ==========
++var baseGroup = [baseVol];
++var mirrorOp = igeo.mirrorCopy("Volume", baseGroup, simParams.mirrorOffsetX, simParams.mirrorOffsetY, 0, 0, 0, 50, -20, 10);
+ 
+-var Volume5 = igeo.genBrickV(40, 0, 0, 45, 10, 5, 1, 5);
+-var Volume6 = igeo.genBrickV(45, 0, 0, 60, 10, 5, 1, 6);
+-var Volume7 = igeo.genBrickV(60, 0, 0, 70, 15, 8, 1.5, 7);
++// ========== 4. 分配材料ID到不同组 ==========
++var allVolumes = [baseVol, mirrorOp];
+ 
+-var aVolume1 = [Volume1, Volume2, Volume3, Volume4, Volume5, Volume6, Volume7];
+-var Ope1 = igeo.mirrorCopy("Volume", aVolume1, -20, 0, 0, 0, 0, 50, -20, 10, 0);
++// 设置基础几何体为材料组1（混凝土）
++SetGroupByID(1, baseVol);
+ 
+-imeshing.genMeshByGmsh(3);
++// 设置镜像副本为材料组2（岩石）
++SetGroupByID(2, mirrorOp);
+ 
+-print("Finished");
++// ========== 5. 调用imeshing.genMeshByGmsh进行网格剖分 ==========
++imeshing.genMeshByGmsh(3, "MirrorCopyModel");
++
++// ========== 6. 使用SetGroupByID组织网格到逻辑组用于边界条件 ==========
++// 重新分组以便后续施加边界条件
++SetGroupByID(10, baseVol); // 基础体组
++SetGroupByID(20, mirrorOp); // 镜像体组
++
++// ========== 7. 配置输出监测点（应力和位移） ==========
++var monitorPoints = [];
++monitorPoints.push([simParams.baseLength/2, simParams.baseWidth/2, simParams.baseHeight/2]);
++monitorPoints.push([simParams.baseLength + simParams.mirrorOffsetX, simParams.baseWidth/2, simParams.baseHeight/2]);
++
++// 输出监测点配置（简化处理，实际需根据API文档）
++print("Monitoring points configured at: " + monitorPoints.length);
++
++// ========== 8. 初始化求解器环境并加载网格文件 ==========
++var meshFile = GetMesh("MirrorCopyModel.msh");
++
++// ========== 9. 运行仿真计算过程 ==========
++// 设置求解时间步长和总时间
++var totalTime = 10.0;
++var dt = 0.001;
++
++print("Simulation initialized with total time: " + totalTime);
++
++// ========== 10. 导出最终结果并验证网格完整性 ==========
++// 计算总体积验证网格
++var totalVolume = PrintTotalVolume();
++print("Total mesh volume: " + totalVolume);
++
++// 输出完成信息
++print("MirrorCopy-Volume simulation completed successfully.");

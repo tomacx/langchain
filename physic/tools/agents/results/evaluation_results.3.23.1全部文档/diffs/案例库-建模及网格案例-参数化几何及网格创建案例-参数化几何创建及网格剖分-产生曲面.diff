@@ -1,0 +1,68 @@
+--- 案例库-建模及网格案例-参数化几何及网格创建案例-参数化几何创建及网格剖分-产生曲面.js (ground_truth)
++++ 案例库-建模及网格案例-参数化几何及网格创建案例-参数化几何创建及网格剖分-产生曲面.js (generated)
+@@ -1,35 +1,40 @@
+-//设置当前工作路径为JS脚本所在路径
+ setCurDir(getSrcDir());
+ 
++// 初始化环境
+ igeo.clear();
+ imeshing.clear();
+ 
+-//创建点
+-var size = 0.01;
+-var id1 = igeo.genPoint(0,0,0,size);
+-var id2 = igeo.genPoint(0.5,0.2,0,size);
+-var id3 = igeo.genPoint(1.0,0.5,0,size);
+-var id4 = igeo.genPoint(1.5,1.0,0,size);
+-var id5 = igeo.genPoint(2.0,0.2,0,size);
+-var id6 = igeo.genPoint(3.0,0.0,0,size);
+-var id7 = igeo.genPoint(1.0,-0.5,0,size);
+-var id8 = igeo.genPoint(2.0,-1.0,0,size);
++// 创建二维计算流体域（10m x 10m，每个方向50个节点）
++skwave.DefMesh(2, [10.0, 10.0], [50, 50]);
+ 
++// 创建参数化几何模型 - 生成矩形区域
++var id = igeo.genRectS(0, 0, 0, 10, 10, 0, 0.1, 1);
+ 
+-//创建两条样条曲线
+-var lineid1 = [id1, id2, id3, id4, id5, id6];
+-var lineid2 = [id1, id7, id8, id6];
+-var lid1 = igeo.genCurvedLine(lineid1, "spline");
+-var lid2 = igeo.genCurvedLine(lineid2, "spline");
++// 设置二维网格划分方式为Frontal（6代表Frontal）
++imeshing.setValue("MeshType2D", 6);
+ 
+-//创建line loop
+-var loop1 = [lid1, lid2];
+-var loopid = igeo.genLineLoop(loop1);
+-
+-//创建surface
+-var loop2 = [loopid];
+-var fid = igeo.genSurface(loop2,1);
+-
+-//借助Gmsh剖分网格
++// 借助Gmsh剖分网格
+ imeshing.genMeshByGmsh(2);
+ 
++// 将剖分后的网格单元按ID进行分组管理
++SetGroupByID([1, 2, 3, 4, 5], "group1");
++SetGroupByID([6, 7, 8, 9, 10], "group2");
++
++// 设置特定节点监测点（记录位移、应力及速度）
++var monitorNode = imeshing.SetMonitorPoint(25, ["disp", "stress", "vel"]);
++
++// 配置输出结果参数
++imeshing.setValue("OutputDisplacement", true);
++imeshing.setValue("OutputStress", true);
++imeshing.setValue("OutputVelocity", true);
++imeshing.setValue("OutputTimeStep", 1e-6);
++
++// 执行求解器计算
++skwave.Solve();
++
++// 导出生成的网格文件和监测结果至指定路径
++imeshing.ExportMesh("./output/mesh_result.dat");
++imeshing.ExportMonitor("./output/monitor_result.dat");
++
++// 检查脚本执行日志确认无错误
++print("Script execution completed successfully.");

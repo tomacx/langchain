@@ -1,0 +1,53 @@
+setCurDir(getSrcDir());
+
+// 1. 初始化计算环境并配置求解器参数
+dyna.Set("Time_Step 2e-4");
+dyna.Set("Output_Interval 100");
+dyna.Set("SK_GasModel 2");
+dyna.Set("SK_ActT 502.0");
+dyna.Set("SK_HeatQ 0.5196e6");
+dyna.Set("SK_MolMass 36");
+dyna.Set("SK_Gama 1.4");
+
+// 2. 定义三维计算网格
+skwave.DefMesh(3, [1000, 500, 500], [100, 50, 50]);
+
+// 3. 初始化所有区域为普通气体属性
+skwave.SetGasCloud(0);
+
+// 4. 设置固体边界材料（用于反射模拟）
+skwave.SetSolid(1, -1e5, 1e5, -100, 20, -1e5, 1e5);
+skwave.SetSolid(1, 600, 650, -1e5, 350, 150, 350);
+
+// 5. 定义可燃气云区域（球心及半径范围内）
+skwave.SetGasCloudBySphere(1, [400, 250, 250], 200);
+
+// 6. 设置气体初始条件
+skwave.InitBySphere(8.321e4, 1.201, [0,0,0], [0,0, 0], 10000.0);
+
+// 7. 配置朗道爆源参数（起爆点位置及爆源参数）
+skwave.SetFirePos(400, 250, 250, 20, 1.945, 4.162E2, 6.27E5);
+
+// 8. 设置朗道爆源气体逸散参数（优化压力衰减计算）
+pdyna.SetLandauGasLeakMat(5e-4, 1.2, 1, 10);
+
+// 9. 加载自定义材料模型以支持特定毁伤分析需求
+dyna.LoadUDF("CustomModel");
+
+// 10. 设置监测功能记录压力、流速、温度及损伤量时程数据
+for(var i = 1; i <= 10; i++) {
+    dyna.Monitor("skwave", "sw_dens", 100 * i, 250, 0);
+}
+
+for(var i = 1; i <= 10; i++) {
+    dyna.Monitor("skwave", "sw_pp", 100 * i, 250, 0);
+}
+
+for(var i = 1; i <= 10; i++) {
+    dyna.Monitor("skwave", "sw_temp", 100 * i, 250, 0);
+}
+
+// 11. 执行求解并生成结果
+dyna.DynaCycle(10);
+
+print("气云爆炸及固体边界反射-传爆仿真完成");

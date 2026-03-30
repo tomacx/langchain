@@ -1,0 +1,83 @@
+--- 案例库-MudSim案例-某沟道泥石流模拟1-泥石流计算脚本.js (ground_truth)
++++ 案例库-MudSim案例-某沟道泥石流模拟1-泥石流计算脚本.js (generated)
+@@ -1,31 +1,61 @@
+ setCurDir(getSrcDir());
+ 
+-mflow.importGrid("GdemGrid","grid.dat");
++// 导入计算网格
++mflow.importGrid("GdemGrid", "grid.dat");
+ 
+-//  50mm/h
+-var rainfall = 50 *1e-3 / 3600.0;
++// 设置降雨时程曲线 [时间起点, 降雨强度(m/s), 持续时间(s), 降雨强度]
++mflow.setRainData([0.0, 5e-3, 1e6, 5e-3]);
+ 
+-mflow.setRainData([0.0, rainfall, 1e6, rainfall]);
++// 设置颗粒级配曲线参数
++mflow.setParData([0.002, 0.35, 0.005, 0.45, 0.015, 0.5]);
+ 
+-mflow.setParData([0.0005, 0.6, 0.002, 0.3, 0.006, 0.1]);
+-
++// 设置输出间隔（秒）
+ mflow.setValue("Output_Interval", 100.0);
+ 
+-mflow.setValue("InitWaterCont", 0.03);
+-mflow.setValue("cstable", 0.01);
+-mflow.setValue("cohesion", 1e1);
+-mflow.setValue("friction", 10.0);
+-mflow.setValue("MaxTimeStep", 100);
++// 设置临时文件输出选项
++mflow.setValue("TempFile_Out", 1);
+ 
+-mflow.setValue("ST_a", 10);
+-mflow.setValue("ST_ad", 10);
+-mflow.setValue("ST_h0", 1e-5)
++// 设置Tecplot文件输出选项
++mflow.setValue("TecFile_Out", 1);
+ 
+-mflow.hist("height", 523928.1, 381250.3);
+-mflow.hist("magvel", 523263.8, 381654.2);
+-mflow.hist("c", 523263.8, 381654.2);
+-mflow.hist("dh", 523263.8, 381654.2);
++// 设置初始含水量（可选）
++mflow.setValue("InitWaterCont", 0.3);
+ 
+-mflow.solve(36000.0);
++// 设置粘聚力 (Pa)
++mflow.setValue("cohesion", 800);
+ 
++// 设置摩擦系数
++mflow.setValue("friction", 15.0);
++
++// 设置最大时间步长
++mflow.setValue("MaxTimeStep", 10);
++
++// 设置监测点1（坐标x, y）
++mflow.hist("height", 401458, 4.48574e6);
++mflow.hist("magvel", 401458, 4.48574e6);
++mflow.hist("c", 401458, 4.48574e6);
++mflow.hist("dh", 401458, 4.48574e6);
++
++// 设置监测点2
++mflow.hist("height", 401850, 4.48558e6);
++mflow.hist("magvel", 401850, 4.48558e6);
++mflow.hist("c", 401850, 4.48558e6);
++mflow.hist("dh", 401850, 4.48558e6);
++
++// 设置监测点3
++mflow.hist("height", 401643, 4.48508e6);
++mflow.hist("magvel", 401643, 4.48508e6);
++mflow.hist("c", 401643, 4.48508e6);
++mflow.hist("dh", 401643, 4.48508e6);
++
++// 设置监测点4
++mflow.hist("height", 401528, 4.48485e6);
++mflow.hist("magvel", 401528, 4.48485e6);
++mflow.hist("c", 401528, 4.48485e6);
++mflow.hist("dh", 401528, 4.48485e6);
++
++// 执行核心求解过程（时间单位：秒）
++mflow.solve(86400);
++
++// 输出最终计算结果文本数据
+ mflow.exportTextData();

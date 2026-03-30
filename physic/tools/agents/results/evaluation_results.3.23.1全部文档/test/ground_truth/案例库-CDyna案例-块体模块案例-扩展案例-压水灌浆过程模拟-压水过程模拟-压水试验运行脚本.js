@@ -1,0 +1,77 @@
+//设置当前工作路径为JavaScript脚本文件所在路径
+setCurDir(getSrcDir());
+
+igeo.clear();
+imeshing.clear();
+dyna.Clear();
+doc.clearResult();
+
+
+//关闭力学计算开关
+dyna.Set("Mechanic_Cal 0");
+
+//包含裂隙计算模块，开辟相应内存
+dyna.Set("Config_FracSeepage 1");
+
+//打开裂隙渗流计算开关
+dyna.Set("FracSeepage_Cal 1");
+
+//设置3个方向的重力加速度
+dyna.Set("Gravity 0.0 0.0 -9.8");
+
+//设置结果输出时步
+dyna.Set("Output_Interval 5000");
+
+dyna.Set("Liquid_Seepage_Law 1");
+
+dyna.Set("Monitor_Iter 100");
+
+
+fracsp.ImportGrid("Gmsh","GDEM-150.msh");
+
+
+//设置裂隙渗流参数，依次为密度、体积模量、渗透系数、裂隙初始开度、组号下限及组号上限
+fracsp.SetPropByGroup(1000.0, 1e6,3.33333e-6, 2e-4, 1,1);
+fracsp.SetPropByGroup(1000.0, 1e6,3.33333e-6, 2e-4, 2,2);
+fracsp.SetPropByGroup(1000.0, 1e6,3.33333e-6, 2e-4, 3,3);
+fracsp.SetPropByGroup(1000.0, 1e6,3.33333e-6, 2e-4, 4,4);
+fracsp.SetPropByGroup(1000.0, 1e6,3.33333e-6, 2e-4, 10,10);
+
+fracsp.RandomizeWidthByGroup("normal", 2e-4, 2e-4, 1,2,2);
+
+fracsp.RandomizeWidthByGroup("normal", 2e-4, 2e-4, 2,2,2);
+
+fracsp.RandomizeWidthByGroup("normal", 2e-4, 2e-4, 3,2,2);
+
+fracsp.RandomizeWidthByGroup("normal", 2e-4, 2e-4, 4,2,2);
+
+fracsp.AdjustWidth (6e-5,20,20,17.5, 20, 20, 22.5);
+
+var fArrayGrad = [0,0,0,0,0,0,0,0,0];
+
+var afValue = [0, 1e6, 1e6, 1e6];
+fracsp.ApplyDynaConditionByLine("pp",afValue, fArrayGrad, 20,20,17.5, 20, 20, 22.5);
+
+fracsp.ElemConnection();
+
+dyna.Monitor("fracsp", "sc_magvel", 20, 20,20);
+dyna.Monitor("fracsp", "sc_pp",20, 20,20);
+dyna.Monitor("fracsp", "sc_discharge",20, 20,20);
+
+dyna.Monitor("gvalue", "gv_fracsp_total_mass");
+
+dyna.Monitor("gvalue", "gv_fracsp_eff_rad");
+
+//自动计算时步
+dyna.TimeStepCorrect(1);
+
+
+
+run("ExportWidth.js");
+
+
+//求解10万步
+dyna.DynaCycle(1200);
+
+//打印提示信息
+print("Solution Finished");

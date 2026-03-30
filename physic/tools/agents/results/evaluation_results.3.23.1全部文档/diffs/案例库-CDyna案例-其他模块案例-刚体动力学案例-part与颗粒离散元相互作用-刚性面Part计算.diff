@@ -1,0 +1,99 @@
+--- 案例库-CDyna案例-其他模块案例-刚体动力学案例-part与颗粒离散元相互作用-刚性面Part计算.js (ground_truth)
++++ 案例库-CDyna案例-其他模块案例-刚体动力学案例-part与颗粒离散元相互作用-刚性面Part计算.js (generated)
+@@ -1,49 +1,63 @@
+ setCurDir(getSrcDir());
+ 
++// 初始化环境
+ dyna.Clear();
+ imeshing.clear();
+ 
++// 求解器控制参数设置
++dyna.Set("Time_Step 1e-3");
++dyna.Set("Output_Interval 100");
++dyna.Set("Large_Displace 1");
++dyna.Set("If_Renew_Contact 1");
++dyna.Set("Gravity 0 0 -9.8");
++dyna.Set("Contact_Detect_Tol 3e-3");
+ 
+-dyna.Set("Time_Step 1e-3");
++// 创建刚性面几何（示例：创建一个矩形板作为刚性面）
++var fCoord = new Array();
++fCoord[0] = new Array(-1, -1, 0);
++fCoord[1] = new Array(1, -1, 0);
++fCoord[2] = new Array(1, 1, 0);
++fCoord[3] = new Array(-1, 1, 0);
+ 
+-dyna.Set("If_Virtural_Mass 0");
++// 导入刚性面模型（或根据几何创建）
++rdface.Import("gid", "GidGrp.msh");
+ 
+-dyna.Set("Output_Interval 100");
++// 自动创建刚体部件
++var nTotal = rdface.CrtPartAuto("geo");
+ 
+-dyna.Set("Large_Displace 1");
++// 设置刚体部件属性（密度、质心坐标、转动惯量等）
++rdface.SetPartProp(8910, [0.5, 0.5, 0], [0, 0, 0], "rigid_plate");
+ 
+-dyna.Set("If_Renew_Contact 1");
+-
+-dyna.Set("Gravity  0 0 -9.8");
+-
+-
+-pdyna.CreateByCoord(4000, 1,2, 0.2, 0.3,0.5, [0.5, 9.5],[ 0.5,9.5], [0.5, 4]); 
+-
+-pdyna.SetModel("brittleMC");
+-//pdyna. SetMat(<density, young, poisson, tension, cohesion, friction, localdamp, viscdamp >);
+-
+-pdyna. SetMat(2500, 5e7, 0.3, 0,0,10, 0, 0.01);
+-
+-
+-rdface.Import("ansys","rdfacemodel.dat");
+-
+-var pardid = rdface.CrtPart("feng",  6, 8);
+-
+-//rdface.SetPartProp(1000, [5, 5, 5], [1,2,3,4,5,6], "feng");
+-
+-
+-rdface.SetPartProp(8.910425e+04, [ 5.000302e+00,5.000109e+00,6.297744e+00], [2.117849e+05, 2.118690e+05,2.956193e+05, -1.237543e+01,-2.083668e+00,-1.517674e+01], "feng");
+-
+-
+-
+-
+-
++// 设置刚性面局部阻尼
+ rdface.SetPartLocalDamp(0.01, 0.01);
+ 
++// 创建颗粒体系（在刚性面上方生成）
++var xRange = [-0.5, 0.5];
++var yRange = [-0.5, 0.5];
++var zRange = [0.02, 0.4];
+ 
+-dyna.Monitor("rdface","rg_PartVelZ", 1,0,0);
+-dyna.Monitor("rdface","rg_PartDisZ", 1,0,0);
++pdyna.CreateByCoord(1000, 2, 2, 0.01, 0.01, 0.01, xRange, yRange, zRange);
+ 
++// 设置颗粒本构模型
++pdyna.SetModel("brittleMC");
++
++// 设置颗粒材料参数（密度、弹性模量、泊松比、抗拉强度、粘聚力、内摩擦角、局部阻尼、粘性阻尼）
++pdyna.SetMat(2500, 1e8, 0.25, 0, 0, 30, 0.01, 0);
++
++// 设置颗粒与刚性面接触参数（法向刚度、切向刚度、摩擦角等）
++dyna.Set("If_Search_PBContact_Adavance 1");
++
++// 设置监测变量：刚体部件速度、位移
++dyna.Monitor("rdface", "rg_PartVelZ", nTotal, 0, 0);
++dyna.Monitor("rdface", "rg_PartDisZ", nTotal, 0, 0);
++
++// 设置颗粒位置监测
++dyna.Monitor("pdyna", "rg_NodeDisX", 1, 0, 0);
++dyna.Monitor("pdyna", "rg_NodeDisY", 1, 0, 0);
++dyna.Monitor("pdyna", "rg_NodeDisZ", 1, 0, 0);
++
++// 时间步长修正
+ dyna.TimeStepCorrect(1.0);
+ 
+-dyna.Solve(100000);
++// 执行求解（迭代次数根据仿真时长调整）
++dyna.Solve(50000);

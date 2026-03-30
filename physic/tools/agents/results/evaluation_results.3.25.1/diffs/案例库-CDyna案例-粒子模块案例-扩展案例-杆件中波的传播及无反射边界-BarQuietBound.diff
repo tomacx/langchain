@@ -1,0 +1,46 @@
+--- 案例库-CDyna案例-粒子模块案例-扩展案例-杆件中波的传播及无反射边界-BarQuietBound.js (ground_truth)
++++ 案例库-CDyna案例-粒子模块案例-扩展案例-杆件中波的传播及无反射边界-BarQuietBound.js (generated)
+@@ -1,6 +1,5 @@
+ //设置当前路径为JavaScript脚本所在的路径
+ setCurDir(getSrcDir());
+-
+ 
+ //设置输出的间隔为500步
+ dyna.Set("Output_Interval 500");
+@@ -32,10 +31,6 @@
+ //设置颗粒材料参数，依次为密度、弹性模量、泊松比、抗拉强度、粘聚力、内摩擦角、局部阻尼、粘性阻尼系数（临界阻尼比）
+ pdyna.SetMat(2500, 3e10, 0.2, 3e7, 6e7, 36, 0.0, 0.01);
+ 
+-var fvalue = new Array(0.0, -10, 0.0);
+-
+-
+-
+ //设定三个方向载荷系数
+ var coeff=new Array(10,0.0,0.0)
+ //x方向下限及上限
+@@ -47,9 +42,10 @@
+ //设定动态速度边界
+ pdyna.ApplyDynaCondSinByCoord ("velocity", coeff, 0.0, 1, 2e-3, 0.0, 0.0, 1e-3, x, y, z);
+ 
++//设置无反射边界
+ pdyna.ApplyQuietBoundByCoord(19.8,21,-1000,1000,-1,1);
+ 
+-
++//监测结果
+ dyna.Monitor("particle","pa_xvel",0,0.5,0);
+ dyna.Monitor("particle","pa_xvel",5,0.5,0);
+ dyna.Monitor("particle","pa_xvel",10,0.5,0);
+@@ -62,9 +58,8 @@
+ dyna.Monitor("particle","pa_sxx",15,0.5,0);
+ dyna.Monitor("particle","pa_sxx",20,0.5,0);
+ 
+-//求解2万步
+-dyna.DynaCycle(0.015);
++//运行用户自定义命令流
++dyna.RunUDFCmd("CalDist 0.0 0.0 0.0 10.0 10.0 0.0");
+ 
+-//打印信息
+-print("Solution is ok!");
+-
++//卸载已经加载的动态链接库
++dyna.FreeUDF();

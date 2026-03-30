@@ -1,0 +1,252 @@
+--- 案例库-CDyna案例-块体模块案例-扩展案例-地冲击模拟-2-RockBurst.js (ground_truth)
++++ 案例库-CDyna案例-块体模块案例-扩展案例-地冲击模拟-2-RockBurst.js (generated)
+@@ -1,161 +1,130 @@
+-//设置当前工作路径为JavaScript脚本文件所在路径
+ setCurDir(getSrcDir());
+ 
++// 清除模块数据
++igeo.clear();
++imeshing.clear();
++dyna.Clear();
++doc.clearResult();
+ 
+-//打开力学计算开关
++// 全局环境参数设置
+ dyna.Set("Mechanic_Cal 1");
+-
+-//设置三个方向的重力加速度均为0
+-dyna.Set("Gravity 0.0 0.0 0.0");
+-
+-//打开大变形计算开关
++dyna.Set("Gravity 0.0 -9.8 0.0");
+ dyna.Set("Large_Displace 1");
+-
+-//设置计算结果的输出间隔为500步
+ dyna.Set("Output_Interval 500");
+-
+-//设置监测信息输出时步为10步
+ dyna.Set("Monitor_Iter 10");
+-
+-//关闭虚质量计算开关
+ dyna.Set("If_Virtural_Mass 1");
+-
+-//打开接触更新开关
+ dyna.Set("If_Renew_Contact 1");
+-
+-//设置接触容差为0
+ dyna.Set("Contact_Detect_Tol 0.0");
+ 
+-blkdyn.ImportGrid("gmsh", "CDEM.msh");
++// ========== 几何建模及网格划分 ==========
++// 创建外边界矩形环（围岩）
++var loopid1 = igeo.genRect(0, 0, 0, 20, 20, 0, 1.0);
+ 
+-//对两侧单元均为组1的公共面进行切割，设置为接触面
++// 创建巷道内边界矩形环
++var loopid2 = igeo.genRect(8, 8.5, 0, 12, 11.5, 0, 0.2);
++
++// 创建外边界面（含矩形空洞）
++igeo.genSurface([loopid1, loopid2], 1);
++
++// 创建巷道实体
++igeo.genSurface([loopid2], 2);
++
++// 生成二维网格
++imeshing.genMeshByGmsh(2);
++
++// BlockDyna从平台下载网格
++blkdyn.GetMesh(imeshing);
++
++// 对两侧单元均为组1的公共面进行切割，设置为接触面
+ blkdyn.CrtIFace();
+ 
+-//设置接触后，更新网格信息
++// 设置接触后，更新网格信息
+ blkdyn.UpdateIFaceMesh();
+ 
+-//指定组1的单元本构为线弹性本构
++// ========== 材料参数设置 ==========
++// 指定组1（围岩）的单元本构为线弹性本构
+ blkdyn.SetModel("linear");
+ 
+-//指定材料参数
+-blkdyn.SetMat(2300, 1e10, 0.25, 5e6, 5e6, 35.0, 15.0);
+-blkdyn.SetMat(2300, 5e10, 0.25, 30e6, 15e6, 35.0, 15.0 ,2);
++// 指定组1-2的材料参数
++// 密度, 弹性模量, 泊松比, 抗拉强度, 抗压强度, 断裂能拉伸, 断裂能剪切
++blkdyn.SetMatByGroupRange(2300, 1e10, 0.25, 5e6, 5e6, 35.0, 15.0, 1, 1);
+ 
++// 指定组2（巷道）的材料参数
++blkdyn.SetMatByGroupRange(2300, 1e10, 0.25, 5e6, 5e6, 35.0, 15.0, 2, 2);
+ 
+-//将接触面模型设定为线弹性模型
++// 将接触面模型设定为线弹性模型
+ blkdyn.SetIModel("linear");
+ 
+-//虚拟接触面刚度及强度从单元中自动获取
++// 虚拟接触面刚度及强度从单元中自动获取
+ blkdyn.SetIStiffByElem(1);
+ blkdyn.SetIStrengthByElem();
+ 
++// ========== 边界条件设置 ==========
++// 固定底部节点（Y方向）
++blkdyn.FixV("xyz", 0.0, "y", -0.001, 0.001);
+ 
+-//设置初始应力场
+-//定义三个方向基础值，该这三个值可以改变初始应力场
+-var values = new Array(-5e6, -10e6, -5e6); 
+-//定义变化梯度 
+-var gradient = new Array(0, 0, 0, 0, 0, 0, 0, 0, 0); 
+-//将控制范围内的位移清零 
+-blkdyn.InitConditionByCoord("stress", values, gradient, -1e5, 1e5, -1e5, 1e5, -1e5, 1e5); 
++// 施加初始地应力（X方向水平应力）
++blkdyn.SetInitStress(5e6, "x");
+ 
++// ========== 冲击载荷设置 ==========
++// 在巷道顶部施加冲击载荷（模拟外部冲击荷载）
++var impactForce = 1e7; // 冲击载荷大小
++var impactDuration = 0.01; // 冲击持续时间
+ 
+-//固体四周法向位移
+-blkdyn.FixV("x", 0.0, "x", -1e-3, 1e-3);
+-blkdyn.FixV("x", 0.0, "x", 19.999, 21);
+-blkdyn.FixV("y", 0.0, "y", -1e-3, 1e-3);
+-blkdyn.FixV("y", 0.0, "y", 19.999, 21);
++// 使用RunUDFCmd施加冲击载荷（通过自定义命令流）
++dyna.RunUDFCmd("ApplyLoad " + impactForce + " 0.0 0.0 8.5 8.5 0.0");
+ 
++// ========== 监测点设置 ==========
++// 设置巷道顶部关键监测点（位移监测）
++dyna.Monitor("block", "ydis", 10.0, 10.0, 10.0);
+ 
+-//将局部阻尼设置为0.8
+-blkdyn.SetLocalDamp(0.8);
++// 设置巷道侧壁应力监测点
++dyna.Monitor("block", "stress", 8.5, 8.5, 10.0);
+ 
++// 设置围岩关键位置位移监测
++dyna.Monitor("block", "ydis", 2.0, 10.0, 10.0);
+ 
+-//设置监测点
+-dyna.Monitor("gvalue","gv_spring_crack_ratio");
++// ========== 计算前初始化 ==========
++dyna.BeforeCal();
+ 
++// ========== 循环迭代计算 ==========
++for (var i = 0; i < 5000; i++) {
++    // 集成核心计算
++    var unbal = blkdyn.Solver();
+ 
+-//设置接触面的拉伸断裂应变及剪切断裂应变
+-dyna.Set("Interface_Soften_Value 1e-3 5e-3");
++    // 计算单元变形力
++    blkdyn.CalBlockForce();
+ 
+-//将接触面模型设定为应变软化的mc模型
+-blkdyn.SetIModel("SSMC");
++    // 计算节点运动
++    blkdyn.CalNodeMovement();
+ 
++    // 输出监测信息
++    dyna.OutputMonitorData();
+ 
+-//求解至稳定
+-dyna.Solve();
+-dyna.Save("stage1.sav");
+-// dyna.Restore("stage1.sav");
++    // 每隔100步推送信息
++    if (i != 0 && i % 100 == 0) {
++        print("不平衡率：" + unbal);
++        print("计算步数：" + i);
++        
++        // 推送结果信息至GDEM-Env
++        dyna.PutStep(1, i, 0.1);
++    }
+ 
+-//设置接触面的拉伸断裂应变及剪切断裂应变
+-dyna.Set("Interface_Soften_Value 5e-4 1e-3");
+-blkdyn.SetMat(2300, 1e10, 0.25, 5e6, 5e6, 35.0, 15.0);
+-blkdyn.SetMat(2300, 5e10, 0.25, 10e6, 8e6, 35.0, 15.0 ,2);
+-blkdyn.SetIStrengthByElem();
++    // 检查计算是否收敛（不平衡率过大时终止）
++    if (unbal > 0.1) {
++        print("警告：不平衡率超过阈值，可能需调整时间步长");
++    }
++}
+ 
+-//定义三个方向基础值 
+-var values = new Array(0, 0, 0); 
+-//定义变化梯度 
+-var gradient = new Array(0, 0, 0, 0, 0, 0, 0, 0, 0); 
+-//将控制范围内的位移清零 
+-blkdyn.InitConditionByCoord("displace", values, gradient, -1e5, 1e5, -1e5, 1e5, -1e5, 1e5); 
++// ========== 输出结果 ==========
++// 输出最终监测数据
++dyna.OutputMonitorData();
+ 
++// 保存仿真结果
++doc.SaveResult();
+ 
++// ========== 释放资源 ==========
++// 释放动态链接库
++dyna.FreeUDF();
+ 
+-//解除四周法向位移
+-blkdyn.FreeV("x", "x", -1e-3, 1e-3);
+-blkdyn.FreeV("x", "x", 19.999, 21);
+-blkdyn.FreeV("y", "y", -1e-3, 1e-3);
+-blkdyn.FreeV("y", "y", 19.999, 21);
+-
+-
+-//设置静态无反射边界条件
+-blkdyn.SetQuietBoundByCoord(-1e-3, 1e-3, -1e5, 1e5, -1e5, 1e5);
+-blkdyn.SetQuietBoundByCoord(19.999, 21, -1e5, 1e5, -1e5, 1e5);
+-
+-blkdyn.SetQuietBoundByCoord(-1e5, 1e5, -1e-3, 1e-3, -1e5, 1e5);
+-blkdyn.SetQuietBoundByCoord(-1e5, 1e5, 19.999, 21, -1e5, 1e5);
+-
+-
+-//*****************施加动态边界条件，面力边界
+-var coeff=new Array(0, -60e6, 0)
+-//x方向下限及上限
+-var x= new Array(-1, 21)
+-//y方向下限及上限
+-var y= new Array(19.99, 21)
+-//z方向下限及上限
+-var z= new Array(-1.0,1.0)
+-//设定动态速度边界
+-blkdyn.ApplyDynaSinVarByCoord ("face_force",false,coeff, 0.0, 1.0, 0.01 ,0,0,0.005, x, y, z);
+-
+-
+-
+-//关闭虚拟质量开关
+-dyna.Set("If_Virtural_Mass 0");
+-
+-//设置当前时间为0
+-dyna.Set("Time_Now 0");
+-
+-
+-//设置计算时步为3e-6，小时间步，为了看清楚应力的传播
+-dyna.Set("Time_Step 3e-6");
+-
+-//设置局部阻尼为0.0
+-blkdyn.SetLocalDamp(0.0);
+-
+-
+-//打开瑞利阻尼计算开关
+-dyna.Set("If_Cal_Rayleigh 1");
+-blkdyn.SetRayleighDamp(2e-7, 0.0);
+-
+-
+-//动力计算20ms
+-dyna.DynaCycle(2e-2);
+-
+-//设置大时间步，观察破裂演化
+-dyna.Set("Time_Step 1e-6");
+-
+-//计算0.2s
+-dyna.DynaCycle(2e-1);
+-
+-//求解结束
+-print("Solution Finished");
++print("冲击地压模拟计算完成！");

@@ -1,0 +1,101 @@
+setCurDir(getSrcDir());
+
+// 加载CustomModel动态链接库以初始化二次开发环境
+dyna.LoadUDF("CustomModel");
+
+// 清除dyna模块数据
+dyna.Clear();
+
+// 设置系统不平衡率
+dyna.Set("UnBalance_Ratio 1e-5");
+
+// 设置三个方向的重力加速度（z轴向下为负）
+dyna.Set("Gravity 0 -9.8 0");
+
+// 打开固体计算开关
+dyna.Set("Mechanic_Cal 1");
+
+// 打开大变形计算开关
+dyna.Set("Large_Displace 1");
+
+// 设置计算结果的输出间隔为500步
+dyna.Set("Output_Interval 500");
+
+// 保存结果文件
+dyna.Set("SaveFile_Out 1");
+
+// 打开接触更新开关
+dyna.Set("If_Renew_Contact 1");
+
+// 创建三维网格：长400m，高200m，宽30m，长度方向50个网格，高度方向25个网格，宽度方向6个网格，组号为1
+blkdyn.GenBrick3D(400, 200, 30, 50, 25, 6, 1);
+
+// 将设定范围内的单元变成组2（便于后续随机化处理）
+blkdyn.SetGroupByCoord(2, 80, 320, 24, 40, -1, 1);
+
+// 创建接触面离散，全部单元离散
+blkdyn.CrtIFace();
+
+// 更新接触拓扑
+blkdyn.UpdateIFaceMesh();
+
+// 将单元模型设置为自定义本构模型"Custom"
+blkdyn.SetModel("Custom");
+
+// 设置组1及组2的材料参数（密度、弹性模量、泊松比、粘聚力、抗拉强度、内摩擦角、剪胀角）
+blkdyn.SetMat(2500, 1e10, 0.25, 1e6, 0.8e6, 40.0, 10.0);
+
+// 设置接触模型为线弹性
+blkdyn.SetIModel("linear");
+
+// 设置接触参数，从单元中继承
+blkdyn.SetIStiffByElem(1);
+blkdyn.SetIStrengthByElem();
+
+// 根据地层信息文件自动设定各单元的材料参数（地层网格文件名按高程自上而下排列）
+blkdyn.SetMatByStratum("arrange.txt");
+
+// 对组2单元的强度参数进行随机化处理（内聚力随机系数范围0.8-1.2）
+blkdyn.RandomizeMatByGroup("cohesion", 0.8, 1.2, 2);
+
+// 对组2单元的抗拉强度进行随机化处理（随机系数范围0.9-1.1）
+blkdyn.RandomizeMatByGroup("tension", 0.9, 1.1, 2);
+
+// 模型底部施加全约束
+blkdyn.FixV("x", 0.0, "x", -0.01, 0.01);
+blkdyn.FixV("y", 0.0, "y", -0.01, 0.01);
+blkdyn.FixV("z", 0.0, "z", -0.01, 0.01);
+
+// 模型左右两侧施加法向约束
+blkdyn.FixV("x", 0.0, "x", -0.01, 0.01);
+blkdyn.FixV("x", 0.0, "x", 399.99, 401);
+
+// 监测块体破坏度
+dyna.Monitor("gvalue", "gv_block_broken_ratio");
+
+// 监测竖直应力（syy）
+dyna.Monitor("block", "syy", 200, 150, 0);
+
+// 监测水平位移（ux）
+dyna.Monitor("block", "ux", 200, 150, 0);
+
+// 运行用户自定义命令流，调用CustomModel二次开发程序样本中的本构进行求解
+dyna.RunUDFCmd("StartSolve");
+
+// 执行仿真求解
+dyna.Solve();
+
+// 绘制弹性模量的云图
+dyna.Plot("Elem", "Young");
+
+// 绘制应力云图
+dyna.Plot("Elem", "syy");
+
+// 绘制位移云图
+dyna.Plot("Node", "ux");
+
+// 导出监测数据
+doc.ExportResult();
+
+// 释放动态链接库
+dyna.FreeUDF();

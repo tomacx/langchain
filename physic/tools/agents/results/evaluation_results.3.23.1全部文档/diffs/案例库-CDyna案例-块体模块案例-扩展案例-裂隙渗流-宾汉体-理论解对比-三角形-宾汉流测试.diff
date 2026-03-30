@@ -1,0 +1,17 @@
+--- 案例库-CDyna案例-块体模块案例-扩展案例-裂隙渗流-宾汉体-理论解对比-三角形-宾汉流测试.js (ground_truth)
++++ 案例库-CDyna案例-块体模块案例-扩展案例-裂隙渗流-宾汉体-理论解对比-三角形-宾汉流测试.js (generated)
+@@ -1,14 +1,10 @@
+-//设置当前工作路径为JavaScript脚本文件所在路径
+ setCurDir(getSrcDir());
+-
+ 
+ igeo.clear();
+ imeshing.clear();
+ 
+ dyna.Clear();
+ doc.clearResult();
+-
+-
+ 
+ //关闭力学计算开关
+ dyna.Set("Mechanic_Cal 0");

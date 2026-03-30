@@ -1,0 +1,34 @@
+setCurDir(getSrcDir());
+
+// 清空之前的计算状态和内存数据
+gflow.clear();
+
+// 定义计算网格的边界坐标及网格分辨率参数
+gflow.defGrid(537340, 537454, 378140, 378248, 100, 100);
+
+// 设定仿真总时长、Courant系数及输出时间间隔等全局参数
+gflow.setValue("LastTime", 80.0);
+gflow.setValue("CourantCoeff", 0.04);
+gflow.setValue("OutputInterval", 400);
+gflow.setValue("ParaNum", 32);
+
+// 导入地形数据文件至当前计算模型中
+gflow.importGrid("Cdem_zbed.dat");
+
+// 设置松散堆积体或地形的材料属性参数
+gflow.setMat(20, 0.0, 0.01);
+
+// 定义厚度监测点的位置及监测变量类型
+gflow.hist("Thickness", 30, 50);
+gflow.hist("Thickness", 50, 50);
+gflow.hist("Thickness", 80, 50);
+
+// 导出网格文件或绘制历史位置以验证模型构建
+gflow.exportGrid();
+gflow.drawHistPos();
+
+// 启动核心求解器进行数值计算推演
+gflow.solve();
+
+// 输出计算结果并打印提示信息确认完成
+print("Solution is OK!");

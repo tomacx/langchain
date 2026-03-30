@@ -1,0 +1,326 @@
+--- 案例库-CDyna案例-块体模块案例-扩展案例-地震作用下反倾岩质边坡破裂过程模拟--60-50.js (ground_truth)
++++ 案例库-CDyna案例-块体模块案例-扩展案例-地震作用下反倾岩质边坡破裂过程模拟--60-50.js (generated)
+@@ -1,248 +1,98 @@
+-//设置当前工作路径为JavaScript脚本文件所在路径
+ setCurDir(getSrcDir());
+ 
+-//打开力学计算开关
++// ==================== 1. 初始化CDyna仿真环境 ====================
+ dyna.Set("Mechanic_Cal 1");
++dyna.Set("UnBalance_Ratio 1e-4");
++dyna.Set("Gravity 0.0 -9.8 0.0");
++dyna.Set("Large_Displace 1");
++dyna.Set("Output_Interval 5000");
++dyna.Set("Moniter_Iter 100");
++dyna.Set("If_Virtural_Mass 1");
++dyna.Set("Virtural_Step 0.6");
++dyna.Set("If_Renew_Contact 1");
++dyna.Set("Contact_Detect_Tol 5e-3");
+ 
+-//设置不平衡率为1e-5
+-dyna.Set("UnBalance_Ratio 1e-4");
+-
+-//设置三个方向的重力加速度值
+-dyna.Set("Gravity 0.0 -9.8 0.0");
+-
+-//打开大变形计算开关
+-dyna.Set("Large_Displace 1");
+-
+-//设置云图输出间隔为5000
+-dyna.Set("Output_Interval 5000");
+-
+-//设置监测信息提取间隔为100时步
+-dyna.Set("Moniter_Iter 100");
+-
+-//打开虚质量计算开关
+-dyna.Set("If_Virtural_Mass 1");
+-
+-//设置虚质量计算时步
+-dyna.Set("Virtural_Step 0.6");
+-
+-//设置单元体积膨胀断裂应变及等效剪切断裂应变
+-//dyna.Set("Block_Soften_Value 0.01 0.03");
+-
+-//导入midas格式的网格
+-var msh1 =imesh.importMidas("50.fpn");
++// ==================== 2. 定义反倾岩质边坡几何网格模型参数（60-50规格） ====================
++// 创建矩形区域：长60m，高50m，宽20m
++var msh1 = imesh.importMidas("RockSlope_60x50.msh");
+ blkdyn.GetMesh(msh1);
+ 
+-blkdyn.CrtIFace();
++// 组间切割形成接触面（模拟节理）
++blkdyn.CrtIFace(1, 2);
+ blkdyn.UpdateIFaceMesh();
+ 
+-//设置单元模型为线弹性模型
+-blkdyn.SetModel("linear");
++// ==================== 3. 设置岩石基体材料参数 ====================
++// 密度(kg/m³), 弹性模量(Pa), 泊松比, 抗拉强度(Pa), 抗压强度(Pa), 摩擦角(度), 粘聚力(Pa)
++blkdyn.SetMat(2600, 1e10, 0.25, 3e6, 1e7, 35.0, 1e6, 1, 100);
+ 
+-//设置单元材料参数
+-blkdyn.SetMat(2600, 1e10, 0.15, 8e6, 8e6, 45, 10);
++// ==================== 4. 配置接触面断裂模型（节理破裂） ====================
++blkdyn.SetIModel("linear");
++blkdyn.SetIMat(1e11, 1e11, 35.0, 8e5, 8e5, -1, -1);
+ 
+-//设置结构面模型
+-blkdyn.SetIModel("linear");
++// 设置组间结构面材料参数（节理面）
++blkdyn.SetIMat(1e10, 1e10, 25, 5e4, 1e5, -1, -1);
+ 
+-blkdyn.SetIStrengthByElem();
+-blkdyn.SetIStiffByElem(10);
++// ==================== 5. 施加地震加速度时程荷载 ====================
++// 设置底部边界条件（固定X方向，允许Y方向位移）
++blkdyn.FixV("x", 0.0, "x", -1e-2, 1e-2);
++blkdyn.FixV("x", 0.0, "x", 59.99, 60.01);
++blkdyn.FixV("y", 0.0, "y", -1e-2, 1e-2);
+ 
+-//设置组间结构面材料参数
+-blkdyn.SetIMat(1e11, 1e11, 25, 8e5, 8e5, -1,-1);
++// 设置地震加速度时程（通过用户自定义命令流）
++dyna.RunUDFCmd("SetEarthquakeAccel 0.2 0.5");
+ 
+-//设置裂缝1材料参数
+-var coord1 = [179.308, 160, 0];
+-var coord2 = [179.308, 148, 0];
+-blkdyn.SetIMatByLine(1e11, 1e11, 25, 0, 0, coord1,coord2, 1e-2);
+-//设置裂缝2材料参数
+-var coord1 = [147.308, 160, 0];
+-var coord2 = [147.308, 132.724, 0];
+-blkdyn.SetIMatByLine(1e11, 1e11, 25, 0, 0, coord1,coord2, 1e-2);
+-//设置裂缝3材料参数
+-var coord1 = [115.308, 160, 0];
+-var coord2 = [115.308, 125.113, 0];
+-blkdyn.SetIMatByLine(1e11, 1e11, 25, 0, 0, coord1,coord2, 1e-2);
++// ==================== 6. 配置裂隙渗流模块 ====================
++dyna.Set("Config_FracSeepage 1");
++dyna.Set("FracSeepage_Cal 1");
++dyna.Set("FS_Solid_Interaction 1");
+ 
+-//设置裂缝4材料参数
+-var coord1 = [219.779, 40, 0];
+-var coord2 = [320, 40, 0];
+-blkdyn.SetIMatByLine(1e11, 1e11, 25, 0, 0, coord1,coord2, 1e-2);
++// 从固体单元接触面创建裂隙单元
++fracsp.CreateGridFromBlock(2);
+ 
+-//设置所有节点的局部阻尼0.8
+-blkdyn.SetLocalDamp(0.8);
+-////////////////////////////////////////////////////////////////
+-//对模型左右两侧及底部进行法向约束
+-blkdyn.FixV("y", 0.0, "y", -0.01, 0.01);
+-blkdyn.FixV("x", 0.0, "x", -0.01, 0.01);
+-blkdyn.FixV("x", 0.0, "x", 399.99, 400.01);
++// 设置裂隙渗流参数：密度、体积模量、渗透系数、初始开度
++fracsp.SetPropByGroup(1000.0, 1e7, 12e-7, 12e-5, 1, 11);
+ 
+-//施加重力
+-blkdyn.ApplyGravity();
++// ==================== 7. 动态施加渗流压力及流量边界条件 ====================
++var fracspBound = [0.0, 0.0, 0.0, 0.0]; // 压力边界条件
++fracsp.CalDynaBound(fracspBound);
+ 
+-//监测典型位置的水平及竖直方向位移
+-dyna.Monitor("block", "xdis", 131.308, 160, 0);
+-dyna.Monitor("block", "ydis", 131.308, 160, 0);
+-dyna.Monitor("block", "magdis", 131.308, 160, 0);
+-dyna.Monitor("block", "xdis", 163.308, 160, 0);
+-dyna.Monitor("block", "ydis", 163.308, 160, 0);
+-dyna.Monitor("block", "magdis", 163.308, 160, 0);
+-dyna.Monitor("block", "xdis", 199.308, 160, 0);
+-dyna.Monitor("block", "ydis", 199.308, 160, 0);
+-dyna.Monitor("block", "magdis", 199.308, 160, 0);
++// ==================== 8. 定义关键监测点 ====================
++dyna.Monitor("block", "xdis", 30, 30, 0);   // X方向位移监测
++dyna.Monitor("block", "ydis", 30, 30, 0);   // Y方向位移监测
++dyna.Monitor("block", "stress", 30, 30, 0); // 应力监测
++dyna.Monitor("block", "strain", 30, 30, 0); // 应变监测
+ 
+-dyna.Monitor("block", "xdis", 244.481, 130, 0);
+-dyna.Monitor("block", "ydis", 244.481, 130, 0);
+-dyna.Monitor("block", "magdis", 244.481, 130, 0);
+-dyna.Monitor("block", "xdis", 294.827, 70, 0);
+-dyna.Monitor("block", "ydis", 294.827, 70, 0);
+-dyna.Monitor("block", "magdis", 294.827, 70, 0);
++// ==================== 9. 配置输出文件路径与结果保存参数 ====================
++dyna.Set("SaveFile_Out 1");
++dyna.Set("Result_File_Path ./output/");
+ 
+-//监测典型位置的水平及竖直方向加速度
+-dyna.Monitor("block", "xacc", 99.308, 160, 0);
+-dyna.Monitor("block", "yacc", 99.308, 160, 0);
+-dyna.Monitor("block", "magacc", 99.308, 160, 0);
+-dyna.Monitor("block", "xacc", 163.308, 160, 0);
+-dyna.Monitor("block", "yacc", 163.308, 160, 0);
+-dyna.Monitor("block", "magacc", 163.308, 160, 0);
+-dyna.Monitor("block", "xacc", 219.308, 160, 0);
+-dyna.Monitor("block", "yacc", 219.308, 160, 0);
+-dyna.Monitor("block", "magacc", 219.308, 160, 0);
++// ==================== 10. 执行求解循环 ====================
++// 初始平衡步
++dyna.Solve();
+ 
+-dyna.Monitor("block", "xacc", 99.308, 100, 0);
+-dyna.Monitor("block", "yacc", 99.308, 100, 0);
+-dyna.Monitor("block", "magacc", 99.308, 100, 0);
+-dyna.Monitor("block", "xacc", 163.308, 100, 0);
+-dyna.Monitor("block", "yacc", 163.308, 100, 0);
+-dyna.Monitor("block", "magacc", 163.308, 100, 0);
+-dyna.Monitor("block", "xacc", 219.308, 100, 0);
+-dyna.Monitor("block", "yacc", 219.308, 100, 0);
+-dyna.Monitor("block", "magacc", 219.308, 100, 0);
+-dyna.Monitor("block", "xacc", 269.654, 100, 0);
+-dyna.Monitor("block", "yacc", 269.654, 100, 0);
+-dyna.Monitor("block", "magacc", 269.654, 100, 0);
++// 进入动力学计算循环（模拟地震过程）
++var totalSteps = 50000;
++var currentStep = 0;
+ 
+-dyna.Monitor("block", "xacc", 99.308, 40, 0);
+-dyna.Monitor("block", "yacc", 99.308, 40, 0);
+-dyna.Monitor("block", "magacc", 99.308, 40, 0);
+-dyna.Monitor("block", "xacc", 163.308, 40, 0);
+-dyna.Monitor("block", "yacc", 163.308, 40, 0);
+-dyna.Monitor("block", "magacc", 163.308, 40, 0);
+-dyna.Monitor("block", "xacc", 219.308, 40, 0);
+-dyna.Monitor("block", "yacc", 219.308, 40, 0);
+-dyna.Monitor("block", "magacc", 219.308, 40, 0);
+-dyna.Monitor("block", "xacc", 320, 40, 0);
+-dyna.Monitor("block", "yacc", 320, 40, 0);
+-dyna.Monitor("block", "magacc", 320, 40, 0);
+-dyna.Monitor("block", "xacc", 360, 40, 0);
+-dyna.Monitor("block", "yacc", 360, 40, 0);
+-dyna.Monitor("block", "magacc", 360, 40, 0);
+-//求解至稳定
+-dyna.Solve();
+-dyna.Save("Elastic.sav");
+-//dyna.Restore("Elastic.sav");
++while (currentStep < totalSteps) {
++    // 动态施加渗流边界条件（每一步执行）
++    fracsp.CalDynaBound(fracspBound);
++    
++    // 计算节点压力及饱和度（每一步执行）
++    fracsp.CalNodePressure();
++    
++    // 计算单元流速、流量（每一步执行）
++    fracsp.CalElemDischarge();
++    
++    // 计算与固体破裂的耦合（每一步执行）
++    fracsp.CalIntSolid();
++    
++    // 计算与孔隙渗流的耦合（每一步执行）
++    fracsp.CalIntPoreSp();
++    
++    currentStep++;
++}
+ 
+-//设置模型为Mohr-Coulomb应变软化模型
+-blkdyn.SetModel("MC");
+-
+-//求解至稳定
+-dyna.Solve();
+-dyna.Save("Plastic.sav");
+-//dyna.Restore("Plastic.sav");
+-
+-//**************************************************初始化位移
+-//定义三个方向基础值
+-var values = new Array(0.0,0.0, 0);
+-
+-//定义变化梯度
+-var gradient = new Array(0, 0, 0, 0, 0, 0, 0, 0, 0);
+-
+-//将控制范围内的位移清零
+-blkdyn.InitConditionByCoord("displace", values, gradient, -1e5, 1e5, -1e5, 1e5, -1e5, 1e5);
+-//**************************************************初始化位移
+-
+-
+-///////////////////////////////////以下为动力计算
+-
+-//blkdyn.SetIModel("brittleMC");
+-blkdyn.SetIModel("FracE");
+-blkdyn.SetIFracEnergyByGroupInterface(100,1000, -1,-1);
+-blkdyn.SetIFracEnergyByGroupInterface(100,1000,   0, 0);
+-//设置裂缝1材料参数
+-var coord1 = [179.308, 160, 0];
+-var coord2 = [179.308, 148, 0];
+-blkdyn.SetIFracEnergyByLine(0, 0, coord1,coord2, 1e-3);
+-//设置裂缝2材料参数
+-var coord1 = [147.308, 160, 0];
+-var coord2 = [147.308, 132.724, 0];
+-blkdyn.SetIFracEnergyByLine(0, 0, coord1,coord2, 1e-3);
+-//设置裂缝3材料参数
+-var coord1 = [115.308, 160, 0];
+-var coord2 = [115.308, 125.113, 0];
+-blkdyn.SetIFracEnergyByLine(0, 0, coord1,coord2, 1e-3);
+-
+-//设置裂缝4材料参数
+-var coord1 = [219.779, 40, 0];
+-var coord2 = [320, 40, 0];
+-blkdyn.SetIFracEnergyByLine(0, 0, coord1,coord2, 1e-3);
+-
+-//设置所有节点的局部阻尼0.0
+-blkdyn.SetLocalDamp(0.0);
+-
+-//关闭虚质量计算开关
+-dyna.Set("If_Virtural_Mass 0");
+-
+-//设置当前时间为0
+-dyna.Set("Time_Now 0");
+-
+-//设置动力计算时步
+-dyna.Set("Time_Step 5e-5");
+-
+-//计算时步自动修正
+-//blkdyn.TimeStepCorrect();
+-
+-//对模型左右两侧及底部的约束进行解除
+-blkdyn.FreeV("y", "y", -0.01, 0.01);
+-blkdyn.FreeV("x", "x", -0.01, 0.01);
+-blkdyn.FreeV("x", "x", 399.99, 400.01);
+-
+-//模型左右两侧施加自由场边界
+-blkdyn.SetFreeFieldBound("x", -0.01, 0.01);
+-blkdyn.SetFreeFieldBound("x", 399.99, 400.01);
+-
+-//模型底部施加无反射边界条件
+-blkdyn.SetQuietBoundByCoord(-2000,2000,-0.01,0.01,-2000,2000);
+-
+-
+-
+-
+-//**************************************************施加地震应力
+-//指定三个方向的载荷系数
+-var coeff1= new Array(6.72e6 / (2 * 3.14 * 5), 0, 0);
+-
+-//指定三个方向的载荷系数
+-//var coeff2= new Array(0, 10.8e6, 0);
+-
+-//x方向下限及上限
+-var x= new Array(-1000,1000);
+-
+-//y方向下限及上限
+-var y= new Array(-0.01, 0.01);
+-
+-//z方向下限及上限
+-var z= new Array(-1000,1000);
+-
+-//剪切波-面力、载荷系数、衰减指数、振幅、周期、初相位、开始时间、结束时间
+-blkdyn.ApplyDynaSinVarByCoord ("face_force", false, coeff1, 0, 1.0 * 9.8, 0.2, 0, 0, 20, x, y, z);
+-
+-//竖直方向地震应力-从文件中读入-从文件中读入振动速度时程曲线
+-//blkdyn.ApplyDynaVarFromFileByCoord ("face_force", false,coeff2, "nor-7-lef-ver.txt", x, y, z);
+-//**************************************************施加地震应力);
+-
+-//动态求解20s
+-dyna.DynaCycle(30.0);
+-dyna.Save("Dyna.sav");
+-
+-//打印提示信息
++// ==================== 11. 导出最终结果 ====================
+ print("Solution Finished");
+-
+-//dyna.Plot("Interface","FractureEnergy", 1);
++print("Rupture process simulation completed successfully.");

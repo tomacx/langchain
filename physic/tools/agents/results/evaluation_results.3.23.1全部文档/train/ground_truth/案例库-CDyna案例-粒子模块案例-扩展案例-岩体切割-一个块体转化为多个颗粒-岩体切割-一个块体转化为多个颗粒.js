@@ -1,0 +1,84 @@
+//设置当前工作路径为JavaScript脚本文件所在路径
+setCurDir(getSrcDir());
+
+//打开力学计算开关
+dyna.Set("Mechanic_Cal 1");
+
+//设置3个方向的重力加速度值(均为0)
+dyna.Set("Gravity 0.0 0.0 0.0");
+
+//关闭大变形计算开关
+dyna.Set("Large_Displace 1");
+
+dyna.Set("If_Renew_Contact 1");
+
+//设置计算结果的输出间隔为500步
+dyna.Set("Output_Interval 500");
+
+//设置监测结果的输出时步为10步
+dyna.Set("Moniter_Iter 10");
+
+//打开虚质量计算开关
+dyna.Set("If_Virtural_Mass 0");
+
+//设置虚质量时步为0.6
+dyna.Set("Virtural_Step 0.4");
+
+//允许自动在Result文件夹下输出Save文件
+dyna.Set("SaveFile_Out 1");
+
+
+dyna.Set("Elem_Kill_Option 1 0.03 0.01 1 1");
+
+///打开允许块体变为颗粒的开关
+dyna.Set("If_Allow_Block_To_Particles 1 40");
+
+
+//导入gid格式的网格
+blkdyn.ImportGrid("gid", "rock.msh");
+
+
+////在单元自由面上设置弹簧
+blkdyn.CrtBoundIFaceByGroup(1);
+blkdyn.CrtBoundIFaceByGroup(2);
+
+/////更新网格
+blkdyn.UpdateIFaceMesh();
+
+//设置所有单元为MC理想弹塑性模型
+blkdyn.SetModel("MC");
+
+
+//设置组1的材料参数，分别为密度，弹性模量，泊松比，粘聚力、抗拉强度、内摩擦角、剪胀角、组号
+blkdyn.SetMatByGroup(2500, 3e10, 0.25, 5e6, 2e6, 40.0, 10.0, 1);
+blkdyn.SetMatByGroup(2500, 3e10, 0.25, 5e6, 2e6, 40.0, 10.0, 2);
+
+blkdyn.SetIModel("brittleMC");
+blkdyn.SetIMat(5e10, 5e10, 6.0 , 0, 0);
+
+
+
+//Y方向底部法向约束
+blkdyn.FixV("xy", 0.0, "y", -0.001, 0.001);
+
+
+//切割头部分水平速度为0.0 m/s
+blkdyn.FixV("x", 0.0, "y",0.401, 100);
+
+
+//切割头部分竖直方向速度-10m/s
+blkdyn.FixV("y", -10.0, "y",0.401, 100);
+
+//设置全部节点的局部阻尼为0.8
+blkdyn.SetLocalDamp(0.01);
+
+
+//监测典型测点的y方向的应力
+dyna.Monitor("block", "xdis", 0.0, 0.4, 0);
+dyna.Monitor("block", "xdis", 0.2, 0.4, 0);
+dyna.Monitor("block", "syy",0.1028,0.04805,0);
+
+dyna.TimeStepCorrect(0.1);
+
+//计算40000步
+dyna.Solve(40000);

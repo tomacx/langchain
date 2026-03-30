@@ -1,0 +1,79 @@
+setCurDir(getSrcDir());
+
+// 导入几何数据（GID格式）
+imesh.importGid("wheel.msh");
+
+// 计算Part信息并设置密度
+gFun.calArbi3DModelInfo(cMesh[2], 1000, 100, 1, 1);
+
+// 导入刚性面模型数据
+rdface.Import("gid", "GidGrp.msh");
+
+// 根据组号范围创建刚体部件（组号6-8）
+var nTotal = rdface.CrtPart(6, 8);
+
+// 设置颗粒材料属性
+pdyna.SetModel("brittleMC");
+pdyna.SetMat(2500, 5e7, 0.3, 0, 0, 10, 0, 0.01);
+
+// 设置局部阻尼
+rdface.SetPartLocalDamp(0.01, 0.01);
+
+// 创建刚体间的弹簧连接（传递作用力）
+rdface.CrtConnector("spring", 6, 8, 1e5, 0.1, 0.01);
+
+// 设置颗粒Part的平动速度（X方向0.5m/s，固定Y和Z方向）
+var afVel = [0.5, 0, 0];
+var abFixed = [0, 1, 1];
+pdyna.SetPartVel(afVel, abFixed, 6, 8);
+
+// 配置监测变量：转动速度分量X、能量密度
+dyna.Monitor("rdface", "rg_PartRotaVelX", 6, 0, 0);
+dyna.Monitor("rdface", "sw_e", 6, 0, 0);
+
+// 设置求解参数
+dyna.Set("Time_Step 1e-3");
+dyna.Set("Output_Interval 100");
+dyna.Set("Gravity 0.0 -9.8 0.0");
+dyna.Set("Large_Displace 1");
+dyna.Set("If_Renew_Contact 1");
+
+// 设置输出文件路径
+dyna.Set("Output_Dir ./results");
+
+// 计算前初始化
+dyna.BeforeCal();
+
+// 执行求解器运行（迭代步数）
+var stepCount = 0;
+for (var i = 0; i < 100000; i++) {
+    // 集成核心计算
+    var unbal = pdyna.Solver();
+
+    // 计算单元变形力
+    pdyna.CalBlockForce();
+
+    // 计算节点运动
+    pdyna.CalNodeMovement();
+
+    // 输出监测信息
+    dyna.OutputMonitorData();
+
+    // 每隔100步推送信息
+    if (i != 0 && i % 100 == 0) {
+        print("不平衡率：" + unbal);
+        dyna.PutStep(1, i, 0.1);
+    }
+
+    stepCount++;
+}
+
+// 提取计算后的Part特性（不平衡率、流速等）
+var finalUnbal = pdyna.GetVar("gv_solid_unbal");
+var finalVelX = pdyna.GetVar("sw_xvel");
+
+print("最终不平衡率：" + finalUnbal);
+print("最终X方向流速：" + finalVelX);
+
+// 保存最终仿真结果与监测数据
+dyna.SaveResults();

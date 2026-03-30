@@ -1,0 +1,113 @@
+--- 案例库-CDyna案例-粒子模块案例-扩展案例-颗粒膨胀后进入裂缝-ParticleExpandIntoCrack.js (ground_truth)
++++ 案例库-CDyna案例-粒子模块案例-扩展案例-颗粒膨胀后进入裂缝-ParticleExpandIntoCrack.js (generated)
+@@ -1,70 +1,74 @@
+-//设置当前路径为JavaScript脚本所在的路径
+ setCurDir(getSrcDir());
+ 
++// ==================== 1. 初始化仿真环境 ====================
+ dyna.Set("If_Particle_NForce_Incremental 0");
+-
+-//设置输出的间隔为500步
+ dyna.Set("Output_Interval 500");
+-
+-//关闭虚质量计算开关
+ dyna.Set("If_Virtural_Mass 0");
+-
+ dyna.Set("Large_Displace 1");
+-
+ dyna.Set("If_Renew_Contact 1");
+-
+ dyna.Set("Particle_Renew_Interval 1");
+ 
+-//设置三个方向的重力加速度
++// ==================== 2. 设置物理参数 ====================
+ dyna.Set("Gravity 0.0 0.0 0.0");
++dyna.Set("Contact_Detect_Tol 0.001");
++dyna.Set("Time_Step 1e-5");
+ 
+-//设置接触容差为0.001m
+-dyna.Set("Contact_Detect_Tol 0.000");
++// ==================== 3. 创建裂缝边界网格 ====================
++var crackCoord = [
++    [0, 0, 0],
++    [1.0, 0, 0],
++    [1.0, 0.5, 0],
++    [0, 0.5, 0]
++];
+ 
+-//设置颗粒超出范围后清除颗粒
+-//dyna.Set("Particle_Out_Kill 1 -3 3 -0.1 3 -3 3 0");
++rdface.Create(1, 1, 2, crackCoord); // 裂缝壁面1
++rdface.Create(2, 2, 2, crackCoord); // 裂缝壁面2
+ 
+-
+-blkdyn.ImportGrid("gid","112.msh");
+-
++// ==================== 4. 导入或创建边界网格 ====================
++blkdyn.ImportGrid("gid", "crack_boundary.msh");
+ blkdyn.CrtIFace();
+-
+ blkdyn.UpdateIFaceMesh();
+-
+ blkdyn.SetModel("MC");
+ 
+-blkdyn.SetMat(2500,1e8,0.25,10e6,5e6, 25, 15);
+-
+-
++// ==================== 5. 设置块体材料参数 ====================
++blkdyn.SetMat(2500, 1e8, 0.25, 10e6, 5e6, 25, 15);
+ blkdyn.SetIModel("brittleMC");
+-
+ blkdyn.SetIStrengthByElem();
+-
+ blkdyn.SetIStiffByElem(1.0);
+-
+ blkdyn.SetLocalDamp(0.05);
+ 
++// ==================== 6. 固定边界 ====================
+ blkdyn.FixV("x", 0.0, "x", -0.001, 0.001);
+ blkdyn.FixV("x", 0.0, "x", 0.999, 1.01);
+ blkdyn.FixV("y", 0.0, "y", -0.001, 0.001);
+ blkdyn.FixV("y", 0.0, "y", 0.999, 1.01);
+ 
++// ==================== 7. 生成膨胀颗粒组 ====================
++var x = [0.41, 0.59];
++var y = [0.41, 0.59];
++var z = [-1, 1];
+ 
+-//导入gid格式的颗粒
+-var x=[0.41,0.59];
+-var y=[0.41,0.59];
+-var z=[-1,1];
+-pdyna.CreateByCoord(2000,1,1,0.003,0.005,0.003,x,y,z);
++pdyna.CreateByCoord(2000, 1, 1, 0.003, 0.005, 0.003, x, y, z);
+ 
+-
+-//设置颗粒模型为脆性断裂模型
++// ==================== 8. 设置颗粒材料参数 ====================
+ pdyna.SetModel("brittleMC");
+-
+-//设置颗粒的材料参数，依次为密度、弹性模量、泊松比、抗拉强度、粘聚力、内摩擦角、局部阻尼、粘性阻尼系数（临界阻尼比）
+ pdyna.SetMat(2500, 2e7, 0.25, 0.0, 0.0, 15, 0.0, 0.1);
+ 
+-//设置计算时步
+-dyna.Set("Time_Step 1e-5");
++// ==================== 9. 设置初始速度场驱动颗粒运动 ====================
++var velocity = [0.0, 0.0, 0.5]; // Z方向向裂缝内部膨胀的初始速度
++pdyna.ApplyVelocityByGroup(velocity, 1, 1);
+ 
+-//迭代1万步
++// ==================== 10. 配置接触属性 ====================
++blkdyn.SetContact("If_Calc_Contact 1");
++blkdyn.SetContact("Contact_Type 2"); // 颗粒与块体接触类型
++
++// ==================== 11. 调用ExportPeneCircleTargetInfo导出统计信息 ====================
++for (var i = 0; i < 5; i++) {
++    pfly.ExportPeneCircleTargetInfo(39, 56, 1.0 / 56.0, 1, 1, 2);
++}
++
++// ==================== 12. 执行求解器循环 ====================
+ dyna.Solve(10000);
++
++// ==================== 13. 导出结果文件 ====================
++pdyna.exportPDyna("par.dat");

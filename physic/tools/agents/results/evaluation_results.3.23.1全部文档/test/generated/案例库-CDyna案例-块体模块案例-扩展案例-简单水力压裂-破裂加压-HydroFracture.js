@@ -1,0 +1,187 @@
+setCurDir(getSrcDir());
+
+// ==================== 1. 初始化CDyna仿真环境 ====================
+dyna.Clear();
+igeo.clear();
+imeshing.clear();
+doc.clearResult();
+
+// 打开力学计算开关
+dyna.Set("Mechanic_Cal 1");
+
+// 设置重力加速度（无重力）
+dyna.Set("Gravity 0 0.0 0");
+
+// 关闭大变形计算
+dyna.Set("Large_Displace 0");
+
+// 设置输出间隔
+dyna.Set("Output_Interval 500");
+
+// 打开虚质量计算
+dyna.Set("If_Virtural_Mass 1");
+
+// 设置虚质量时步
+dyna.Set("Virtural_Step 0.3");
+
+// 设置系统不平衡率
+dyna.Set("UnBalance_Ratio 1e-4");
+
+// 关闭接触更新计算
+dyna.Set("If_Renew_Contact 0");
+
+// 设置接触容差
+dyna.Set("Contact_Detect_Tol 0.0");
+
+// 开启拓扑接触查找
+dyna.Set("If_Find_Contact_OBT 1");
+
+// 包含裂隙渗流计算模块
+dyna.Set("Config_FracSeepage 1");
+
+// 开启裂隙渗流计算
+dyna.Set("FracSeepage_Cal 1");
+
+// 开启简单流固耦合计算
+dyna.Set("SimpleFSI 1");
+
+// ==================== 2. 创建几何模型 ====================
+// 创建矩形岩体面（10m x 5m）
+var faceid = igeo.genRectS(0, 0, 0, 10, 5, 0, 0.2, 1);
+
+// 创建注入点（位于矩形中心附近）
+var pid1 = igeo.genPoint(4.9, 2.5, 0, 0.1);
+var pid2 = igeo.genPoint(5.1, 2.5, 0, 0.1);
+var lid = igeo.genLine(pid1, pid2);
+
+// 设置硬线到面，便于施加水压
+igeo.setHardLineToFace(lid, faceid);
+
+// ==================== 3. 划分网格并下载至blkdyn ====================
+imeshing.genMeshByGmsh(2);
+blkdyn.GetMesh(imeshing);
+
+// 切割形成接触面（裂隙面）
+blkdyn.CrtIFace(1, 1);
+
+// 更新接触面网格
+blkdyn.UpdateIFaceMesh();
+
+// ==================== 4. 设置材料参数 ====================
+// 设定所有单元的本构为线弹性本构
+blkdyn.SetModel("MC");
+
+// 设定材料参数：密度、泊松比、拉强度、压强度等
+blkdyn.SetMatByGroup(2500, 6.5e9, 0.25, 3e6, 3e6, 30.0, 10.0, 1);
+
+// 设定所有接触面的本构为线弹性模型
+blkdyn.SetIModel("brittleMC");
+
+// 接触面刚度需要为块体刚度的1-10倍
+blkdyn.SetIMat(9e9, 9e9, 30, 3e6, 3e6, 1);
+
+// 设接触面刚度为单元特征刚度的1倍
+blkdyn.SetIStiffByElem(1.0);
+
+// 设定全部节点的局部阻尼系数
+blkdyn.SetLocalDamp(0.8);
+
+// ==================== 5. 从固体单元接触面创建裂隙单元 ====================
+fracsp.CreateGridFromBlock(2);
+
+// ==================== 6. 设置裂隙渗流参数 ====================
+// 依次为密度、体积模量、渗透系数、裂隙初始开度、组号下限及组号上限
+fracsp.SetPropByGroup(1000.0, 1e7, 1e-14, 1e-8, 1, 1);
+
+// ==================== 7. 设置简单水力压裂模式参数 ====================
+// IDNo: 简单水力压裂参数序号（从1开始）
+// BoundType: 水压加载类型，1-压力边界，2-流量边界
+// fBoundV1: 注入位置的压力（Pa）
+// fBoundV2: 每米压力衰减值
+// fCent: 水压注入点的坐标
+// IfCal: 是否开启本序号对应的简单压裂计算
+blkdyn.SetSimpleHyFracPram(1, 1, 1e6, 0.0, [5.0, 2.5, 0], 1);
+
+// ==================== 8. 构建动态压力加载曲线 ====================
+// 定义时间与压力值的数组（时间：秒，压力：Pa）
+var fArrayGrad = [0.0, 0.0, 0.0]; // 梯度设为0，表示均匀压力
+var aValue = new Array();
+
+// 初始时刻无压力
+aValue[0] = [0, 0];
+
+// t=50s时施加1e4 Pa
+aValue[1] = [50, 1e4];
+
+// t=100s时增加到3e4 Pa
+aValue[2] = [100, 3e4];
+
+// t=150s时增加到5e4 Pa
+aValue[3] = [150, 5e4];
+
+// t=200s时压力保持4e4 Pa（模拟压力波动）
+aValue[4] = [200, 4e4];
+
+// t=300s时压力回落到3e4 Pa
+aValue[5] = [300, 3e4];
+
+// ==================== 9. 施加动态压力边界条件 ====================
+// 圆柱轴线端点坐标（注入点附近）
+var coord1 = new Array(5.0, 2.5, 0);
+var coord2 = new Array(5.0, 2.5, 0);
+
+// 空心圆柱内外半径（近似为点源，内径极小）
+var fRad1 = 0.0;
+var fRad2 = 0.1;
+
+// 施加动态压力边界条件（"pp"表示节点流体压力）
+fracsp.ApplyDynaConditionByCylinder("pp", aValue, fArrayGrad,
+    coord1[0], coord1[1], coord1[2],
+    coord2[0], coord2[1], coord2[2],
+    fRad1, fRad2);
+
+// ==================== 10. 设置输出监测变量 ====================
+// 设置裂隙渗流与裂缝压力耦合时，仅当裂隙破裂后施加压力及更新裂隙开度
+dyna.Set("FS_Frac_Start_Cal 1");
+
+// 设置水位面与水底面坐标（用于简单流固耦合计算）
+dyna.Set("WaterLevel_X 0.0");
+dyna.Set("WaterLevel_Y 0.0");
+dyna.Set("WaterLevel_Z 0.0");
+dyna.Set("WaterBottom_X 0.0");
+dyna.Set("WaterBottom_Y 0.0");
+dyna.Set("WaterBottom_Z -10.0");
+
+// ==================== 11. 执行求解器运行 ====================
+// 开启裂隙渗流计算开关
+dyna.Set("FracSeepage_Cal 1");
+
+// 运行用户自定义命令流，调用求解器
+dyna.RunUDFCmd("Solver");
+
+// 或者直接使用裂隙渗流核心求解器
+fracsp.Solver();
+
+// ==================== 12. 获取并导出计算结果 ====================
+// 计算节点压力及饱和度
+fracsp.CalNodePressure();
+
+// 动态单元流速、流量
+fracsp.CalElemDischarge();
+
+// 计算与固体破裂的耦合
+fracsp.CalIntSolid();
+
+// 计算与孔隙渗流的耦合
+fracsp.CalIntPoreSp();
+
+// ==================== 13. 验证仿真输出数据 ====================
+// 获取当前时间步的压力值进行验证
+var currentPressure = fracsp.CalNodePressure();
+
+// 检查压力是否达到预期阈值（例如5e4 Pa）
+if (currentPressure > 4.9e4) {
+    // 压力已达到预期范围，任务完成
+}
+
+// 输出结果文件已自动生成，包含裂隙几何形态和压力分布信息

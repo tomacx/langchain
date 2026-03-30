@@ -1,0 +1,120 @@
+--- 案例库-CDyna案例-块体模块案例-扩展案例-矿石在高压卸荷及孔隙高压气体双重作用下的破裂过程-RockFail.js (ground_truth)
++++ 案例库-CDyna案例-块体模块案例-扩展案例-矿石在高压卸荷及孔隙高压气体双重作用下的破裂过程-RockFail.js (generated)
+@@ -1,73 +1,67 @@
+ setCurDir(getSrcDir());
+ 
+-var InitPP = 50e6;
+-
++// ==================== 1. 初始化仿真环境 ====================
+ dyna.Set("Mechanic_Cal 1");
+-
+-dyna.Set("UnBalance_Ratio 1e-2");
+-
+-dyna.Set("Gravity 0.0 0.0 0.0");
+-
++dyna.Set("Gravity 0.0 -9.8 0.0");
+ dyna.Set("Large_Displace 1");
+-
+ dyna.Set("If_Renew_Contact 1");
+-
+-
+ dyna.Set("Output_Interval 100");
+-
+-dyna.Set("Moniter_Iter 100");
+-
+-dyna.Set("Contact_Detect_Tol 0.0");
+-
+-dyna.Set("Renew_Interval 100");
+-
++dyna.Set("Monitor_Iter 50");
++dyna.Set("Contact_Detect_Tol 1e-5");
+ dyna.Set("If_Virtural_Mass 0");
+ 
+-dyna.Set("Contact_Search_Method 2");
+-
++// ==================== 2. 导入网格几何数据 ====================
+ blkdyn.ImportGrid("ansys", "model.dat");
+-
+-blkdyn.CrtIFace ();
+-
++blkdyn.CrtIFace();
+ blkdyn.UpdateIFaceMesh();
+ 
+-blkdyn.SetModel("linear", 2);
+-blkdyn.SetModel("Air", 3);
+-blkdyn.SetMat(3200,  6.0e10,  0.25,  36e6, 12e6, 40, 10, 2);
+-blkdyn.SetMat(900,  1.0e9,  0.25,  36e6, 12e6, 40, 10, 3);
++// ==================== 3. 设置材料属性 ====================
++// 岩石基质材料参数（密度、弹性模量、泊松比、屈服强度等）
++blkdyn.SetMat(2500, 6.0e10, 0.25, 36e6, 12e6, 40, 10);
+ 
+-blkdyn.SetAirMat(1, 2.0, InitPP, 1.333 );
++// 空气/气体材料参数（密度、压力、绝热指数）
++var InitPP = 50e6; // 初始孔隙压力 Pa
++blkdyn.SetAirMat(1, 2.0, InitPP, 1.333);
+ blkdyn.BindAirMat(1, 3, 3);
+ 
++// ==================== 4. 设置损伤模型参数 ====================
+ blkdyn.SetIModel("brittleMC");
+-//blkdyn.SetIModel("FracE", 2, 2);
++blkdyn.SetIMat(1e15, 1e15, 40, 36e6, 12e6); // 拉伸断裂能、剪切断裂能
+ 
+-blkdyn.SetIMat(1e15, 1e15, 40, 36e6, 12e6);
+-blkdyn.SetIMat(1e15, 1e15, 0, 1, 1, 2, 3);
+-blkdyn.SetIMat(1e15, 1e15, 0, 1, 1, 3, 3);
+-
+-blkdyn.SetIFracEnergyByCoord(10, 1000, -1e5, 1e5, -1e5, 1e5, -1e5, 1e5);
+-
+-blkdyn.SetLocalDamp(0.0);
+-
+-dyna.Set("If_Cal_Rayleigh 1");
+-
+-blkdyn.SetRayleighDamp(1e-8, 0.0);
+-
+-
+-
+-//定义三个方向基础值
+-var values = new Array(-InitPP,-InitPP, -InitPP);
+-//定义变化梯度
++// ==================== 5. 设置初始孔隙压力（高压气体条件） ====================
++var values = new Array(-InitPP, -InitPP, -InitPP);
+ var gradient = new Array(0, 0, 0, 0, 0, 0, 0, 0, 0);
+-//将控制范围内的位移清零
+ blkdyn.InitConditionByCoord("stress", values, gradient, -1e5, 1e5, -1e5, 1e5, -1e5, 1e5);
+ 
++// ==================== 6. 设置卸载边界条件（动态正弦载荷） ====================
++// 选择顶部表面节点进行卸载
++var oSel = new SelNodes(vMesh["Dyna_BlkDyn"]);
++oSel.box(-0.1, -0.1, -0.1, 10.1, 10.1, 10.1);
+ 
++// 定义三个方向载荷系数（X,Y方向为0，Z方向施加卸载）
++var coeff = new Array(0.0, 0.0, -5e6); // Z方向面力系数（负值表示压缩卸载）
++
++// 应用动态正弦边界条件：fKesai=0（无衰减），fAmp=1.0m/s，fCycle=0.2s
++blkdyn.ApplyDynaSinVarBySel(oSel, "face_force", true, coeff, 0.0, 1.0, 0.2, 0, 0, 0.5);
++
++// ==================== 7. 设置内部压力载荷（气体膨胀效应） ====================
++blkdyn.ApplyConditionByCylinder("face_force", [0, 0, -InitPP], [0, 0, 0, 0, 0, 0, 0, 0, 0], 0, 0, -1, 0, 0, 1, 0.19, 0.21, true);
++
++// ==================== 8. 设置阻尼与时间步长 ====================
++blkdyn.SetLocalDamp(0.0);
+ dyna.TimeStepCorrect(0.5);
+ 
+-dyna.Monitor("gvalue","gv_spring_crack_ratio");
++// ==================== 9. 配置输出请求 ====================
++// 监测块体破裂度
++dyna.Monitor("gvalue", "gv_block_crack_ratio");
++// 监测应力应变
++dyna.Monitor("block", "stress", 1, 1, 1);
++// 监测位移
++dyna.Monitor("block", "xdis", 1.0, 1.0, 1.0);
+ 
+-dyna.Solve(10000);
+-dyna.Save("50mpa.sav");
+-blkdyn. ExportGradationCurveByGroup (2, 2);
++// ==================== 10. 执行求解 ====================
++// 总分析时间 2.0s，输出间隔已设置
++dyna.Solve(2.0);
++
++// ==================== 11. 导出结果 ====================
++blkdyn.ExportGradationCurveByGroup(1, 1);

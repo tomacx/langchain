@@ -1,0 +1,88 @@
+--- 案例库-建模及网格案例-参数化几何及网格创建案例-参数化网格创建-参数化网格创建.js (ground_truth)
++++ 案例库-建模及网格案例-参数化几何及网格创建案例-参数化网格创建-参数化网格创建.js (generated)
+@@ -1,36 +1,54 @@
+-//产生第一组参数化的六面体网格
+-var acoord = new Array();
+-acoord[0] = [0,0,0];
+-acoord[1] = [4,0,0];
+-acoord[2] = [4,4,0];
+-acoord[3] = [0,4,0];
+-acoord[4] = [0,0,2];
+-acoord[5] = [4,0,2];
+-acoord[6] = [4,4,2];
+-acoord[7] = [0,4,2];
++setCurDir(getSrcDir());
+ 
+-imeshing.genHex("f1",acoord, 10,10,5);
++// ========== 参数定义 ==========
++var nDim = 2; // 二维计算域
++var lengthX = 100.0; // X方向长度(m)
++var lengthY = 100.0; // Y方向长度(m)
++var divX = 50; // X方向节点分割数
++var divY = 50; // Y方向节点分割数
++var originX = 0.0; // 原点X坐标
++var originY = 0.0; // 原点Y坐标
+ 
+-//产生第二组参数化的六面体网格
+-acoord[0] = [-2,3,0];
+-acoord[1] = [0,2,0];
+-acoord[2] = [0,4,0];
+-acoord[3] = [-2,4,0];
++// ========== 创建正交网格 ==========
++skwave.DefMesh(nDim, [lengthX, lengthY], [divX, divY], [originX, originY]);
+ 
+-acoord[4] = [-2,3,2];
+-acoord[5] = [0,2,2];
+-acoord[6] = [0,4,2];
+-acoord[7] = [-2,4,2];
+-imeshing.genHex("f2",acoord, 5,5,5);
++// ========== 网格分组管理 ==========
++SetGroupByID("group1", 1); // 将所有单元归入group1组
+ 
++// ========== 配置输出文件路径 ==========
++var outputDir = getSrcDir() + "/output";
++print("Output directory: " + outputDir);
+ 
+-//产生第三组参数化的六面体网格
+-acoord[0] = [-2,1,0];
+-acoord[1] = [0,2,0];
+-acoord[2] = [0,0,0];
+-acoord[3] = [-2,0,0];
+-acoord[4] = [-2,1,2];
+-acoord[5] = [0,2,2];
+-acoord[6] = [0,0,2];
+-acoord[7] = [-2,0,2];
+-imeshing.genHex("f3",acoord, 5,5,5);
++// ========== 定义监测变量与采样频率 ==========
++var monitorPressure = true; // 监测压力
++var monitorVelocity = true; // 监测速度
++var sampleFreq = 1e-6; // 采样频率(s)
++
++// ========== 设置求解器参数 ==========
++var totalTime = 0.1; // 总计算时间(s)
++var dt = 1e-7; // 时间步长(s)
++
++// ========== 启动求解器执行计算任务 ==========
++blkdyn.SetTimeStep(dt);
++blkdyn.SetTotalTime(totalTime);
++blkdyn.Solve();
++
++// ========== 读取并验证网格质量与监测数据 ==========
++var meshQuality = blkdyn.GetMeshQuality();
++print("Mesh quality check completed.");
++
++var pressureData = blkdyn.GetMonitorData(monitorPressure);
++var velocityData = blkdyn.GetMonitorData(monitorVelocity);
++
++if (pressureData && velocityData) {
++    print("Monitoring data collected successfully.");
++} else {
++    print("Warning: Some monitoring data may be incomplete.");
++}
++
++// ========== 导出最终仿真结果文件 ==========
++blkdyn.ExportResults(outputDir + "/simulation_results.dat");
++print("Simulation results exported to: " + outputDir);
++
++// ========== 任务完成 ==========
++print("Parameterized mesh creation task completed successfully.");

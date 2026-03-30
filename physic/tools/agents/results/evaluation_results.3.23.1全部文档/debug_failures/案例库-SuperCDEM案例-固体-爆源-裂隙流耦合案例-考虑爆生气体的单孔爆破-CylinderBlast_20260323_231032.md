@@ -1,0 +1,374 @@
+# Failure Analysis: 案例库-SuperCDEM案例-固体-爆源-裂隙流耦合案例-考虑爆生气体的单孔爆破-CylinderBlast.js
+
+## Query
+请编写一个SuperCDEM仿真脚本，实现裂隙流耦合案例-考虑爆生气体的单孔爆破-CylinderBlast，并输出必要的结果与监测。
+
+## Generated Code
+```javascript
+setCurDir(getSrcDir());
+
+// ==================== 初始化环境 ====================
+scdem.outputInterval = 5000;
+scdem.monitorIter = 100;
+scdem.isVirtualMass = 0;
+scdem.set("isLargeDisplace", 1);
+scdem.gravity = [0, -9.8, 0];
+scdem.set("RayleighDamp", 5e-6, 0);
+
+// ==================== 裂隙渗流模块参数设置 ====================
+scdem.set("Config_FracSeepage", 1); // 开启裂隙气体流动
+scdem.set("FracSeepage_Cal", 1); // 进行裂隙气体流动计算
+scdem.set("Seepage_Mode", 2); // 流动模式设置为气体
+scdem.set("FS_Solid_Interaction", 1); // 开启裂隙场和固体场耦合计算
+scdem.set("FS_MaxWid", 0.05); // 最大开度设置为0.05m
+scdem.set("FS_MinWid", 0.0); // 最小开度设置为0.0
+scdem.set("FS_Frac_Start_Cal", 1); // 开启破裂才进行气体压力计算
+scdem.set("isJWLBlastGasFlow", 1); // 开启JWL爆生气体流动计算
+scdem.set("GasFlowModel", 2); // 开启湍流流动模型
+scdem.set("CSRoughness", 0.01); // 设置粗糙度为0.01
+scdem.set("GasEos", 2); // 采用多方方程进行气体流动计算
+
+// ==================== 创建圆柱几何 ====================
+var end1 = new Array(0.0, -5.0, 0.0);
+var end2 = new Array(0.0, 5.0, 0.0);
+var fRadIn = 0.08; // 钻孔半径0.08m
+var fRadOut = 1.5; // 围岩外半径1.5m
+
+// 创建圆柱域（实心，内半径为钻孔半径）
+blkdyn.GenCylinder(fRadIn, fRadOut, 10.0, 20, 40, 40, 1);
+
+// ==================== 设置材料属性 ====================
+scdem.setModel("linear");
+scdem.setModel(1, "JWL"); // 炸药模型
+
+// 岩石材料参数 [密度, 弹性模量, 泊松比, 屈服强度, 剪切强度, 内摩擦角, 粘聚力]
+scdem.setMat([2700, 60e9, 0.25, 20e6, 8e6, 35, 10]);
+
+// ==================== JWL爆源参数设置 ====================
+var blastPos = [0.0, 0.0, 0.0]; // 爆源位置在圆柱中心
+scdem.setJWLBlastSource(1, 1100, 4.1e9, 162.7e9, 10.82e9, 5.4, 1.8, 
+                        1.8, 30e6, 1000, -1000, blastPos);
+
+// ==================== 裂隙网格设置 ====================
+SFracsp.createGridFromBlock(1);
+
+// 设置裂隙属性 [渗透率, 断裂能, 气体粘度, 气体扩散系数]
+SFracsp.setProp([1e-12, 1e7, 1.8e-5, 2.2e-5]);
+
+// 设置钻孔区域裂隙属性
+SFracsp.setPropByCylinder([1e-10, 1e6, 1.8e-5, 2.2e-5], 
+                          blastPos[0], blastPos[1], blastPos[2],
+                          blastPos[0], blastPos[1], blastPos[2],
+                          fRadIn, fRadOut);
+
+// ==================== 边界条件设置 ====================
+// 远场固定边界（圆柱外表面）
+oSel = new SelElemFaces(scdem);
+oSel.cylinder(0.0, 0.0, -5.0, 0.0, 0.0, 5.0, fRadOut + 0.1, fRadOut + 0.2);
+scdem.applyFixedBySel(oSel);
+
+// 钻孔内表面自由边界（允许气体流动）
+oSel.cylinder(0.0, 0.0, -5.0, 0.0, 0.0, 5.0, fRadIn - 0.1, fRadIn);
+scdem.applyFreeBySel(oSel);
+
+// ==================== 气体初始压力设置 ====================
+var initialGasPressure = 2e6; // 初始气压2MPa
+SFracsp.initConditionByCoord("pp", initialGasPressure, 
+                             blastPos[0], blastPos[1], blastPos[2],
+                             -fRadOut, fRadOut, -5.0, 5.0);
+
+// ==================== 时间步与求解设置 ====================
+scdem.timeStep = 1e-6; // 时间步长1微秒
+scdem.dynaSolveGpu(20000); // 求解20000个输出间隔
+
+// ==================== 监测点设置 ====================
+var monitorPoints = [
+    [fRadIn + 0.05, 0.0, 0.0], // 钻孔壁附近监测点
+    [fRadIn + 0.1, 0.0, 0.0], 
+    [fRadIn + 0.2, 0.0, 0.0],
+    [fRadIn + 0.5, 0.0, 0.0]
+];
+
+for (var i = 0; i < monitorPoints.length; i++) {
+    var pt = monitorPoints[i];
+    scdem.addMonitorPoint(pt[0], pt[1], pt[2], "pressure", "displacement");
+}
+
+print("CylinderBlast simulation setup complete.");
+print("Simulation will run for 20000 output intervals.");
+```
+
+## Ground Truth
+```javascript
+setCurDir(getSrcDir());
+
+scdem.outputInterval = 2000;
+scdem.monitorIter = 10;
+
+scdem.isVirtualMass = 0;
+
+scdem.set("isLargeDisplace", 1);
+scdem.set("RayleighDamp", 4e-7, 0);
+
+scdem.set("isVtk", 1);
+
+// scdem.set("specialOutputInterval", 0, 20000, 500);
+
+// 裂隙渗流模块参数设置
+scdem.set("Config_FracSeepage", 1); // 开启裂隙气体流动
+scdem.set("FracSeepage_Cal", 1); // 进行裂隙气体流动计算
+scdem.set("Seepage_Mode", 2); // 流动模式设置为气体
+scdem.set("FS_Solid_Interaction", 1); // 开启裂隙场和固体场耦合计算
+scdem.set("FS_Gas_Index", 4/3); //气体常数值设置 
+
+scdem.set("FS_MaxWid", 1e-2);
+scdem.set("FS_MinWid", 0.0); //最小开度设置为0.0
+scdem.set("FS_Frac_Start_Cal", 1); // 开启破裂才进行气体压力计算
+scdem.set("isJWLBlastGasFlow", 1); // 开启JWL爆生气体流动计算
+scdem.set("GasFlowModel", 2); //开启湍流流动模型
+
+scdem.set("CSRoughness", 4e-4); //设置粗糙度为0.1，这个值后续可能需要调整
+scdem.set("GasEos", 2); //采用多方方程进行气体流动计算
+scdem.set("ErosionMassThreshold", 0.05); //删除炸药单元的临界质量比，炸药单元质量衰减至该值后，认为炸药单元不再其作用，溶蚀掉
+
+var msh = imesh.importGmsh("Cylinder-130W.msh");//可更换文件中不同网格数量的网格文件
+scdem.getMesh(msh);
+
+scdem.setModel("linear");
+scdem.setModel(1, "JWL");
+
+scdem.setMat([2660, 54e9, 0.16, 6e6, 6e6, 54, 10]); //岩石材料参数
+
+scdem.setMat(1, [931, 20e9, 0.2, 1e3, 1e3, 30, 10]); //材料参数
+
+// JWL参数设置
+// Usage: scdem.setJWLBlastSource(<iNum, density, E0, A, B, R1, R2, Omiga, Pcj, D, BeginTime, LastTime, [ArrayFirePos]> ;
+var pos = [0, 0, 0.075];
+// scdem.setJWLBlastSource(1, 1100, 4.1e9, 162.7e9, 10.82e9, 5.4, 1.8, 0.25, 7.5e9, 5100, 0.0, 1, pos);
+// scdem.setJWLBlastSource(1, 1600, 7e9, 371.2e9, 3.2e9, 4.2, 0.95, 0.3, 20e9, 6800, 0.0, 1e-2, pos);
+scdem.setJWLBlastSource(1, 931, 2.484e9, 49.46e9, 1.891e6, 3.907, 1.118, 0.333, 5.15e9, 4160, 0.0, 1e-2, pos);
+
+scdem.bindJWLBlastSource(1, 1, 1);
+
+scdem.setIModel("Linear", 1);
+scdem.setIModel("FracE", 2);
+scdem.setIModel("FracE", 1, 2); 
+
+scdem.setContactFractureEnergy(20,50);
+scdem.setContactFractureEnergy(0, 0, 1, 2); // 炸药和堵塞的接触面断裂能为0
+
+// 设置炸药单元与固体单元的接触面参数，强度全部为0设置大刚度，防止网格畸变
+scdem.setIMatByElem(10.0);
+
+scdem.setIMat(1e15, 1e15, 0, 0, 0, 1, 2);
+
+//底部固定边界 + 四周无反射
+var oSel1 = new SelElemFaces(scdem);
+oSel1.cylinder(0, 0, -1, 0, 0, 1, 0.07, 0.0721);
+scdem.applyNonReflectionBySel(oSel1);
+
+var oSel2 = new SelElemFaces(scdem);
+oSel2.box(-100,-100,-0.0001,100,100,0.0001);
+scdem.setVel(oSel2, "xyz", 0);
+
+/////////////////////裂隙网格部分
+SFracsp.setFlowCrackFace(2);
+SFracsp.disableFlowCrackByGroup(1, 2);
+SFracsp.createGridFromBlock(2);
+
+SFracsp.setProp([0, 1e7, 12e-13, 0]);
+
+// 模型顶部为大气压边界条件
+SFracsp.applyConditionByCoord("pp", 0, 0, 0, 0, -100, 100, -100, 100, -0.001, 0.001);
+SFracsp.applyConditionByCoord("pp", 0, 0, 0, 0, -100, 100, -100, 100, -0.001, 0.001);
+SFracsp.applyConditionByCylinder("pp", 0, 0, 0, 0, 0, 0, -100, 0, 0, 100, 0.071, 0.0721);
+
+scdem.monitor("elem", "sxx", 0, 0, 0.075);
+scdem.monitor("fracsp", "outMass");
+scdem.monitor("fracsp", "exGasDens");
+scdem.monitor("spring", "crackRatio", 2, 2);
+
+scdem.monitor("elem", "sxx", 0.002, 0, 0.075);
+scdem.monitor("elem", "sxx", 0.003, 0, 0.075);
+scdem.monitor("elem", "sxx", 0.004, 0, 0.075);
+scdem.monitor("elem", "sxx", 0.005, 0, 0.075);
+scdem.monitor("elem", "sxx", 0.006, 0, 0.075);
+scdem.monitor("elem", "sxx", 0.007, 0, 0.075);
+
+scdem.timeStep = 1e-9;
+scdem.dynaSolveGpu(500e-6);
+
+print("finish!");
+```
+
+## Unified Diff
+```diff
+--- 案例库-SuperCDEM案例-固体-爆源-裂隙流耦合案例-考虑爆生气体的单孔爆破-CylinderBlast.js (ground_truth)
++++ 案例库-SuperCDEM案例-固体-爆源-裂隙流耦合案例-考虑爆生气体的单孔爆破-CylinderBlast.js (generated)
+@@ -1,99 +1,91 @@
+ setCurDir(getSrcDir());
+ 
+-scdem.outputInterval = 2000;
+-scdem.monitorIter = 10;
++// ==================== 初始化环境 ====================
++scdem.outputInterval = 5000;
++scdem.monitorIter = 100;
++scdem.isVirtualMass = 0;
++scdem.set("isLargeDisplace", 1);
++scdem.gravity = [0, -9.8, 0];
++scdem.set("RayleighDamp", 5e-6, 0);
+ 
+-scdem.isVirtualMass = 0;
+-
+-scdem.set("isLargeDisplace", 1);
+-scdem.set("RayleighDamp", 4e-7, 0);
+-
+-scdem.set("isVtk", 1);
+-
+-// scdem.set("specialOutputInterval", 0, 20000, 500);
+-
+-// 裂隙渗流模块参数设置
++// ==================== 裂隙渗流模块参数设置 ====================
+ scdem.set("Config_FracSeepage", 1); // 开启裂隙气体流动
+ scdem.set("FracSeepage_Cal", 1); // 进行裂隙气体流动计算
+ scdem.set("Seepage_Mode", 2); // 流动模式设置为气体
+ scdem.set("FS_Solid_Interaction", 1); // 开启裂隙场和固体场耦合计算
+-scdem.set("FS_Gas_Index", 4/3); //气体常数值设置 
+-
+-scdem.set("FS_MaxWid", 1e-2);
+-scdem.set("FS_MinWid", 0.0); //最小开度设置为0.0
++scdem.set("FS_MaxWid", 0.05); // 最大开度设置为0.05m
++scdem.set("FS_MinWid", 0.0); // 最小开度设置为0.0
+ scdem.set("FS_Frac_Start_Cal", 1); // 开启破裂才进行气体压力计算
+ scdem.set("isJWLBlastGasFlow", 1); // 开启JWL爆生气体流动计算
+-scdem.set("GasFlowModel", 2); //开启湍流流动模型
++scdem.set("GasFlowModel", 2); // 开启湍流流动模型
++scdem.set("CSRoughness", 0.01); // 设置粗糙度为0.01
++scdem.set("GasEos", 2); // 采用多方方程进行气体流动计算
+ 
+-scdem.set("CSRoughness", 4e-4); //设置粗糙度为0.1，这个值后续可能需要调整
+-scdem.set("GasEos", 2); //采用多方方程进行气体流动计算
+-scdem.set("ErosionMassThreshold", 0.05); //删除炸药单元的临界质量比，炸药单元质量衰减至该值后，认为炸药单元不再其作用，溶蚀掉
++// ==================== 创建圆柱几何 ====================
++var end1 = new Array(0.0, -5.0, 0.0);
++var end2 = new Array(0.0, 5.0, 0.0);
++var fRadIn = 0.08; // 钻孔半径0.08m
++var fRadOut = 1.5; // 围岩外半径1.5m
+ 
+-var msh = imesh.importGmsh("Cylinder-130W.msh");//可更换文件中不同网格数量的网格文件
+-scdem.getMesh(msh);
++// 创建圆柱域（实心，内半径为钻孔半径）
++blkdyn.GenCylinder(fRadIn, fRadOut, 10.0, 20, 40, 40, 1);
+ 
++// ==================== 设置材料属性 ====================
+ scdem.setModel("linear");
+-scdem.setModel(1, "JWL");
++scdem.setModel(1, "JWL"); // 炸药模型
+ 
+-scdem.setMat([2660, 54e9, 0.16, 6e6, 6e6, 54, 10]); //岩石材料参数
++// 岩石材料参数 [密度, 弹性模量, 泊松比, 屈服强度, 剪切强度, 内摩擦角, 粘聚力]
++scdem.setMat([2700, 60e9, 0.25, 20e6, 8e6, 35, 10]);
+ 
+-scdem.setMat(1, [931, 20e9, 0.2, 1e3, 1e3, 30, 10]); //材料参数
++// ==================== JWL爆源参数设置 ====================
++var blastPos = [0.0, 0.0, 0.0]; // 爆源位置在圆柱中心
++scdem.setJWLBlastSource(1, 1100, 4.1e9, 162.7e9, 10.82e9, 5.4, 1.8, 
++                        1.8, 30e6, 1000, -1000, blastPos);
+ 
+-// JWL参数设置
+-// Usage: scdem.setJWLBlastSource(<iNum, density, E0, A, B, R1, R2, Omiga, Pcj, D, BeginTime, LastTime, [ArrayFirePos]> ;
+-var pos = [0, 0, 0.075];
+-// scdem.setJWLBlastSource(1, 1100, 4.1e9, 162.7e9, 10.82e9, 5.4, 1.8, 0.25, 7.5e9, 5100, 0.0, 1, pos);
+-// scdem.setJWLBlastSource(1, 1600, 7e9, 371.2e9, 3.2e9, 4.2, 0.95, 0.3, 20e9, 6800, 0.0, 1e-2, pos);
+-scdem.setJWLBlastSource(1, 931, 2.484e9, 49.46e9, 1.891e6, 3.907, 1.118, 0.333, 5.15e9, 4160, 0.0, 1e-2, pos);
++// ==================== 裂隙网格设置 ====================
++SFracsp.createGridFromBlock(1);
+ 
+-scdem.bindJWLBlastSource(1, 1, 1);
++// 设置裂隙属性 [渗透率, 断裂能, 气体粘度, 气体扩散系数]
++SFracsp.setProp([1e-12, 1e7, 1.8e-5, 2.2e-5]);
+ 
+-scdem.setIModel("Linear", 1);
+-scdem.setIModel("FracE", 2);
+-scdem.setIModel("FracE", 1, 2); 
++// 设置钻孔区域裂隙属性
++SFracsp.setPropByCylinder([1e-10, 1e6, 1.8e-5, 2.2e-5], 
++                          blastPos[0], blastPos[1], blastPos[2],
++                          blastPos[0], blastPos[1], blastPos[2],
++                          fRadIn, fRadOut);
+ 
+-scdem.setContactFractureEnergy(20,50);
+-scdem.setContactFractureEnergy(0, 0, 1, 2); // 炸药和堵塞的接触面断裂能为0
++// ==================== 边界条件设置 ====================
++// 远场固定边界（圆柱外表面）
++oSel = new SelElemFaces(scdem);
++oSel.cylinder(0.0, 0.0, -5.0, 0.0, 0.0, 5.0, fRadOut + 0.1, fRadOut + 0.2);
++scdem.applyFixedBySel(oSel);
+ 
+-// 设置炸药单元与固体单元的接触面参数，强度全部为0设置大刚度，防止网格畸变
+-scdem.setIMatByElem(10.0);
++// 钻孔内表面自由边界（允许气体流动）
++oSel.cylinder(0.0, 0.0, -5.0, 0.0, 0.0, 5.0, fRadIn - 0.1, fRadIn);
++scdem.applyFreeBySel(oSel);
+ 
+-scdem.setIMat(1e15, 1e15, 0, 0, 0, 1, 2);
++// ==================== 气体初始压力设置 ====================
++var initialGasPressure = 2e6; // 初始气压2MPa
++SFracsp.initConditionByCoord("pp", initialGasPressure, 
++                             blastPos[0], blastPos[1], blastPos[2],
++                             -fRadOut, fRadOut, -5.0, 5.0);
+ 
+-//底部固定边界 + 四周无反射
+-var oSel1 = new SelElemFaces(scdem);
+-oSel1.cylinder(0, 0, -1, 0, 0, 1, 0.07, 0.0721);
+-scdem.applyNonReflectionBySel(oSel1);
++// ==================== 时间步与求解设置 ====================
++scdem.timeStep = 1e-6; // 时间步长1微秒
++scdem.dynaSolveGpu(20000); // 求解20000个输出间隔
+ 
+-var oSel2 = new SelElemFaces(scdem);
+-oSel2.box(-100,-100,-0.0001,100,100,0.0001);
+-scdem.setVel(oSel2, "xyz", 0);
++// ==================== 监测点设置 ====================
++var monitorPoints = [
++    [fRadIn + 0.05, 0.0, 0.0], // 钻孔壁附近监测点
++    [fRadIn + 0.1, 0.0, 0.0], 
++    [fRadIn + 0.2, 0.0, 0.0],
++    [fRadIn + 0.5, 0.0, 0.0]
++];
+ 
+-/////////////////////裂隙网格部分
+-SFracsp.setFlowCrackFace(2);
+-SFracsp.disableFlowCrackByGroup(1, 2);
+-SFracsp.createGridFromBlock(2);
++for (var i = 0; i < monitorPoints.length; i++) {
++    var pt = monitorPoints[i];
++    scdem.addMonitorPoint(pt[0], pt[1], pt[2], "pressure", "displacement");
++}
+ 
+-SFracsp.setProp([0, 1e7, 12e-13, 0]);
+-
+-// 模型顶部为大气压边界条件
+-SFracsp.applyConditionByCoord("pp", 0, 0, 0, 0, -100, 100, -100, 100, -0.001, 0.001);
+-SFracsp.applyConditionByCoord("pp", 0, 0, 0, 0, -100, 100, -100, 100, -0.001, 0.001);
+-SFracsp.applyConditionByCylinder("pp", 0, 0, 0, 0, 0, 0, -100, 0, 0, 100, 0.071, 0.0721);
+-
+-scdem.monitor("elem", "sxx", 0, 0, 0.075);
+-scdem.monitor("fracsp", "outMass");
+-scdem.monitor("fracsp", "exGasDens");
+-scdem.monitor("spring", "crackRatio", 2, 2);
+-
+-scdem.monitor("elem", "sxx", 0.002, 0, 0.075);
+-scdem.monitor("elem", "sxx", 0.003, 0, 0.075);
+-scdem.monitor("elem", "sxx", 0.004, 0, 0.075);
+-scdem.monitor("elem", "sxx", 0.005, 0, 0.075);
+-scdem.monitor("elem", "sxx", 0.006, 0, 0.075);
+-scdem.monitor("elem", "sxx", 0.007, 0, 0.075);
+-
+-scdem.timeStep = 1e-9;
+-scdem.dynaSolveGpu(500e-6);
+-
+-print("finish!");
++print("CylinderBlast simulation setup complete.");
++print("Simulation will run for 20000 output intervals.");
+```

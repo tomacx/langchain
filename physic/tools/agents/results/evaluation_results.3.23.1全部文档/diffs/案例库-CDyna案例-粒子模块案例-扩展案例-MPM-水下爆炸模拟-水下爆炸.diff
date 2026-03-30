@@ -1,0 +1,165 @@
+--- 案例库-CDyna案例-粒子模块案例-扩展案例-MPM-水下爆炸模拟-水下爆炸.js (ground_truth)
++++ 案例库-CDyna案例-粒子模块案例-扩展案例-MPM-水下爆炸模拟-水下爆炸.js (generated)
+@@ -1,89 +1,115 @@
+-//设置当前工作路径为JavaScript脚本文件所在路径
+ setCurDir(getSrcDir());
+ 
+-//打开力学计算开关
++// 打开力学计算开关
+ dyna.Set("Mechanic_Cal 1");
+ 
+-//设置三个方向的重力加速度均为0
++// 设置重力加速度（水下爆炸考虑重力）
+ dyna.Set("Gravity 0.0 -9.8 0.0");
+ 
+-//打开大变形计算开关
++// 打开大变形计算开关
+ dyna.Set("Large_Displace 1");
+ 
++// 设置不平衡率
+ dyna.Set("UnBalance_Ratio 5e-4");
+ 
++// 设置接触检测容差
+ dyna.Set("If_Renew_Contact 1");
++dyna.Set("Contact_Detect_Tol 0.0");
+ 
+-dyna.Set("Contact_Detect_Tol  0.0")
++// 设置输出间隔为100步
++dyna.Set("Output_Interval 500");
+ 
+-//设置计算结果的输出间隔为100步
+-dyna.Set("Output_Interval 5000");
+-
+-//设置监测信息输出时步为10步
++// 设置监测信息输出时步为10步
+ dyna.Set("Moniter_Iter 10");
+ 
+-//关闭虚质量计算开关
+-dyna.Set("If_Virtural_Mass 0");
++// 打开虚质量计算开关（处理流体-固体相互作用）
++dyna.Set("If_Virtural_Mass 1");
+ 
+-//设置颗粒的计算模式为4-MPM颗粒模式
++// 设置颗粒计算模式为MPM
+ dyna.Set("Particle_Cal_Type 4");
+ 
+-//常规有限元
++// 设置MPM计算模式
+ dyna.Set("MPM_Cal_Mode 2");
+ 
++// 设置时间步长（满足MPM数值稳定性）
++dyna.Set("Time_Step 5e-6");
+ 
+-pdyna.Import("pdyna","ParticleFromBlock.dat");
++// 导入水介质几何模型
++pdyna.Import("pdyna", "water_geometry.dat");
+ 
+-//设置颗粒材料参数，依次为密度、弹性模量、泊松比、抗拉强度、粘聚力、内摩擦角、局部阻尼、粘性阻尼系数（临界阻尼比）
+-pdyna.SetModel("brittleMC");
++// 设置颗粒材料参数：密度、弹性模量、泊松比、抗拉强度、粘聚力、内摩擦角、局部阻尼、粘性阻尼系数
++// 水介质材料（组1）
++pdyna.SetMat(1000, 2.18e9, 0.25, 8e6, 16e6, 40, 0.02, 0.0, 1);
+ 
+-//指定组1的材料参数，水
+-pdyna.SetMat(1000, 2.18e9, 0.25, 8e6, 16e6, 40, 0.02, 0.0, 1);
+-pdyna.SetMatByCoord(1000, 2.18e9, 0.25, 8e6, 16e6, 40, 0.8, 0.0, [-1e5, 0.3],[-1e5, 1e5],[-1e5, 1e5]);
+-pdyna.SetMatByCoord(1000, 2.18e9, 0.25, 8e6, 16e6, 40, 0.8, 0.0, [1.3, 1e5],[-1e5, 1e5],[-1e5, 1e5]);
+-pdyna.SetMatByCoord(1000, 2.18e9, 0.25, 8e6, 16e6, 40, 0.8, 0.0, [-1e5, 1e5],[-1e5, 0.2],[-1e5, 1e5]);
++// 设置水介质空间分布范围
++pdyna.SetMatByCoord(1000, 2.18e9, 0.25, 8e6, 16e6, 40, 0.8, 0.0, [-1e5, 0.3], [-1e5, 1e5], [-1e5, 1e5]);
++pdyna.SetMatByCoord(1000, 2.18e9, 0.25, 8e6, 16e6, 40, 0.8, 0.0, [1.3, 1e5], [-1e5, 1e5], [-1e5, 1e5]);
++pdyna.SetMatByCoord(1000, 2.18e9, 0.25, 8e6, 16e6, 40, 0.8, 0.0, [-1e5, 1e5], [-1e5, 0.2], [-1e5, 1e5]);
+ 
+-//指定组2的材料参数，炸药
++// 设置炸药材料参数（TNT）
+ pdyna.SetMat(1630, 1e9, 0.25, 1e6, 3e6, 15, 0.02, 0.0, 2);
+ 
++// 设定TNT爆源参数（朗道模型）
++var fP_CJ = 20e9;      // CJ压力 (Pa)
++var fdensity = 1630;   // 密度 (kg/m³)
++var fD = 6930;         // 参数D
++var fQ = 4.5e6;        // 参数Q
++var fGama1 = 3.0;      // 参数Gama1
++var fGama2 = 1.33333;  // 参数Gama2
+ 
+-//设定TNT爆源参数
+-var apos = [0.8, 0.6-0.09, 0.0];
+-pdyna.SetJWLSource(1, 1630, 7e9, 371.2e9, 3.2e9, 4.2, 0.95, 0.3, 20e9, 6930.0, apos, 0.0, 10.0);
+-pdyna.BindJWLSource(1,2, 2);
++// 起爆点位置（水下爆炸中心）
++var apos = [0.0, 0.0, 0.0];
+ 
++// 点火时间 (s)
++var fBeginTime = 0.0;
+ 
+-//创建mpm背景网格
+-var x1 = -0.3;
+-var y1 = -0.3;
+-var NoX = (1.6+0.3 - x1) / 0.015 + 1;
+-var NoY = (1.6+0.3 - y1) / 0.015 + 20;
+-mpm.SetBackGrid(2, 0.015, [x1,y1,0], [NoX, NoY, 0]);
++// 炸药单元加载持续时间 (s)
++var fLastTime = 10.0;
+ 
++// 设置朗道本构模型参数
++pdyna.SetLandauSource(2, fdensity, fD, fQ, fGama1, fGama2, fP_CJ, apos, fBeginTime, fLastTime);
+ 
+-//设置pcmm模型为线弹性模型
+-mpm.SetModelByGroup("Fluid", 1,2);
+-mpm.SetKGVByGroup(2.1e9, 0.0, 1e-3, 1,11);
++// 绑定炸药源到材料组
++pdyna.BindLandauSource(2, 2, 2);
+ 
+-dyna.Set("Arti_Visc_Damp 1 1.0 1.0");
++// 创建MPM背景网格（三维）
++var x1 = -0.5;
++var y1 = -0.5;
++var z1 = -0.5;
++var NoX = (10.0 + 0.5 - x1) / 0.02 + 1;
++var NoY = (10.0 + 0.5 - y1) / 0.02 + 1;
++var NoZ = (10.0 + 0.5 - z1) / 0.02 + 1;
+ 
+-mpm.SetFailCond ("PlaStrain", [1.0, 0.5], 1);
++mpm.SetBackGrid(3, 0.02, [x1, y1, z1], [NoX, NoY, NoZ]);
+ 
++// 设置MPM模型为朗道本构
++mpm.SetModelByGroup("DP", 2, 2);
+ 
+-pdyna.FixV("x", 0.0, "x", -1e-6, 1e-6);
+-pdyna.FixV("x", 0.0, "x", 1.6 - 1e-6, 1.6 + 1e-6);
+-pdyna.FixV("x", 0.0, "x", -1e-6, 1e-6);
++// 创建目标结构体（刚性面）
++var fCoord = new Array();
++fCoord[0] = new Array(-0.5, -0.5, 0.0);
++fCoord[1] = new Array(10.0, -0.5, 0.0);
++rdface.Create(1, 1, 2, fCoord);
+ 
++fCoord[0] = new Array(10.0, -0.5, 0.0);
++fCoord[1] = new Array(10.0, 10.0, 0.0);
++rdface.Create(1, 1, 2, fCoord);
+ 
+-mpm.SetModelByGroup("JWL",2,2);
++fCoord[0] = new Array(-0.5, -0.5, 0.0);
++fCoord[1] = new Array(-0.5, 10.0, 0.0);
++rdface.Create(1, 1, 2, fCoord);
+ 
++// 设置颗粒与刚性面接触模型采用全局参数
++dyna.Set("If_Contact_Use_GlobMat 1 2 1e9 1e9 0.0 0.0 0.0");
+ 
+-dyna.Set("Time_Step 5e-9");
++// 设置单元阻尼为0
++pdyna.SetLocalDamp(0.0);
+ 
+-dyna.Set("Time_Now 0");
++// 调用用户自定义命令流，启动求解器
++dyna.RunUDFCmd("StartSimulation");
+ 
+-dyna.Set("Output_Interval 500");
++// 求解（计算时间根据爆炸持续时间设定）
++dyna.DynaCycle(fLastTime);
+ 
+-
+-//动力计算0.14ms
+-dyna.DynaCycle(4e-4);
++// 输出结果文件
++doc.ExportResult();

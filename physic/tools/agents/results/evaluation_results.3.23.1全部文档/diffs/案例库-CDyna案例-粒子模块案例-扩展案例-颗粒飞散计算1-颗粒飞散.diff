@@ -1,0 +1,205 @@
+--- 案例库-CDyna案例-粒子模块案例-扩展案例-颗粒飞散计算1-颗粒飞散.js (ground_truth)
++++ 案例库-CDyna案例-粒子模块案例-扩展案例-颗粒飞散计算1-颗粒飞散.js (generated)
+@@ -1,119 +1,110 @@
+ setCurDir(getSrcDir());
+ 
++// ========== 1. 初始化仿真环境并设置基本参数 ==========
++dyna.Set("Gravity 0 -9.8 0");
++dyna.Set("Large_Displace 1");
++dyna.Set("If_Virtural_Mass 0");
++dyna.Set("If_Renew_Contact 1");
++dyna.Set("Contact_Detect_Tol 2.0e-3");
++dyna.Set("Output_Interval 500");
++dyna.Set("Block_Soften_Value 0.2 0.2");
++
++// ========== 2. 设置颗粒飞行参数 ==========
++var flyPara = {
++    If_Cal_Particle: 1,
++    Particle_Cal_Type: 1,
++    If_Particle_Cal_Rolling: 1,
++    If_Particle_Cal_Torsion_Spring: 1
++};
++SetFlyPara(flyPara);
++
++// ========== 3. 设置颗粒性质参数 ==========
++var shapePara = {
++    density: 2500,
++    elastic_modulus: 5e7,
++    poisson_ratio: 0.25,
++    tensile_strength: 1e6,
++    cohesion: 5e6,
++    internal_friction_angle: 30,
++    local_trans_damping: 0.01,
++    local_rot_damping: 0.1,
++    viscous_damping_ratio: 0.1
++};
++SetShapePara(shapePara);
++
++// ========== 4. 创建几何模型和网格 ==========
+ var height = 2.0;
+ var length = 0.8;
++var dout = 0.15;
++var din = 0.14;
++var thick = dout - din;
+ 
+-////////////////////////////////////////////////////网格导入
+-//重力方向必须Y轴负半轴，Y方向为重力方向
+-dyna.Set("Gravity 0 -9.8 0");
++var sloop1 = geo.GenCylinder(-0.5 * length, height, 0, 0.5 * length, height, 0, 0.0, dout, 0.05, 0.05, 1);
++var sloop2 = geo.GenCylinder(-0.5 * length + thick, height, 0, 0.5 * length - thick, height, 0, 0.0, din, 0.05, 0.05, 2);
+ 
+-dyna.Set("Large_Displace 1");
++var id1 = geo.GenVolume([sloop1, sloop2], 1);
++var id2 = geo.GenVolume([sloop2], 2);
+ 
++mesh.GenMeshByGmsh(3);
+ 
+-dyna.Set("If_Virtural_Mass 0");
++// ========== 5. 设置材料参数 ==========
++blkdyn.SetMat(13000, 2e11, 0.3, 50e6, 50e6, 0, 0, 1); // 侧壁破片等效层
++blkdyn.SetMat(1700, 1e9, 0.3, 800e6, 800e6, 0, 0, 2); // 炸药单元
+ 
+-dyna.Set("If_Renew_Contact 1");
+-
+-dyna.Set("Contact_Detect_Tol 2.0e-3");
+-
+-dyna.Set("Output_Interval 500");
+-
+-dyna.Set("Block_Soften_Value 0.2 0.2");
+-
+-dyna.Set("If_Cal_Particle 0");
+-
+-
+-blkdyn.ImportGrid("gmsh", "GDEM.msh");
+-
+-//侧壁破片等效层
+-blkdyn.SetMat(13000, 2e11, 0.3, 50e6, 50e6, 0, 0, 1);
+-
+-//炸药单元
+-blkdyn.SetMat(1700, 1e9, 0.3, 800e6, 800e6, 0, 0, 2);
+-
+-
+-//炸药，参数
+-var apos = [-0.5 * length, height,0];
++// ========== 6. 设置起爆源参数 ==========
++var apos = [-0.5 * length, height, 0];
+ blkdyn.SetLandauSource(1, 1700, 7957, 7e6, 3.0, 1.3333, 26e9, apos, 0.0, 10);
+ blkdyn.BindLandauSource(1, 2, 2);
+ 
+ blkdyn.SetModel("SoftenMC", 1);
+ blkdyn.SetModel("Landau", 2);
+ 
++// ========== 7. 创建颗粒并导入 ==========
++var prad = 0.004;
++var rowsum = Math.floor((length - 2.0 * thick) / (prad * 2.0));
++var colsum = Math.floor(2.0 * Math.PI * (din + 0.5 * thick) / (prad * 2.0));
+ 
+-pdyna.Import("pdyna","Ball.dat");
+-pdyna.SetModel("brittleMC");
+-pdyna.SetMat(17936, 4e11,  0.2,  0, 0,  30, 0.0, 0.0);
+-
+-//设置监测点
+-for(var i = 0; i <= 10; i++)
+-{
+-    dyna.Monitor("block","yvel", -0.5 * length + i * 0.1  * length , height,0)
++for(var i = 0; i < rowsum; i++) {
++    var xcoord = -0.5 * length + thick + prad + i * 2.0 * prad;
++    var igroup = i + 1;
++    var qq = "" + igroup;
++    imesh.genParCircle(3, qq, colsum, prad, din + 0.5 * thick, xcoord, height, 0, 1, 0, 0);
+ }
+ 
++imesh.exportPDyna("Ball.dat");
+ 
+-////////////////////////////////////////////////////
+-///////////////////////起爆计算，速度进入平台期
+-//设置阻尼为0
++// ========== 8. 导入颗粒并设置材料 ==========
++pdyna.Import("pdyna", "Ball.dat");
++pdyna.SetModel("brittleMC");
++pdyna.SetPartMat(2500, 5e7, 0.25, 1e6, 5e6, 30, 0.01, 0.1, 0.1);
++
++// ========== 9. 创建环形靶板用于监测穿透行为 ==========
++var targetRadius = 0.5;
++var targetHeight = 0.1;
++CrtPeneTarget(targetRadius, targetHeight, 180);
++
++// ========== 10. 设置监测点 ==========
++for(var i = 0; i <= 10; i++) {
++    dyna.Monitor("block", "yvel", -0.5 * length + i * 0.1 * length, height, 0);
++}
++
++// ========== 11. 计算装药比与壳体质量 ==========
++var chargeRatio = CalChargeRatio();
++var shellMass = CalShellMass();
++
++// ========== 12. 设置阻尼和求解参数 ==========
+ blkdyn.SetLocalDamp(0.0);
+-
+ dyna.Set("Time_Step 5e-8");
+-
+ pdyna.SetModel("none");
+ 
++// ========== 13. 执行仿真运行 ==========
+ dyna.Solve(10000);
+ 
++// ========== 14. 导出靶板穿透信息 ==========
++ExportPeneTargetInfo();
++
++// ========== 15. 保存结果文件 ==========
+ dyna.Save("blast.sav");
+ 
+-////////////////////////////////////////////////
+-
+-
+-
+-/////////////////////////////////////////////////
+-///////////飞行计算
+-
+-pdyna.InheritInfoFromBlock(1,11);
+-
+-
+-pdyna.SetModel("brittleMC");
+-
+-dyna.Set("Mechanic_Cal 0");
+-
+-dyna.Set("If_Cal_Particle 1");
+-
+-dyna.Set("Particle_Cal_Type 3");
+-
+-//设置飞行参数，空气密度，地面高程，空气阻力模式（1-常阻力，2-马赫阻力，3-雷诺阻力），阻力参数（1时为阻力系数，2为声速，3为动力粘度）
+-pfly.SetFlyPara( 1.069, 0.0, 2, 340.0);
+-
+-
+-//设置颗粒形状，立方体、等效半径、等效质量、迎风面积，组号下限及上限
+-pfly.SetShapePara (2, 3.05e-3, 0.004380733, 37.21e-6, 1,100000);
+-
+-
+-//设置可穿透靶板，靶板中心坐标，靶板半径，靶板高度下限及上限
+-for(var i = 0; i < 10; i++)
+-{
+-   pfly.CrtPeneTarget( 0, 0, 0, 200.0 + 50.0 * i, 0.0, 2.0); 
+-}
+-
+-dyna.Set("Time_Step 5e-4");
+-
+-dyna.Solve();
+-
+-dyna.Save("Fly.sav");
+-
+-
+-//可穿透靶板信息输出
+-pfly.ExportPeneTargetInfo( 23.0, 78, 1.0 / 56.0 ,1 );
+-
+-
+-//颗粒地面统计输出
+-pfly.ExportGroundStatiInfo (0.0, 0.0, 0.0, 5.0, 5.0, 20,1,10000);
+-
+-//颗粒地面靶板信息输出
+-var fx = [-100, 100];
+-var fz = [-100, 100];
+-var divno = [100,100];
+-var fTargetB = [0.0, 2.0];
+-pfly.ExportGroundTargetInfo (78.0, fx, fz, divno, fTargetB, 1, 200000, 1);
++// ========== 16. 关闭脚本执行会话 ==========
++console.log("颗粒飞散计算完成，结果已保存至 blast.sav");

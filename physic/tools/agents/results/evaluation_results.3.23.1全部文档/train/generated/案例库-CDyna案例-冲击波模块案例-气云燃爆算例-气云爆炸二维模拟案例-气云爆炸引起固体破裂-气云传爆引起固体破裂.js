@@ -1,0 +1,78 @@
+setCurDir(getSrcDir());
+
+// 初始化仿真环境
+dyna.Set("If_Virtural_Mass 0");
+dyna.Set("Large_Displace 1");
+dyna.Set("If_Renew_Contact 1");
+dyna.Set("Interface_Soften_Value 1e-5 1e-5");
+
+// 设置求解控制参数
+dyna.Set("Time_Step 1e-5");
+dyna.Set("Output_Interval 100");
+dyna.Set("SK_GasModel 2");
+
+// 定义二维流体计算域正交网格（20m×10m，每个方向分割200和100个节点）
+skwave.DefMesh(2, [20.0, 10.0], [200, 100]);
+
+// 设置固体区域边界（靶材位置）
+skwave.SetSolid(1, -1, 5, -1, 2, -1, 1);
+skwave.SetSolid(1, 7, 9, -1, 5, -1, 1);
+
+// 继承固体网格到流体域
+skwave.InheritSolid();
+
+// 设置气云区域（爆炸源位置）
+skwave.SetGasCloud(1, -1, 8, -1, 11, -1, 1);
+
+// 初始化气云参数（初始压力、密度、温度等）
+skwave.InitBySphere(8.321e4, 1.21, [0, 0, 0], [0, 0, 0], 100.0);
+
+// 设置点火位置及朗道参数（能量、压力、温度等）
+skwave.SetFirePos(3, 5, 0, 0.5, 1.945, 4.162E2, 6.27E5);
+
+// 配置气云爆炸源（朗道参数）
+pdyna.SetLandauSource(1, 1150, 5600, 3.4e6, 3.0, 1.3333, 9e9, [0, 0, 0], 0.0, 1e-2);
+
+// 设置爆生气体的逸散特征时间与指数（压力衰减）
+pdyna.SetLandauGasLeakMat(5e-4, 1.2, 1, 10);
+
+// 创建流体网格接口
+blkdyn.CrtIFace();
+blkdyn.UpdateIFaceMesh();
+
+// 设置块体模型类型
+blkdyn.SetModel("linear");
+
+// 设置固体材料属性（密度、弹性模量、泊松比等）
+blkdyn.SetMat(2500, 3e10, 0.25, 1e6, 1e6, 35, 15);
+
+// 设置块体模型强度由单元控制
+blkdyn.SetIStrengthByElem();
+
+// 设置局部阻尼
+blkdyn.SetLocalDamp(0.01);
+
+// 固定边界条件（Y方向）
+blkdyn.FixV("xyz", 0, "y", -1, 1.01);
+
+// 配置气云区域内的物理量监测点（压力、密度、温度等）
+dyna.Monitor("skwave", "sw_dens", 5, 5, 0);
+dyna.Monitor("skwave", "sw_dens", 10, 5, 0);
+dyna.Monitor("skwave", "sw_dens", 15, 5, 0);
+
+dyna.Monitor("skwave", "sw_pp", 5, 5, 0);
+dyna.Monitor("skwave", "sw_pp", 10, 5, 0);
+dyna.Monitor("skwave", "sw_pp", 15, 5, 0);
+
+dyna.Monitor("skwave", "sw_temp", 5, 5, 0);
+dyna.Monitor("skwave", "sw_temp", 10, 5, 0);
+dyna.Monitor("skwave", "sw_temp", 15, 5, 0);
+
+// 配置固体单元破裂统计指标监测（拉伸/剪切破裂数、损伤量）
+blkdyn.SetIModel("SSMC");
+blkdyn.SetIStiffByElem(1);
+
+// 执行求解循环
+dyna.DynaCycle(1e-1);
+
+print("求解完成，结果文件已生成");

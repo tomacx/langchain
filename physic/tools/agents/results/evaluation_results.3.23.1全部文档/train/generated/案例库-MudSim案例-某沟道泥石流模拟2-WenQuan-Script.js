@@ -1,0 +1,55 @@
+setCurDir(getSrcDir());
+
+// 导入计算网格
+mflow.importGrid("GdemGrid", "grid.dat");
+
+// 设置降雨时程曲线 [起始时间, 降雨强度(m/s), 持续时间(s), 结束降雨强度]
+mflow.setRainData([0.0, 5e-3, 1e6, 5e-3]);
+
+// 设置颗粒级配曲线 [d10, d30, d50, d70, d90, d100] (mm)
+mflow.setParData([0.002, 0.2, 0.4, 0.6, 0.8, 1.0]);
+
+// 设置输出间隔(秒)
+mflow.setValue("Output_Interval", 100.0);
+
+// 设置初始含水量(体积分数)
+mflow.setValue("InitWaterCont", 0.35);
+
+// 设置粘聚力(Pa)
+mflow.setValue("cohesion", 800);
+
+// 设置摩擦系数
+mflow.setValue("friction", 15.0);
+
+// 设置最大时间步长(秒)
+mflow.setValue("MaxTimeStep", 20);
+
+// 设置监测点1 - 沟道上游位置
+mflow.hist("height", 401458, 4.48574e6);
+mflow.hist("magvel", 401458, 4.48574e6);
+mflow.hist("c", 401458, 4.48574e6);
+mflow.hist("dh", 401458, 4.48574e6);
+
+// 设置监测点2 - 沟道中游位置
+mflow.hist("height", 401850, 4.48558e6);
+mflow.hist("magvel", 401850, 4.48558e6);
+mflow.hist("c", 401850, 4.48558e6);
+mflow.hist("dh", 401850, 4.48558e6);
+
+// 设置监测点3 - 沟道下游位置
+mflow.hist("height", 401643, 4.48508e6);
+mflow.hist("magvel", 401643, 4.48508e6);
+mflow.hist("c", 401643, 4.48508e6);
+mflow.hist("dh", 401643, 4.48508e6);
+
+// 设置监测点4 - 沟道末端位置
+mflow.hist("height", 401528, 4.48485e6);
+mflow.hist("magvel", 401528, 4.48485e6);
+mflow.hist("c", 401528, 4.48485e6);
+mflow.hist("dh", 401528, 4.48485e6);
+
+// 执行核心求解过程(单位:秒)
+mflow.solve(86400);
+
+// 导出监测数据和最终计算结果
+mflow.exportTextData();

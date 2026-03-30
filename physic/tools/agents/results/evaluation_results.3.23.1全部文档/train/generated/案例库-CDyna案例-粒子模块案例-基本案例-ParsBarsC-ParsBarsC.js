@@ -1,0 +1,73 @@
+setCurDir(getSrcDir());
+
+// 清除内存数据
+dyna.Clear();
+
+// 清除结果数据
+doc.clearResult();
+
+// 设置输出间隔为500步
+dyna.Set("Output_Interval 500");
+
+// 关闭虚拟质量开关
+dyna.Set("If_Virtural_Mass 0");
+
+// 设置重力加速度
+dyna.Set("Gravity 0.0 0.0 -9.8");
+
+// 打开大变形计算开关
+dyna.Set("Large_Displace 1");
+
+// 颗粒接触的更新时步为10
+dyna.Set("Renew_Interval 10");
+
+// 设置接触容差为0
+dyna.Set("Contact_Detect_Tol 0.0");
+
+// 打开杆件计算开关
+dyna.Set("If_Cal_Bar 1");
+
+// 设置杆件与颗粒的耦合方式为接触耦合
+dyna.Set("Bar_Couple_Type 2");
+
+// 创建杆件全局参数 [E, rho, E_bar, nu, sigma_y, sigma_u, G, n, K, alpha, beta]
+var BarProp1 = [0.01, 7800.0, 1e10, 0.25, 235e6, 235e6, 1e6, 35, 1e9, 0.1, 0.0];
+
+// 施加杆件性质，ID从1到15
+for(var i = 1; i <= 15; i++) {
+    bar.SetPropByID(BarProp1, i, 1, 15);
+}
+
+// 约束杆件X方向最小、最大边上的全部速度
+var types = new Array(true, true, true);
+var values = new Array(0.0, 0.0, 0.0);
+bar.FixVelByCoord(types, values, -0.001, 0.001, -1e5, 1e5, -1e5, 1e5);
+bar.FixVelByCoord(types, values, 9.999, 11, -1e5, 1e5, -1e5, 1e5);
+
+// 施加重力到杆件
+bar.ApplyGravity(0, 0, 0);
+
+// 创建随机分布的颗粒
+var x = new Array(3, 7);
+var y = new Array(3, 7);
+var z = new Array(0.5, 5);
+pdyna.CreateByCoord(3000, 1, 2, 0.3, 0.3, 0.1, x, y, z);
+
+// 设定颗粒模型为脆断模型
+pdyna.SetModel("brittleMC");
+
+// 设定颗粒接触材料参数：密度、弹性模量、泊松比、抗拉强度、粘聚力、内摩擦角、局部阻尼、粘性阻尼系数
+pdyna.SetMat(2500, 3e7, 0.25, 1e4, 3e4, 25, 0.0, 0.05);
+
+// 获取杆件信息示例（监测变量）
+var barModel = bar.GetBarInfo(1, "Model");
+print("杆件模型:", barModel);
+
+// 设置动态计算时步
+dyna.Set("Time_Step 8e-5");
+
+// 求解10万步
+dyna.Solve(100000);
+
+// 后处理操作
+pdyna.PostProcess();

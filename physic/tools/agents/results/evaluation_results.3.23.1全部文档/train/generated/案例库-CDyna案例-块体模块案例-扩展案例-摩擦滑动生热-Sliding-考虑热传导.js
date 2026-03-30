@@ -1,0 +1,110 @@
+setCurDir(getSrcDir());
+
+// 初始化环境
+dyna.Clear();
+
+// 设置重力加速度
+dyna.Set("Gravity 9.8 -9.8 0.0");
+
+// 打开大变形计算开关
+dyna.Set("Large_Displace 1");
+
+// 更新接触面
+dyna.Set("If_Renew_Contact 1");
+
+// 设置云图输出间隔
+dyna.Set("Output_Interval 500");
+
+// 设置监测信息提取间隔
+dyna.Set("Moniter_Iter 10");
+
+// 关闭虚质量计算
+dyna.Set("If_Virtural_Mass 0");
+
+// 包含热传导计算模块
+dyna.Set("Config_Heat 1");
+
+// 开启热传导计算
+dyna.Set("Heat_Cal 1");
+
+// 设置接触面热量传递开关（放大因子）
+dyna.Set("If_Contact_Transf_Heat 1 10.0");
+
+// 导入网格
+blkdyn.ImportGrid("gid", "slidbody.msh");
+
+// 创建接触面
+blkdyn.CrtIFaceByCoord(-1e5, 1e5, 0.099, 0.101, -1e5, 1e5);
+
+// 更新接触面网格
+blkdyn.UpdateIFaceMesh();
+
+// 设置模型类型
+blkdyn.SetModel("linear");
+
+// 设置力学材料参数（密度、弹性模量、泊松比、屈服强度等）
+blkdyn.SetMat(2500, 3e8, 0.22, 8e6, 5e6, 35, 10);
+
+// 设置损伤模型
+blkdyn.SetIModel("brittleMC");
+
+// 设置损伤材料参数
+blkdyn.SetIMat(1e9, 1e9, 20.0, 0, 0);
+
+// 设置局部阻尼
+blkdyn.SetLocalDamp(0.01);
+
+// 固定边界条件
+blkdyn.FixV("xyz", 0.0, "y", -0.001, 0.001);
+
+// 设置热传导材料参数（密度、初始温度、导热系数、比热容、体膨胀系数）
+heatcd.SetPropByGroup(2500.0, 25.0, 3.125, 1000, 3e-5, 1);
+
+// 设置计算步长
+dyna.TimeStepCorrect(0.5);
+
+// 定义温度梯度（用于边界条件）
+var fArrayGrad = new Array(0.0, 0.0, 0.0);
+
+// 设置初始温度分布
+heatcd.InitConditionByCoord("temp", 25.0, fArrayGrad, -1e5, 1e5, -1e5, 1e5, true);
+
+// 设置自由面对流边界条件（可选）
+heatcd.ApplyConditionByPlane("conv", 10.0, fArrayGrad, -1e5, 1e5, -1e5, 1e5, true);
+
+// 设置监测点
+dyna.Monitor("block", "xdis", 0.15, 0.15, 0);
+dyna.Monitor("block", "sxx", 0.15, 0.15, 0);
+
+// 设置热传导监测
+heatcd.MonitorNodeTemp(0.15, 0.15, 0);
+
+// 执行求解循环
+dyna.BeforeCal();
+for (var i = 0; i < 10000; i++) {
+    // 计算节点温度
+    var fUnBal = heatcd.CalNodeTemperature();
+
+    // 计算单元热传导
+    heatcd.CalElemHeatTransfer();
+
+    // 计算接触面热传递
+    heatcd.CalContactHeatTransfer();
+
+    // 获取当前时间步温度结果
+    var tempResult = heatcd.GetNodeValue("temp", 0.15, 0.15, 0);
+
+    if (i % 100 == 0) {
+        var str = "Iter=" + i + " UnBal=" + fUnBal + " Temp=" + tempResult;
+        print(str);
+    }
+
+    dyna.PutStep();
+}
+
+// 获取最终节点温度结果
+var finalTemp = heatcd.CalNodeTemperature();
+print("Final Node Temperature: " + finalTemp);
+
+// 打印提示信息
+print("**********************求解完毕**********************");
