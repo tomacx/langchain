@@ -22,14 +22,20 @@ export CDEM_LLM_PROVIDER="${CDEM_LLM_PROVIDER:-ollama}"
 export CDEM_OLLAMA_BASE_URL="${CDEM_OLLAMA_BASE_URL:-http://localhost:11434}"
 export CDEM_LLM_MODEL="${CDEM_LLM_MODEL:-$MODEL_NAME}"
 
-export CDEM_ENABLE_TOOLS="${CDEM_ENABLE_TOOLS:-0}"
+export CDEM_ENABLE_TOOLS="${CDEM_ENABLE_TOOLS:-1}"
 export CDEM_ENABLE_VECTOR_KB="${CDEM_ENABLE_VECTOR_KB:-0}"
 export CDEM_ENABLE_RAG="${CDEM_ENABLE_RAG:-0}"
 export CDEM_ENABLE_RAG_FALLBACK="${CDEM_ENABLE_RAG_FALLBACK:-0}"
+
+INLINE_FLAG=""
+if [[ "${CDEM_ENABLE_TOOLS}" == "1" || "${CDEM_ENABLE_TOOLS}" == "true" || "${CDEM_ENABLE_TOOLS}" == "True" ]]; then
+  INLINE_FLAG="--no_inline_attachment"
+fi
 
 python physic/tools/agents/evaluate_gaia.py \
   --dataset "${DATASET_PATH}" \
   --only_with_file \
   --model "${MODEL_NAME}" \
   --timeout_s "${TIMEOUT_S}" \
+  ${INLINE_FLAG} \
   "$@"

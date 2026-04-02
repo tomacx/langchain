@@ -167,7 +167,14 @@ class TextGradPromptOptimizer:
         self.last_trace: List[Dict[str, Any]] = []
 
     def optimize_retry_prompt(self, issues: Sequence[str], query: str) -> str:
-        base = "拟合度优先：确保脚本可直接运行，补全缺失模块调用与求解入口，禁止输出 JSON/工具名。物理合规性优先：强调收敛与能量监测（若 API 支持）。"
+        gaia_mode = _env_flag("GAIA_MODE", False) or (os.environ.get("CDEM_EVAL_PROFILE") or "").strip().lower() == "gaia"
+        if gaia_mode:
+            base = (
+                "GAIA优先：如有Attachment path先用read_local_file读取再回答。"
+                "只输出单行：Final answer: <answer>。禁止解释、禁止多行、禁止JSON。"
+            )
+        else:
+            base = "拟合度优先：确保脚本可直接运行，补全缺失模块调用与求解入口，禁止输出 JSON/工具名。物理合规性优先：强调收敛与能量监测（若 API 支持）。"
         candidates: List[Tuple[str, str]] = [("base", base)]
 
         if "json_output" in issues:
@@ -178,12 +185,21 @@ class TextGradPromptOptimizer:
             candidates.append(("rule_missing_modules", base + " 必须补齐必要模块调用；不要省略初始化与求解入口。"))
         if "too_short" in issues:
             candidates.append(("rule_too_short", base + " 生成完整脚本，不要输出片段或伪代码。"))
+        if gaia_mode:
+            if "missing_final_prefix" in issues:
+                candidates.append(("gaia_final_prefix", base + " 必须以“Final answer:”开头。"))
+            if "multi_line" in issues:
+                candidates.append(("gaia_single_line", base + " 必须单行输出，不允许换行。"))
+            if "empty_final" in issues:
+                candidates.append(("gaia_no_empty", base + " 不要输出空答案；必须给出可验证的最终答案。"))
+            if "no_tool_used" in issues:
+                candidates.append(("gaia_force_tool", base + " 你必须先调用read_local_file读取Attachment path指向的文件。"))
 
         allow_llm = _env_flag("CDEM_PROMPT_OPTIMIZER_USE_LLM", True)
         if allow_llm and self.llm is not None:
             sys = (
                 "你是提示词优化器。给定失败信号(issues)与用户需求(query)，输出一条更强的【动态优化指令】。\n"
-                "要求：必须短（<=120字）；必须包含“物理合规性优先”；必须明确禁止 JSON 与工具名；不要输出解释。"
+                "要求：必须短（<=140字）；必须明确禁止 JSON 与工具名；不要输出解释。"
             )
             user = {"issues": list(issues), "query": query}
             try:
@@ -218,18 +234,29 @@ class TextGradPromptOptimizer:
         return best_prompt
 
     def _score_prompt(self, prompt: str, issues: Sequence[str]) -> float:
+        gaia_mode = _env_flag("GAIA_MODE", False) or (os.environ.get("CDEM_EVAL_PROFILE") or "").strip().lower() == "gaia"
         s = 0.0
         p = prompt.lower()
-        if "物理合规" in prompt:
-            s += 3.0
-        if "禁止" in prompt and ("json" in p or "工具" in prompt):
-            s += 2.0
-        if "search_physics_knowledge" in p:
-            s += 1.0
-        if "收敛" in prompt or "能量" in prompt:
-            s += 1.0
-        if "```javascript" in p:
-            s += 0.5
+        if gaia_mode:
+            if "final answer" in p:
+                s += 3.0
+            if "单行" in prompt or "single line" in p:
+                s += 2.0
+            if "read_local_file" in p:
+                s += 1.0
+            if ("禁止" in prompt or "do not" in p) and "json" in p:
+                s += 1.0
+        else:
+            if "物理合规" in prompt:
+                s += 3.0
+            if "禁止" in prompt and ("json" in p or "工具" in prompt):
+                s += 2.0
+            if "search_physics_knowledge" in p:
+                s += 1.0
+            if "收敛" in prompt or "能量" in prompt:
+                s += 1.0
+            if "```javascript" in p:
+                s += 0.5
         for it in issues:
             if it == "missing_modules" and ("模块" in prompt or "补齐" in prompt):
                 s += 1.0
@@ -238,6 +265,12 @@ class TextGradPromptOptimizer:
             if it == "tool_leak" and "search_physics_knowledge" in p:
                 s += 1.0
             if it == "too_short" and ("完整" in prompt or "不要输出片段" in prompt):
+                s += 1.0
+            if it == "missing_final_prefix" and ("final answer" in p or "开头" in prompt):
+                s += 1.0
+            if it == "multi_line" and ("单行" in prompt or "single line" in p):
+                s += 1.0
+            if it == "no_tool_used" and "read_local_file" in p:
                 s += 1.0
         return s
 
@@ -960,7 +993,7 @@ class ToolConstructionModule:
             doc = fitz.open(str(pp))
             n = doc.page_count
             out = [f"PDF pages: {n}"]
-            take = min(max_pages, n)
+            take = min(max(1, _env_int("GAIA_PDF_MAX_PAGES", int(max_pages))), n)
             for i in range(take):
                 page = doc.load_page(i)
                 txt = (page.get_text("text") or "").strip()
@@ -977,10 +1010,16 @@ class ToolConstructionModule:
             xls = pd.ExcelFile(str(pp))
             sheets = list(xls.sheet_names or [])
             out = [f"Excel sheets: {sheets}"]
-            sheet0 = sheets[0] if sheets else None
-            if sheet0:
-                df = pd.read_excel(str(pp), sheet_name=sheet0, nrows=30)
-                out.append(f"\nSheet: {sheet0}")
+            max_sheets = max(1, _env_int("GAIA_EXCEL_MAX_SHEETS", 3))
+            max_rows = max(1, _env_int("GAIA_EXCEL_MAX_ROWS", 120))
+            for sn in sheets[:max_sheets]:
+                try:
+                    df = pd.read_excel(str(pp), sheet_name=sn, nrows=max_rows)
+                except Exception as e:
+                    out.append(f"\nSheet: {sn}\n读取失败：{e}")
+                    continue
+                out.append(f"\nSheet: {sn} (rows_preview={len(df)} cols={len(df.columns)})")
+                out.append("Columns: " + ", ".join([str(c) for c in df.columns]))
                 out.append(df.to_string(index=False))
             return _clip("\n".join(out), 24000)
 
@@ -1115,7 +1154,19 @@ class ToolConstructionModule:
                     w, h = im.size
                     mode = im.mode
                     fmt = im.format
-                    return f"Image: {fmt} {w}x{h} mode={mode}\n未启用 OCR（如需 OCR 请安装 pytesseract + 系统 tesseract）"
+                    if _env_flag("GAIA_ENABLE_OCR", False):
+                        try:
+                            import pytesseract
+                        except Exception as e:
+                            return f"Image: {fmt} {w}x{h} mode={mode}\nOCR 不可用（缺少 pytesseract）：{e}"
+                        try:
+                            text = (pytesseract.image_to_string(im) or "").strip()
+                        except Exception as e:
+                            return f"Image: {fmt} {w}x{h} mode={mode}\nOCR 失败：{e}"
+                        if text:
+                            return _clip(f"Image: {fmt} {w}x{h} mode={mode}\nOCR:\n{text}", 24000)
+                        return f"Image: {fmt} {w}x{h} mode={mode}\nOCR: （空）"
+                    return f"Image: {fmt} {w}x{h} mode={mode}\n未启用 OCR（可设置 GAIA_ENABLE_OCR=1）"
                 except Exception as e:
                     return f"无法读取图片：{e}"
             if ext in {".mp3", ".m4a", ".wav"}:
@@ -1649,8 +1700,13 @@ class AgentConstructionModule:
         if gaia_mode:
             system_prompt = (
                 "You are an offline agent for GAIA-style tasks.\n"
-                "Use tools to inspect local attachments when needed.\n"
-                "Keep answers short and return the final answer in the required format."
+                "You may call tools to inspect local attachments:\n"
+                "- read_local_file(path): read a local file by absolute path\n"
+                "- list_local_dir(path): list a local directory by absolute path\n"
+                "If the user question includes 'Attachment path:', you should call read_local_file on that path before answering unless it is clearly unnecessary.\n"
+                "Output must be a single line in the exact format:\n"
+                "Final answer: <answer>\n"
+                "Do not add any extra text."
             )
         elif sys_mode in {"generic", "general", "base"}:
             system_prompt = self._get_generic_system_prompt()
@@ -2264,16 +2320,133 @@ class AgentConstructionModule:
                         "3. 如果涉及 API 用法，请给出简短的代码示例（使用 ```javascript ... ```）。\n"
                         "4. 回答要简洁明了，使用中文。\n"
                     )
-                
-                qa_resp, _, _, cutoff_info = run_once(qa_prompt)
+
+                def _qa_extract_final(text: str) -> str:
+                    t = (text or "").strip()
+                    if not t:
+                        return ""
+                    lines = [ln.strip() for ln in t.splitlines() if ln.strip()]
+                    for ln in reversed(lines):
+                        m = re.search(r"(?i)(?:final answer|final|answer)\s*[:：]\s*(.+)$", ln)
+                        if m:
+                            return (m.group(1) or "").strip()
+                    if len(lines) == 1:
+                        return lines[0]
+                    return (lines[-1] if lines else "").strip()
+
+                def _qa_issue_tags(text: str, tool_calls: int) -> List[str]:
+                    tags: List[str] = []
+                    t = (text or "").strip()
+                    if not t:
+                        return ["empty_final"]
+                    lines = [ln.strip() for ln in t.splitlines() if ln.strip()]
+                    if len(lines) > 1:
+                        tags.append("multi_line")
+                    if not re.search(r"(?i)\bfinal answer\b\s*[:：]", t):
+                        tags.append("missing_final_prefix")
+                    final = _qa_extract_final(t)
+                    if not final:
+                        if "empty_final" not in tags:
+                            tags.append("empty_final")
+                    if ("Attachment path:" in (query or "")) and int(tool_calls or 0) <= 0 and flags.enable_tools and (self.tools or []):
+                        tags.append("no_tool_used")
+                    return tags
+
+                def _qa_score(text: str, tool_calls: int) -> Tuple[float, List[str], str]:
+                    final = _qa_extract_final(text)
+                    tags = _qa_issue_tags(text, tool_calls=int(tool_calls or 0))
+                    s = 0.0
+                    if final:
+                        s += 2.0
+                    if "missing_final_prefix" not in tags:
+                        s += 2.0
+                    if "multi_line" not in tags:
+                        s += 1.0
+                    if "Attachment path:" in (query or "") and int(tool_calls or 0) > 0:
+                        s += 0.75
+                    if final:
+                        s -= min(1.5, max(0.0, (len(final) - 80) / 120.0))
+                    if tags:
+                        s -= 0.25 * float(len(tags))
+                    return float(s), tags, final
+
+                def _qa_ensure_final_line(text: str) -> str:
+                    final = _qa_extract_final(text)
+                    if final:
+                        return f"Final answer: {final}".strip()
+                    t = (text or "").strip().replace("\n", " ").strip()
+                    if not t:
+                        return "Final answer: "
+                    if re.search(r"(?i)\bfinal answer\b\s*[:：]", t):
+                        return t
+                    return "Final answer: " + t[:300].strip()
+
+                qa_best_text = ""
+                qa_best_score = None
+                qa_best_tags: List[str] = []
+                qa_best_final = ""
+                qa_best_tool_calls = 0
+                qa_best_cutoff: Dict[str, Any] = {}
+
+                gaia_mode = _env_flag("GAIA_MODE", False) or (os.environ.get("CDEM_EVAL_PROFILE") or "").strip().lower() == "gaia"
+                if gaia_mode and flags.enable_workflow_optimizer:
+                    base_tools = list(self.tools or []) if flags.enable_tools else []
+                    cands: List[Tuple[str, str, List[Any]]] = []
+                    if base_tools:
+                        cands.append(("qa_tool_first", "若题目包含Attachment path，必须先调用read_local_file读取该文件内容，再给出Final answer。", base_tools))
+                        cands.append(("qa_default", "", base_tools))
+                    cands.append(("qa_no_tools", "不要调用任何工具；直接作答并保持Final answer单行格式。", []))
+
+                    max_k = max(1, int(getattr(flags, "workflow_optimizer_candidates", 2) or 2))
+                    for _, dyn, tl in cands[:max_k]:
+                        ex = self._get_executor(tl)
+                        txt, tool_msgs, _, cutoff = run_once(qa_prompt, dyn_prompt=dyn, executor_override=ex)
+                        sc, tags, final = _qa_score(txt, tool_calls=int(tool_msgs or 0))
+                        if qa_best_score is None or sc > qa_best_score:
+                            qa_best_score = float(sc)
+                            qa_best_text = str(txt or "")
+                            qa_best_tags = list(tags or [])
+                            qa_best_final = str(final or "")
+                            qa_best_tool_calls = int(tool_msgs or 0)
+                            qa_best_cutoff = dict(cutoff or {})
+                else:
+                    txt, tool_msgs, _, cutoff = run_once(qa_prompt)
+                    sc, tags, final = _qa_score(txt, tool_calls=int(tool_msgs or 0))
+                    qa_best_score = float(sc)
+                    qa_best_text = str(txt or "")
+                    qa_best_tags = list(tags or [])
+                    qa_best_final = str(final or "")
+                    qa_best_tool_calls = int(tool_msgs or 0)
+                    qa_best_cutoff = dict(cutoff or {})
+
+                if gaia_mode and flags.enable_prompt_optimizer and self.prompt_optimizer is not None and qa_best_tags:
+                    try:
+                        dyn2 = self.prompt_optimizer.optimize_retry_prompt(issues=qa_best_tags, query=query)
+                    except Exception:
+                        dyn2 = ""
+                    if dyn2:
+                        ex2 = self._get_executor(list(self.tools or []) if flags.enable_tools else [])
+                        txt2, tool_msgs2, _, cutoff2 = run_once(qa_prompt, dyn_prompt=dyn2, executor_override=ex2)
+                        sc2, tags2, final2 = _qa_score(txt2, tool_calls=int(tool_msgs2 or 0))
+                        if qa_best_score is None or float(sc2) >= float(qa_best_score):
+                            qa_best_score = float(sc2)
+                            qa_best_text = str(txt2 or "")
+                            qa_best_tags = list(tags2 or [])
+                            qa_best_final = str(final2 or "")
+                            qa_best_tool_calls = int(tool_msgs2 or 0)
+                            qa_best_cutoff = dict(cutoff2 or {})
+
+                qa_resp = _qa_ensure_final_line(qa_best_text)
                 
                 self.last_run_metrics = {
                     "task_type": "qa",
                     "retrieved_docs_count": int(retrieved_count),
-                    "duration_s": 0.0, 
+                    "duration_s": 0.0,
+                    "qa_tool_calls": int(qa_best_tool_calls),
+                    "qa_issue_tags": list(qa_best_tags or []),
                 }
-                if cutoff_info:
-                    self.last_run_metrics["cutoff"] = cutoff_info
+                if qa_best_cutoff:
+                    self.last_run_metrics["cutoff"] = dict(qa_best_cutoff or {})
                 
                 if verbose:
                     print("\n【QA 回答】")
