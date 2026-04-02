@@ -1,0 +1,86 @@
+--- 案例库-SuperCDEM案例-裂隙流-固体耦合案例-径向水力压裂-RadicalHFrac.js (ground_truth)
++++ 案例库-SuperCDEM案例-裂隙流-固体耦合案例-径向水力压裂-RadicalHFrac.js (generated)
+@@ -1,63 +1,41 @@
+ setCurDir(getSrcDir());
+ 
+-scdem.outputInterval = 1000;
++scdem.outputInterval = 100;
+ scdem.monitorIter = 10;
+-
+-scdem.gravity = [0, 0, 0];
+-
+-scdem.isVirtualMass = 0;
+ 
+ scdem.set("ubr", 1e-4);
+ 
++//包含裂隙计算模块，开辟相应内存
+ scdem.set("Config_FracSeepage", 1);
++scdem.set("FracSeepage_Cal", 1);
++scdem.set("FS_Solid_Interaction", 1);
++scdem.set("FS_MaxWid", 6e-5);
+ 
+-scdem.set("Seepage_Mode", 1);
+-scdem.set("FS_Solid_Interaction", 1);
+-scdem.set("FS_MaxWid", 5e-3);
+-
+-var msh = imesh.importGmsh("RadBox-0.1m.msh");
++var msh = imesh.importGmsh("Tet4Gmsh.msh");
+ scdem.getMesh(msh);
+ 
+ scdem.setModel("linear");
+-scdem.setMat([2500, 38.8e9, 0.15, 1e12, 1.5e6, 50, 10]);
+ 
+-scdem.setIModel("linear");
+-scdem.setIModel("FracE", 1, 2);
+-scdem.setContactFractureEnergy(32, 1e12, 1, 2);
+-scdem.setIMatByElem(10);
++// 设置材料参数
++scdem.setMat([2600, 5.5e10, 0.25, 10e6, 2.5e6, 30.0, 10.0]);
+ 
+-//设置流道
+-SFracsp.setFlowCrackFace(1,2);
+-SFracsp.createGridFromBlock(2);
++// 设置接触断裂能量
++scdem.setIModel("FracE");
++scdem.setContactFractureEnergy(10, 20);
+ 
+-scdem.set("FracSeepage_Cal", 1);
++// 创建裂隙网格
++SFracsp.createGridFromBlock(1);
+ 
+-//设置流体的参数
+-var w = 1e-5;
+-var k = w * w / 12 / (1e-3);
++// 设置流体属性
++SFracsp.setPropByCoord([1.0, 1e7, 12e-13, 12e-9], -1e5, 1e5, -1e5, 1e5, -1e5, 1e5);
+ 
+-SFracsp.setProp([1000.0, 2.2e9, k, w]);
++// 初始化流体条件
++SFracsp.initConditionByCoord("pp", 1e5, 0, 0, 0, -1e5, 1e5, -1e5, 1e5, -1e5, 1e5);
+ 
+-//0.1m
+-SFracsp.applyConditionByCoord("source", 0.001, 0, 0, 0, 24.9, 25.1, 24.9, 25.1, 24.9, 25.1);
+-
+-//注水点监测
+-scdem.monitor("fracsp", "sc_aperture", 25, 25, 25);
+-scdem.monitor("fracsp", "sc_pp", 25, 25, 25);
+-
+-//开度监测
+-for (var i = 1; i <= 50; i++) 
+-{
+-    scdem.monitor("fracsp", "sc_aperture", 25 + 0.12 * i, 25, 25)
+-}
+-
+-for (var i = 1; i <= 50; i++) 
+-{
+-    scdem.monitor("fracsp", "sc_aperture", 25, 25 + 0.12 * i, 25)
+-}
++// 应用边界条件
++SFracsp.applyConditionByCylinder("pp", 30e6, 0, 0, 0, 0, 0, -1, 0, 0, 1, 0, 0.151);
+ 
+ scdem.timeStep = 1e-7;
+-
+-scdem.dynaSolveGpu(8);
++scdem.dynaSolveGpu(0.01);
+ 
+ print("finish");

@@ -1,0 +1,41 @@
+--- 案例库-建模及网格案例-参数化几何及网格创建案例-参数化几何创建及网格剖分-硬线设置.js (ground_truth)
++++ 案例库-建模及网格案例-参数化几何及网格创建案例-参数化几何创建及网格剖分-硬线设置.js (generated)
+@@ -1,16 +1,28 @@
+-//设置当前工作路径为JS脚本所在路径
++// 设置当前工作路径为JS脚本所在路径
+ setCurDir(getSrcDir());
+ 
+-//创建矩形面
+-var fid = igeo.genRectS(0.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.1, 1);
++igeo.clear();
++imeshing.clear();
+ 
+-//产生2条线
+-var lid1 = igeo.genLine(0.2,0.2,0.0, 0.6, 0.4, 0.0, 0.005, 0.005);
+-var lid2 = igeo.genLine(0.5,0.6,0.0, 0.8, 0.8, 0.0, 0.005, 0.005);
++// 创建点
++var Point1 = igeo.genPoint(0, 0, 0, 0.1);
++var Point2 = igeo.genPoint(3, 0, 0, 0.1);
++var Point3 = igeo.genPoint(0, 3, 0, 0.1);
+ 
+-//设置硬线
+-igeo.setHardLineToFace(lid1, fid);
+-igeo.setHardLineToFace(lid2, fid);
++// 创建线
++var Line1 = igeo.genLine(Point1, Point2, 0.01, 0.02);
++var Line2 = igeo.genLine(Point2, Point3, 0.01, 0.02);
++var Line3 = igeo.genLine(Point3, Point1, 0.01, 0.02);
+ 
+-//划分二维网格
++// 创建面
++var id = igeo.genRectS(0, 0, 0, 4, 4, 0, 0.2, 1);
++
++// 设置硬线到面上
++igeo.setHardLineToFace(Line1, id);
++igeo.setHardLineToFace(Line2, id);
++igeo.setHardLineToFace(Line3, id);
++
++// 剖分网格
+ imeshing.genMeshByGmsh(2);
++
++print("Finished");

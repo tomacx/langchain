@@ -1,0 +1,32 @@
+//设置当前路径为JavaScript脚本所在的路径
+setCurDir(getSrcDir());
+
+//清除平台数据
+doc.ClearResult();
+
+//设置计算时间步为0.2ms
+dyna.Set("Time_Step 2.0e-4");
+
+//关闭虚拟质量开关
+dyna.Set("If_Virtural_Mass 0");
+
+//设置输出间隔为1000步
+dyna.Set("Output_Interval 1000");
+
+//导入刚性面边界
+rdface.Import(2,"boundary.msh");
+
+//创建紧密排列的颗粒系统，使用膨胀法生成
+var x = [-3, 1];
+var y = [0.1, 2.4];
+var z = [0, 1];
+pdyna.CreateByCoord(5000, 1, 1, 0.05, 0.1, 0.05, x, y, z);
+
+//设置颗粒模型为脆性断裂模型
+pdyna.SetModel("brittleMC");
+
+//设置颗粒的材料参数，依次为密度、弹性模量、泊松比、抗拉强度、粘聚力、内摩擦角、局部阻尼、粘性阻尼系数（临界阻尼比）
+pdyna.SetMat(2500, 1e7, 0.25, 0.0, 0.0, 25, 0.0, 0.3);
+
+//迭代1万步
+dyna.Solve(10000);

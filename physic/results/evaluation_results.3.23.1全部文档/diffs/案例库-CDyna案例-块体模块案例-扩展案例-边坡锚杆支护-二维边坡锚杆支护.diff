@@ -1,0 +1,149 @@
+--- 案例库-CDyna案例-块体模块案例-扩展案例-边坡锚杆支护-二维边坡锚杆支护.js (ground_truth)
++++ 案例库-CDyna案例-块体模块案例-扩展案例-边坡锚杆支护-二维边坡锚杆支护.js (generated)
+@@ -1,80 +1,89 @@
+-//设置当前工作路径为JS脚本所在路径
+ setCurDir(getSrcDir());
+ 
+-//设置网格尺寸
+-var size = 0.3;
++// 定义坡高数组
++var SlopeH = [10.0, 15.0, 20.0, 25.0, 30.0];
+ 
+-//创建多边形面
+-var feng = new Array();
+-feng[0] = [0,0,0,size ];
+-feng[1] = [10,0,0,size];
+-feng[2] = [10,6,0,size];
+-feng[3] = [7,6,0,size];
+-feng[4] = [3,3,0,size];
+-feng[5] = [0,3,0,size];
+-igeo.genPloygenS(feng,1);
++// 定义坡角数组
++var Sita    = [45.0, 45.0, 45.0, 45.0, 45.0];
+ 
++// 初始化安全系数值数组
++var Fos     = new Array(5);
+ 
+-//划分二维网格
+-imeshing.genMeshByGmsh(2);
++// 左侧平台长度比例
++var LeftLRatio = 1.0;
+ 
++// 右侧平台长度比例
++var RightLRatio = 2.0;
+ 
+-//从平台读取网格
+-blkdyn.GetMesh(imeshing);
++// 坡体底部厚度比例
++var BaseHRatio = 1.5;
+ 
+-blkdyn.SetModel("linear");
++// 斜坡段附近网格尺寸
++var size1 = 1.5;
+ 
+-blkdyn.SetMat(2500,3e8,0.25,3e3,3e3,15,10);
++// 其他部分网格尺寸
++var size2 = 4;
+ 
+-blkdyn.FixV("x",0,"x",-0.01,0.001);
+-blkdyn.FixV("x",0,"x",9.99,10.01);
+-blkdyn.FixV("y",0,"y",-0.001,0.001);
++for (var i = 0; i < 5; i++) {
++    // 清除几何、网格和计算模块数据
++    igeo.clear();
++    imeshing.clear();
++    dyna.Clear();
++    doc.clearResult();
+ 
+-//创建第1根锚索
+-var fArrayCoord1 = [4,3.75,0];
+-var fArrayCoord2 = [1,-0.694444444,0];
+-bar.CreateByDir("cable", fArrayCoord1, fArrayCoord2, 3,20);
++    // 计算坡长和其他参数
++    var SlopeL = SlopeH[i] / Math.tan(Sita[i] / 180.0 * Math.PI);
++    var LeftL  = LeftLRatio * SlopeL;
++    var RightL = RightLRatio * SlopeL;
++    var BaseH  = BaseHRatio * SlopeH[i];
++    var TotalL = LeftL + SlopeL + RightL;
++    var TotalH = BaseH + SlopeH[i];
+ 
++    // 定义多边形坐标
++    var aCoord = new Array(6);
++    aCoord[0] = [0, 0, 0, size2];
++    aCoord[1] = [TotalL, 0, 0, size2];
++    aCoord[2] = [TotalL, TotalH, 0, size2];
++    aCoord[3] = [LeftL + SlopeL, TotalH, 0, size1];
++    aCoord[4] = [LeftL, BaseH, 0, size1];
++    aCoord[5] = [0, BaseH, 0, size2];
+ 
++    // 创建多边形边坡
++    igeo.genPloygenS(aCoord, 1);
+ 
+-//创建第2根锚索
+-var fArrayCoord1 = [5, 4.5, 0];
+-var fArrayCoord2 = [1,-0.694444444,0];
+-bar.CreateByDir("cable", fArrayCoord1, fArrayCoord2, 3,20);
++    // 划分网格
++    imeshing.genMeshByGmsh(2);
+ 
+-//创建第3根锚索
+-var fArrayCoord1 = [6, 5.25, 0];
+-var fArrayCoord2 = [1,-0.694444444,0];
+-bar.CreateByDir("cable", fArrayCoord1, fArrayCoord2, 3,20);
++    // 设置不平衡率
++    dyna.Set("UnBalance_Ratio 1e-4");
+ 
++    // 获取网格数据
++    blkdyn.GetMesh(imeshing);
+ 
+-//设置所有锚索的力学模型为可破坏模型
+-bar.SetModelByID("failure", 1, 100);
++    // 设置计算本构模型
++    blkdyn.SetModel("linear");
+ 
+-//定义两种锚索材料
+-var BarProp1 = [1e-2, 7800.0, 1e10, 0.25, 235e6, 235e6, 1e6, 35, 1e9, 0.8, 0.0];
+-var BarProp2 = [1e-2, 7800.0, 1e10, 0.25, 235e6, 235e6, 0.0, 0.0, 1e9, 0.8, 0.0];
++    // 设置材料参数
++    blkdyn.SetMat(2000, 3e9, 0.3, 1e5, 1e5, 25, 15);
+ 
+-//指定自由段的锚索材料
+-bar.SetPropByID(BarProp2, 1, 10, 1, 15);
++    // 对底部和两侧进行约束
++    blkdyn.FixV("y", 0.0, "y", -0.01, 0.01);
++    blkdyn.FixV("x", 0.0, "x", -0.01, 0.01);
++    blkdyn.FixV("x", 0.0, "x", TotalL-0.01, TotalL+0.01);
+ 
+-//指定锚固段的锚索材料
+-bar.SetPropByID(BarProp1, 1, 10, 16, 20);
++    // 设置局部阻尼
++    blkdyn.SetLocalDamp(0.8);
+ 
+-//在每根锚索的第一个节点上施加预应力，为10kN。
+-bar.ApplyPreTenForce(1e4, 1,11,1,1);
++    // 监测典型测点的竖向应力
++    dyna.Monitor("block", "syy", LeftL + SlopeL / 2, BaseH + SlopeH[i] / 2, 0);
++    
++    // 求解
++    dyna.Solve();
+ 
++    // 计算安全系数并存储到数组中
++    var displacement = blkdyn.GetDisplacement(LeftL + SlopeL / 2, BaseH + SlopeH[i] / 2, 0)[0];
++    Fos[i] = (SlopeH[i] * Math.tan(Sita[i] / 180.0 * Math.PI)) / displacement;
++}
+ 
+-//打开杆件计算开关
+-dyna.Set("If_Cal_Bar 0");
+-
+-dyna.Solve();
+-
+-blkdyn.SetModel("MC");
+-
+-dyna.Set("If_Cal_Bar 1");
+-
+-dyna.Solve();
+-
+-
+-
++// 输出安全系数数组
++console.log(Fos);

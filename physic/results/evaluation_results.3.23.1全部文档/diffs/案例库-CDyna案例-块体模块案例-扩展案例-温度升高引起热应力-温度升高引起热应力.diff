@@ -1,0 +1,18 @@
+--- 案例库-CDyna案例-块体模块案例-扩展案例-温度升高引起热应力-温度升高引起热应力.js (ground_truth)
++++ 案例库-CDyna案例-块体模块案例-扩展案例-温度升高引起热应力-温度升高引起热应力.js (generated)
+@@ -12,13 +12,14 @@
+ var radin   = 0.0;
+ var radout = 0.03;
+ var radsize = 0.01;
++
+ igeo.genBrickV(0,0,0, thick,height ,thick, fsize, 1);
+ igeo.genBrickV(gap,0,0, thick + gap,height ,thick, fsize, 1);
+ 
+ for(var i = 0; i < 6; i++)
+ {
+     var fh = i * 0.15 + 0.15;
+-    igeo.genCylinderV(thick, fh, thick * 0.5, gap, fh, thick * 0.5,  radin, radout, radsize, radsize, 2);
++    igeo.genCylinderV(thick, fh, thick * 0.5, gap, fh, thick * 0.5, radin, radout, radsize, radsize, 2);
+ 
+     igeo.glue("volume",i + 3, 1);
+     igeo.glue("volume",i + 3, 2);

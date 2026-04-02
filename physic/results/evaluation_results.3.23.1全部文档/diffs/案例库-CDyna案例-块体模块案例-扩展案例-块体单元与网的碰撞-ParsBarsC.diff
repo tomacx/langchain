@@ -1,0 +1,122 @@
+--- 案例库-CDyna案例-块体模块案例-扩展案例-块体单元与网的碰撞-ParsBarsC.js (ground_truth)
++++ 案例库-CDyna案例-块体模块案例-扩展案例-块体单元与网的碰撞-ParsBarsC.js (generated)
+@@ -1,84 +1,47 @@
+-//设置当前路径为JavaScript脚本所在的路径
+ setCurDir(getSrcDir());
+ 
+-//清除GDEM-Pdyna计算核心中的内存数据
+-dyna.Clear();
++// 设置计算参数
++dyna.Set("Mechanic_Cal", 1);
++dyna.Set("Gravity", 0, -9.8, 0);
++dyna.Set("Large_Displace", 1);
++dyna.Set("Output_Interval", 500);
++dyna.Set("Moniter_Iter", 100);
++dyna.Set("If_Virtural_Mass", 0);
++dyna.Set("If_Renew_Contact", 1);
++dyna.Set("Renew_Interval", 100);
++dyna.Set("Contact_Detect_Tol", 1e-3);
++dyna.Set("SaveFile_Out", 1);
+ 
+-//清除GDEM-Env中的结果数据
+-doc.clearResult();
++// 导入网格文件
++blkdyn.ImportGrid("patran", "cdem.out");
+ 
+-//设置结果的输出间隔为500步
+-dyna.Set("Output_Interval 500");
++// 设置单元组号
++var x = new Array(-1e10, 1e10);
++var y = new Array(-1e10, 19.0);
++var z = new Array(-1e10, 1e10);
++blkdyn.SetGroupByCoord(2, x[0], x[1], y[0], y[1], z[0], z[1]);
+ 
+-//关闭虚拟质量开关
+-dyna.Set("If_Virtural_Mass 0");
++// 创建接触面
++blkdyn.CrtIFace(1);
++blkdyn.CrtBoundIFaceByGroup(2);
+ 
+-//设置重力加速度
+-dyna.Set("Gravity 0.0 0.0 -9.8");
+-
+-//打开大变形计算开关
+-dyna.Set("Large_Displace 1");
+-
+-//颗粒接触的更新时步为10
+-dyna.Set("Renew_Interval 10");
+-
+-//设置接触容差为0
+-dyna.Set("Contact_Detect_Tol 5e-3");
+-
+-dyna.Set("If_Renew_Contact 1");
+-
+-
+-dyna.Set("If_Cal_EE_Contact 1");
+-
+-//打开杆件计算开关
+-dyna.Set("If_Cal_Bar 1");
+-
+-//设置杆件与颗粒的耦合方式为接触耦合
+-dyna.Set("Bar_Couple_Type 2");
+-
+-
+-
+-igeo.genBrickV(4.6,4.6,0.3,5.4,5.4,1.5,0.5,2);
+-
+-imeshing.genMeshByGmsh(3);
+-
+-
+-blkdyn.ImportGrid("gmsh","GDEM.msh");
+-
+-blkdyn.CrtIFace();
+-
++// 更新接触面网格
+ blkdyn.UpdateIFaceMesh();
+ 
++// 设置材料参数
+ blkdyn.SetModel("linear");
++blkdyn.SetMat(2500, 1e9, 0.3, 6e4, 3e4, 25.0, 10.0, 1, 100);
++blkdyn.SetIModel("brittleMC");
++blkdyn.SetIMat(1e10, 1e10, 25.0, 0.0, 0.0);
+ 
+-blkdyn.SetMat(2500,5e7, 0.25, 1e4, 1e4, 15, 10);
++// 固定节点速度
++blkdyn.FixV("xy", 0.0, "y", -1e10, 19.01);
++blkdyn.SetLocalDamp(0.01);
+ 
+-blkdyn.SetIModel("brittleMC");
++// 监测位移
++dyna.Monitor("block", "ydis", 200, 140, 0);
++dyna.Monitor("block", "ydis", 300, 150, 0);
++dyna.Monitor("block", "ydis", 400, 160, 0);
+ 
+-blkdyn.SetIStiffByElem(1.0);
+-blkdyn.SetIStrengthByElem();
+-
+-
+-//导入gid格式的杆件，确定杆件类型为pile
+-bar.Import("gid","cable","net.msh");
+-//创建杆件全局参数
+-var BarProp1 = [0.01, 7800.0, 1e10, 0.25, 235e6, 235e6, 1e6, 35, 1e9, 0.1, 0.0];
+-
+-//施加杆件性质
+-bar.SetPropByID(BarProp1, 1, 10000000, 1, 15);
+-
+-//约束杆件X方向最小、最大边上的全部速度。
+-var types = new Array(true, true, true);//三个方向是否约束
+-var values = new Array(0.0, 0.0, 0.0);//三个方向的平动速度分量值
+-bar. FixVelByCoord(types, values, -0.001,0.001, -1e5, 1e5, -1e5, 1e5);
+-bar. FixVelByCoord(types, values, 9.999,11, -1e5, 1e5, -1e5, 1e5);
+-
+-bar.ApplyGravity(0,0,0);
+-
+-blkdyn.SetLocalDamp(0.005);
+-
+-//设定动态计算时步
+-dyna.Set("Time_Step 5e-5");
+-
+-//求解2万步
+-dyna.Solve(20000);
++// 求解
++dyna.Solve(100000);

@@ -1,0 +1,255 @@
+# Failure Analysis: 案例库-CDyna案例-块体模块案例-基本案例-BarziTest-BraziTest.js
+
+## Query
+请编写一个CDyna仿真脚本，实现基本案例-BarziTest-BraziTest，并输出必要的结果与监测。
+
+## Generated Code
+```javascript
+setCurDir(getSrcDir());
+
+dyna.Set("Gravity 0 -9.8 0");
+dyna.Set("Large_Displace 1");
+
+dyna.Set("If_Virtural_Mass 0");
+dyna.Set("If_Renew_Contact 1");
+dyna.Set("Contact_Detect_Tol 2.0e-3");
+dyna.Set("Output_Interval 500");
+dyna.Set("Block_Soften_Value 0.2 0.2");
+dyna.Set("If_Cal_Particle 0");
+
+blkdyn.ImportGrid("ansys", "2_0.01.dat");
+
+// 将设定坐标范围内的自由表面设置为接触面
+blkdyn.CrtBoundIFaceByCoord(-1e5, 1e5, -1e5, 1e5, -1e5, 1e5);
+// 更新接触面网格
+blkdyn.UpdateIFaceMesh();
+
+// 设置单元本构模型为线弹性模型
+blkdyn.SetModel("linear");
+// 设置炸药参数 density young poisson cohesion tension friction dilation
+blkdyn.SetMat(1800, 3e9, 0.24, 3e5, 1e5, 0, 0, 2);
+// 设置侧壁破片参数（钢）-等效层
+blkdyn.SetMat(9000, 4e11, 0.3, 800e5, 800e5, 0, 0, 1);
+
+// 设置接触面模型
+blkdyn.SetIModel("brittleMC");
+// 设置接触面参数
+blkdyn.SetIMat(5e11, 5e11, 0.01, 0, 0);
+blkdyn.SetIStiffByElem(100);
+blkdyn.SetIStrengthByElem();
+
+// 设置阻尼为0
+blkdyn.SetLocalDamp(0.1);
+
+// 施加重力
+blkdyn.ApplyGravity();
+
+// 爆炸载荷设定
+var pos = new Array(2);
+for (var i = 0; i < 2; i++) {
+    pos[i] = [i * 0.31, 0.0, 0];
+}
+blkdyn.SetLandauSource(1, 1800, 8070, 5.67e6, 2.4, 1.3, 3.4e9, pos[0], 0, 1e-4);
+blkdyn.SetLandauSource(2, 1800, 8070, 5.67e6, 2.4, 1.3, 3.4e9, pos[1], 0, 1e-4);
+
+// 求解
+dyna.Solve(1000);
+```
+
+## Ground Truth
+```javascript
+//设置当前工作路径为JavaScript脚本文件所在路径
+setCurDir(getSrcDir());
+
+//打开力学计算开关
+dyna.Set("Mechanic_Cal 1");
+
+//设置系统不平衡率
+dyna.Set("UnBalance_Ratio 1e-5");
+
+//设置3个方向的重力加速度为0
+dyna.Set("Gravity 0 0.0 0");
+
+//关闭大变形计算开关
+dyna.Set("Large_Displace 0");
+
+//计算结果输出间隔为2000步
+dyna.Set("Output_Interval 2000");
+
+//关闭GiD结果输出开关
+dyna.Set("GiD_Out 0");
+
+//将监测间隔为100步
+dyna.Set("Moniter_Iter 100");
+
+//打开虚质量计算开关
+dyna.Set("If_Virtural_Mass 1");
+
+//将虚拟时步设定为0.5
+dyna.Set("Virtural_Step 0.5");
+
+
+//设定接触容差为0.0
+dyna.Set("Contact_Detect_Tol 0.00");
+
+//关闭接触更新开关
+dyna.Set("If_Renew_Contact 0");
+
+//关闭Save自动存储开关
+dyna.Set("SaveFile_Out 0");
+
+//创建半径为2cm的圆盘
+blkdyn.GenCircle(0.0, 0.02, 20,60, 1);
+
+//将组号为1的单元交界面进行切割
+blkdyn.CrtIFace(1, 1);
+
+//更新交界面网格信息
+blkdyn.UpdateIFaceMesh();
+
+//设置单元模型为线弹性模量
+blkdyn.SetModel("linear");
+
+//设置单元的材料参数
+blkdyn.SetMatByGroup(2500, 1e10, 0.25, 10e6, 4e6, 40.0, 10.0, 1);
+
+//设置交界面的模型为断裂模型
+blkdyn.SetIModel("FracE");
+
+//设置交界面的一般材料参数，法向刚度、切向刚度、内摩擦角、粘聚力、抗拉强度
+blkdyn.SetIMat(5e13, 5e13, 40, 5e6, 1e6);
+
+//指定组1的断裂能参数，拉伸断裂能为50，剪切断裂能为500
+blkdyn.SetIFracEnergyByGroupInterface(50.0,500.0, 1,1);
+
+//最底侧节点法向约束
+blkdyn.FixVByCoord("y", 0.0,-1e10, 1e10, -0.0201,-0.0199, -1e10, 1e10);
+
+//最顶侧节点施加2e-9的准静态速度载荷
+blkdyn.FixVByCoord("y", -2e-9, -1e10, 1e10, 0.0199, 0.0201, -1e10, 1e10);
+
+//计算10万步
+dyna.Solve(100000);
+
+//打印提示信息
+print("Solution Finished");
+
+```
+
+## Unified Diff
+```diff
+--- 案例库-CDyna案例-块体模块案例-基本案例-BarziTest-BraziTest.js (ground_truth)
++++ 案例库-CDyna案例-块体模块案例-基本案例-BarziTest-BraziTest.js (generated)
+@@ -1,75 +1,49 @@
+-//设置当前工作路径为JavaScript脚本文件所在路径
+ setCurDir(getSrcDir());
+ 
+-//打开力学计算开关
+-dyna.Set("Mechanic_Cal 1");
++dyna.Set("Gravity 0 -9.8 0");
++dyna.Set("Large_Displace 1");
+ 
+-//设置系统不平衡率
+-dyna.Set("UnBalance_Ratio 1e-5");
++dyna.Set("If_Virtural_Mass 0");
++dyna.Set("If_Renew_Contact 1");
++dyna.Set("Contact_Detect_Tol 2.0e-3");
++dyna.Set("Output_Interval 500");
++dyna.Set("Block_Soften_Value 0.2 0.2");
++dyna.Set("If_Cal_Particle 0");
+ 
+-//设置3个方向的重力加速度为0
+-dyna.Set("Gravity 0 0.0 0");
++blkdyn.ImportGrid("ansys", "2_0.01.dat");
+ 
+-//关闭大变形计算开关
+-dyna.Set("Large_Displace 0");
+-
+-//计算结果输出间隔为2000步
+-dyna.Set("Output_Interval 2000");
+-
+-//关闭GiD结果输出开关
+-dyna.Set("GiD_Out 0");
+-
+-//将监测间隔为100步
+-dyna.Set("Moniter_Iter 100");
+-
+-//打开虚质量计算开关
+-dyna.Set("If_Virtural_Mass 1");
+-
+-//将虚拟时步设定为0.5
+-dyna.Set("Virtural_Step 0.5");
+-
+-
+-//设定接触容差为0.0
+-dyna.Set("Contact_Detect_Tol 0.00");
+-
+-//关闭接触更新开关
+-dyna.Set("If_Renew_Contact 0");
+-
+-//关闭Save自动存储开关
+-dyna.Set("SaveFile_Out 0");
+-
+-//创建半径为2cm的圆盘
+-blkdyn.GenCircle(0.0, 0.02, 20,60, 1);
+-
+-//将组号为1的单元交界面进行切割
+-blkdyn.CrtIFace(1, 1);
+-
+-//更新交界面网格信息
++// 将设定坐标范围内的自由表面设置为接触面
++blkdyn.CrtBoundIFaceByCoord(-1e5, 1e5, -1e5, 1e5, -1e5, 1e5);
++// 更新接触面网格
+ blkdyn.UpdateIFaceMesh();
+ 
+-//设置单元模型为线弹性模量
++// 设置单元本构模型为线弹性模型
+ blkdyn.SetModel("linear");
++// 设置炸药参数 density young poisson cohesion tension friction dilation
++blkdyn.SetMat(1800, 3e9, 0.24, 3e5, 1e5, 0, 0, 2);
++// 设置侧壁破片参数（钢）-等效层
++blkdyn.SetMat(9000, 4e11, 0.3, 800e5, 800e5, 0, 0, 1);
+ 
+-//设置单元的材料参数
+-blkdyn.SetMatByGroup(2500, 1e10, 0.25, 10e6, 4e6, 40.0, 10.0, 1);
++// 设置接触面模型
++blkdyn.SetIModel("brittleMC");
++// 设置接触面参数
++blkdyn.SetIMat(5e11, 5e11, 0.01, 0, 0);
++blkdyn.SetIStiffByElem(100);
++blkdyn.SetIStrengthByElem();
+ 
+-//设置交界面的模型为断裂模型
+-blkdyn.SetIModel("FracE");
++// 设置阻尼为0
++blkdyn.SetLocalDamp(0.1);
+ 
+-//设置交界面的一般材料参数，法向刚度、切向刚度、内摩擦角、粘聚力、抗拉强度
+-blkdyn.SetIMat(5e13, 5e13, 40, 5e6, 1e6);
++// 施加重力
++blkdyn.ApplyGravity();
+ 
+-//指定组1的断裂能参数，拉伸断裂能为50，剪切断裂能为500
+-blkdyn.SetIFracEnergyByGroupInterface(50.0,500.0, 1,1);
++// 爆炸载荷设定
++var pos = new Array(2);
++for (var i = 0; i < 2; i++) {
++    pos[i] = [i * 0.31, 0.0, 0];
++}
++blkdyn.SetLandauSource(1, 1800, 8070, 5.67e6, 2.4, 1.3, 3.4e9, pos[0], 0, 1e-4);
++blkdyn.SetLandauSource(2, 1800, 8070, 5.67e6, 2.4, 1.3, 3.4e9, pos[1], 0, 1e-4);
+ 
+-//最底侧节点法向约束
+-blkdyn.FixVByCoord("y", 0.0,-1e10, 1e10, -0.0201,-0.0199, -1e10, 1e10);
+-
+-//最顶侧节点施加2e-9的准静态速度载荷
+-blkdyn.FixVByCoord("y", -2e-9, -1e10, 1e10, 0.0199, 0.0201, -1e10, 1e10);
+-
+-//计算10万步
+-dyna.Solve(100000);
+-
+-//打印提示信息
+-print("Solution Finished");
++// 求解
++dyna.Solve(1000);
+```

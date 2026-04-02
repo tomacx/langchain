@@ -1,0 +1,79 @@
+// 设置当前工作路径为JavaScript脚本文件所在路径
+setCurDir(getSrcDir());
+
+// 清除之前的计算结果和文档结果
+dyna.Clear();
+doc.clearResult();
+
+// 打开力学计算开关
+dyna.Set("Mechanic_Cal 1");
+
+// 关闭杆件计算开关（如果不需要）
+dyna.Set("If_Cal_Bar 0");
+
+// 设置不平衡率为1e-5
+dyna.Set("UnBalance_Ratio 1e-5");
+
+// 设置3个方向的重力加速度均为0.0
+dyna.Set("Gravity 0 0.0 0");
+
+// 打开大变形计算开关
+dyna.Set("Large_Displace 1");
+
+// 打开接触检测开关
+dyna.Set("If_Renew_Contact 1");
+
+// 设置结果输出时步为500步
+dyna.Set("Output_Interval 500");
+
+// 监测信息的输出时步为100步
+dyna.Set("Moniter_Iter 100");
+
+// 打开虚拟质量计算开关
+dyna.Set("If_Virtural_Mass 0");
+
+// 设置虚拟时步为0.5
+dyna.Set("Virtural_Step 0.5");
+
+// 设置接触检测容差
+dyna.Set("Contact_Detect_Tol 0.0");
+
+// 导入网格数据
+blkdyn.ImportGrid("ansys", "ansys-mesh.dat");
+
+// 创建接触面
+blkdyn.CrtIFace(1);
+blkdyn.CrtBoundIFaceByGroup(2);
+
+// 更新接触面网格
+blkdyn.UpdateIFaceMesh();
+
+// 设置实体单元为线弹性模型
+blkdyn.SetModel("linear");
+
+// 设置楼板参数
+blkdyn.SetMat(2500, 3e10, 0.25, 3e6, 1e6, 30.0, 10.0, 1);
+
+// 设置冲击球参数
+blkdyn.SetMat(12800, 5e11, 0.27, 1e9, 1e9, 0.0, 0.0, 2);
+
+// 左右两侧全约束
+blkdyn.FixV("xy", 0.0, "x", -0.001, 0.001);
+blkdyn.FixV("xy", 0.0, "x", 2.0-0.001, 2.0 + 0.001);
+
+// 设定所有接触面的本构为脆性断裂的Mohr-Coulomb本构
+blkdyn.SetIModel("SSMC");
+
+// 设定接触面上的材料，依次为单位面积法向刚度、单位面积切向刚度、内摩擦角、粘聚力、抗拉强度
+blkdyn.SetIStiffByElem(10.0);
+blkdyn.SetIStrengthByElem();
+
+// 设置局部阻尼为0.2
+blkdyn.SetLocalDamp(0.01);
+
+// 监测信息设置
+dyna.Monitor("block", "ydis", 0.64, 1.007, 0);
+dyna.Monitor("block", "ydis", 1.14, 1.507, 0);
+
+// 开始计算
+dyna.Calculate();

@@ -1,0 +1,86 @@
+--- 案例库-CDyna案例-块体模块案例-扩展案例-土中爆炸过程模拟-土中爆炸过程模拟.js (ground_truth)
++++ 案例库-CDyna案例-块体模块案例-扩展案例-土中爆炸过程模拟-土中爆炸过程模拟.js (generated)
+@@ -1,52 +1,48 @@
++// 设置当前工作路径为JavaScript脚本文件所在路径
+ setCurDir(getSrcDir());
+ 
+-igeo.clear();
+-imeshing.clear();
++// 清除dyna模块数据
+ dyna.Clear();
+-doc.clearResult();
+ 
+-var fx = 10;
+-var fy = 5;
+-var frad = 0.3;
+-var size = 0.1;
++// 清除平台数据
++doc.ClearResult();
+ 
++// 设置输出间隔为100步
++dyna.Set("Output_Interval 100");
+ 
+-var id1 = igeo.genRect(0,0,0,fx,fy,0,size);
+-var id2 = igeo.genCircle(fx * 0.5, fy *0.6, 0, frad, size);
++// 关闭虚拟质量开关
++dyna.Set("If_Virtural_Mass 0");
+ 
+-igeo.genSurface([id1, id2],1);
+-igeo.genSurface(id2,2);
++// 设置计算时间步为0.2ms
++dyna.Set("Time_Step 2.0e-4");
+ 
+-imeshing.genMeshByGmsh(2);
++// 设置颗粒计算模式为mpm模式
++dyna.Set("Particle_Cal_Type 4");
+ 
+-dyna.Set("Output_Interval 500");
+-dyna.Set("If_Virtural_Mass 0");
+-dyna.Set("Gravity 0 0 0");
++// 创建规则颗粒
++pdyna.RegularCreateByCoord(1, 2, 0.1, 0.1, 10, 0.1, 10, 0.1, 9.9);
+ 
+-blkdyn.GetMesh(imeshing);
++// 导入刚性面
++rdface.Import("ansys", "bound.dat");
+ 
+-blkdyn.CrtIFace(1,2);
+-blkdyn.UpdateIFaceMesh();
++// 设置颗粒与刚性面的接触模型为脆断模型
++pdyna.SetModel("brittleMC");
+ 
++// 设置颗粒材料参数，依次为density, young, poisson, tension, cohesion, friction, localdamp, viscdamp
++pdyna.SetMat(2200, 5e7, 0.25, 0.0, 0.0, 0.0001, 0.01, 0);
+ 
+-blkdyn.SetModel("MC");
+-blkdyn.SetMat(2200,2.1e10,0.3,3e5,1e5,30,15);
++// 设置mpm背景网格
++mpm.SetBackGrid(3, 0.5, [-0.5, -0.5, -0.5], [62, 42, 22]);
+ 
+-blkdyn.SetIModel("brittleMC");
++// 设置mpm的本构模型
++mpm.SetModelByGroup("DP", 1, 2);
+ 
+-blkdyn.SetIMat(1e12,1e12,0,0,0);
++// 设定TNT爆源参数
++var apos = [0.8, 0.6-0.09, 0.0];
++pdyna.SetJWLSource(1, 1630, 7e9, 371.2e9, 3.2e9, 4.2, 0.95, 0.3, 20e9, 6930.0, apos, 0.0, 10.0);
+ 
+-blkdyn.SetModel("Landau",2);
+-var apos = [fx * 0.5, fy *0.6, 0];
+-blkdyn.SetLandauSource(1, 1150, 5000, 3.1e6, 3.0, 1.3333, 7e9, apos, 0.0, 15e-3);
+-blkdyn.BindLandauSource(1, 2, 2);
++// 绑定爆源
++pdyna.BindJWLSource(1, 2, 2);
+ 
+-blkdyn.SetLocalDamp(0.05);
+-
+-blkdyn.FixV("x",0,"x",-0.01,0.001);
+-blkdyn.FixV("x",0,"x",fx- 0.001, fx + 0.001);
+-blkdyn.FixV("y",0,"y",-0.001,0.001);
+-
+-dyna.TimeStepCorrect(0.01);
+-
+-dyna.DynaCycle(2e-3);
++// 计算20秒
++dyna.DynaCycle(20);

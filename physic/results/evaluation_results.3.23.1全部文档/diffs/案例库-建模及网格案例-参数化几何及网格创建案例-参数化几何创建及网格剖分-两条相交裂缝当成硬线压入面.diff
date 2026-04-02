@@ -1,0 +1,46 @@
+--- 案例库-建模及网格案例-参数化几何及网格创建案例-参数化几何创建及网格剖分-两条相交裂缝当成硬线压入面.js (ground_truth)
++++ 案例库-建模及网格案例-参数化几何及网格创建案例-参数化几何创建及网格剖分-两条相交裂缝当成硬线压入面.js (generated)
+@@ -1,20 +1,32 @@
++// 设置当前工作路径为JS脚本所在路径
+ setCurDir(getSrcDir());
++
+ igeo.clear();
+ imeshing.clear();
+ 
+-igeo.genLine(1,1,0, 2,2,0, 0.01, 0.02);
+-igeo.genLine(1,2,0, 2, 1, 0, 0.01, 0.02);
++// 创建矩形线环
++var LineLoop1 = igeo.genRect(0, 0, 0, 20, 20, 0, 1);
+ 
+-igeo.lineInt();
++// 创建椭圆线环
++var Point1 = igeo.genPoint(6, 3, 0, 1);
++var LineLoop2 = igeo.genEllipse(Point1, 3, 2, 0, 0, 0, 1);
+ 
+-//相交操作后，原来的网格尺寸信息消失，重新赋值
+-igeo.setSize ("line", 0.02, 1, 4);
++// 创建圆形线环
++var LineLoop3 = igeo.genCircle(5, 15, 0, 3, 1); 
+ 
+-igeo.genRectS(0, 0, 0, 3, 3, 0, 0.2, 1);
++// 创建面
++var aLineLoop1 = [LineLoop1, LineLoop2, LineLoop3];
++var Surface1 = igeo.genSurface(aLineLoop1, 1);
+ 
+-igeo.setHardLineToFace(1, 1);
+-igeo.setHardLineToFace(2, 1);
+-igeo.setHardLineToFace(3, 1);
+-igeo.setHardLineToFace(4, 1);
++// 面拉伸为体
++var aSurface1 = [Surface1];
++var Volume1 = igeo.extrude("Surface", aSurface1, 0, 0, 10, 1, 1, 1);
+ 
+-imeshing.genMeshByGmsh(2);
++// 创建圆柱体
++var Volume2 = igeo.genCylinderV(15, 10, 0, 15, 10, -4, 2, 4, 0.3, 0.3, 2);
++
++// 两个体的粘接操作
++var Volume3 = igeo.glue("Volume", Volume2, Volume1);
++
++// 划分三维网格
++imeshing.genMeshByGmsh(3);

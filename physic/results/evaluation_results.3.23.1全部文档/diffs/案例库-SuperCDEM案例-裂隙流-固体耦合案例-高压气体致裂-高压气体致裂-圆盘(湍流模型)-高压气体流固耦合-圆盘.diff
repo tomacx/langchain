@@ -1,0 +1,100 @@
+--- 案例库-SuperCDEM案例-裂隙流-固体耦合案例-高压气体致裂-高压气体致裂-圆盘(湍流模型)-高压气体流固耦合-圆盘.js (ground_truth)
++++ 案例库-SuperCDEM案例-裂隙流-固体耦合案例-高压气体致裂-高压气体致裂-圆盘(湍流模型)-高压气体流固耦合-圆盘.js (generated)
+@@ -1,67 +1,51 @@
+ setCurDir(getSrcDir());
+ 
+-scdem.outputInterval = 1000;
+-scdem.monitorIter = 100;
++// 设置输出间隔和监控迭代次数
++scdem.outputInterval = 100;
++scdem.monitorIter = 10;
+ 
++// 设置大位移计算参数
+ scdem.set("isLargeDisplace", 1);
+ 
++// 设置重力加速度为零
+ scdem.gravity = [0, 0, 0];
+ 
++// 关闭虚拟质量
+ scdem.isVirtualMass = 0;
+ 
++// 设置阻尼系数
+ scdem.set("ubr", 1e-4);
++scdem.localDamp = 0.8;
+ 
+-scdem.set("RayleighDamp", 1e-7, 0.0);
++// 裂隙渗流模块参数设置
++scdem.set("Config_FracSeepage", 1);
++scdem.set("FracSeepage_Cal", 1);
++scdem.set("Seepage_Mode", 2); // 设置为气体流动模式
++scdem.set("FS_Solid_Interaction", 1);
++scdem.set("FS_MaxWid", 6e-5);
+ 
+-//裂隙渗流模块参数设置
+-scdem.set("Config_FracSeepage", 1); 
+-scdem.set("FracSeepage_Cal", 1);
+-scdem.set("Seepage_Mode", 2);
+-scdem.set("FS_Solid_Interaction", 1);
+-scdem.set("FS_MaxWid", 1e-3);
+-
+-scdem.set("GasEos", 2); //采用多方方程进行气体流动计算
+-
+-scdem.set("FS_Frac_Start_Cal", 1);// 破裂后，流体才流入计算
+-
+-scdem.set("GasFlowModel", 2); //开启湍流流动模型
+-
+-scdem.set("CSRoughness", 0.001);
+-
+-var msh = imesh.importGmsh("gas2.msh");
++// 导入网格模型
++var msh = imesh.importGmsh("Tet4Gmsh.msh");
+ scdem.getMesh(msh);
+ 
++// 设置材料属性
+ scdem.setModel("linear");
++scdem.setMat([2600, 5.5e10, 0.25, 10e6, 2.5e6, 30.0, 10.0]);
+ 
+-scdem.setMat([1700, 3e9, 0.2, 14.4e6, 3e6, 30, 15]);
++// 设置损伤模型和接触断裂能量
++scdem.setIModel("FracE");
++scdem.setContactFractureEnergy(10, 20);
+ 
+-scdem.setIModel("FracE");
+-scdem.setContactFractureEnergy(10,100);
+-scdem.setIMatByElem(10);
++// 设置初始条件
++SFracsp.createGridFromBlock(1);
++SFracsp.setPropByCoord([1.0, 1e7, 12e-13, 12e-9], -1e5, 1e5, -1e5, 1e5, -1e5, 1e5);
++SFracsp.initConditionByCoord("pp", 1e5, 0, 0, 0, -1e5, 1e5, -1e5, 1e5, -1e5, 1e5);
+ 
+-oSel = new SelElemFaces(scdem);
+-oSel.cylinder(0.0, 0.0, -1.0, 0.0, 0.0, 1.0, 6.99e-3, 7.05e-3);
+-scdem.applyNonReflectionBySel(oSel);
++// 应用边界条件
++SFracsp.applyConditionByCylinder("pp", 30e6, 0, 0, 0, 0, 0, -1, 0, 0, 1, 0, 0.151);
+ 
+-//z方向左右两侧固定
+-oSel = new SelNodes(scdem);
+-oSel.box(-1e10,-1e10,-1e10, 1e10,1e10,1e10);
+-scdem.setVel(oSel, "z", 0);
+-
+-SFracsp.preFlowCrackByCylinder(0.0, 0.0, -10.0, 0.0, 0.0, 10.0, 0.0, 3.2e-3);
+-
+-SFracsp.createGridFromBlock(1);
+-
+-SFracsp.setProp([0.00, 1e7, 12e-13, 12e-9]);
+-
+-SFracsp.setPropByCylinder([170.0,1e7,12e-13,12e-9], 0.0, 0.0, -1.0 , 0.0, 0.0, 1.0, 0.0, 3.05e-3);
+-
+-var pressure = 20e6;
+-
+-SFracsp.applyConditionByCylinder("pp", pressure, 0, 0, 0, 0.0, 0.0, -1.0 , 0.0, 0.0, 1.0, 0.0, 3.05e-3);
+-
+-scdem.timeStep= 1e-9;
+-
+-scdem.dynaSolveGpu(100e-6);
++// 设置时间步长并求解
++scdem.timeStep = 1e-7;
++scdem.dynaSolveGpu(0.01);
+ 
+ print("finish");

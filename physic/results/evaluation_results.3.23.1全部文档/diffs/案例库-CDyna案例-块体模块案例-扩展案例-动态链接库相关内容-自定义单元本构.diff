@@ -1,0 +1,63 @@
+--- 案例库-CDyna案例-块体模块案例-扩展案例-动态链接库相关内容-自定义单元本构.js (ground_truth)
++++ 案例库-CDyna案例-块体模块案例-扩展案例-动态链接库相关内容-自定义单元本构.js (generated)
+@@ -1,45 +1,33 @@
+-//设置工作路径为JS文件所在路径
++// 设置工作路径为JS文件所在路径
+ setCurDir(getSrcDir());
+ 
+-//清楚BlockDyna内存数据
++// 清楚BlockDyna内存数据
+ dyna.Clear();
+ 
++// 创建三维方形网格
++blkdyn.GenBrick3D(10, 10, 10, 10, 10, 10, 1);
+ 
+-//设置结果输出时步为500步
+-dyna.Set("Output_Interval 500");
++// 设置基础材料参数
++blkdyn.SetMat(2500, 3e10, 0.25, 3e6, 1e6, 30, 10);
+ 
+-//创建三维方形网格
+-blkdyn.GenBrick3D(10,10,10,10,10,10,1);
+-
+-//设置模型为线弹性模型
+-blkdyn.SetModel("linear");
+-
+-//设置材料参数
+-blkdyn.SetMat(2500,3e10,0.25,3e6,1e6,30,10);
+-
+-//固定边界条件
+-blkdyn.FixV("xyz",0,"y",-0.01,0.001);
+-
+-//加载动态链接库
++// 加载用户自定义的动态链接库文件CustomModel.dll
+ dyna.LoadUDF("CustomModel");
+ 
+-//自定义材料参数，根据单元自定义本构中的参数设定
+-//示例中本构未DP本构，输入的自定义参数包括：弹性模量、泊松比、粘聚力、抗拉强度、内摩擦角、剪胀角
++// 设置自定义材料参数
+ var avalue = [3e10, 0.25, 3e3, 1e3, 15, 10];
+ dyna.SetUDFValue(avalue);
+ 
+-//重新设置单元本构为自定义本构
++// 将单元本构模型设置为'custom'
+ blkdyn.SetModel("custom");
+ 
+-//设定局部阻尼为0.01
+-blkdyn.SetLocalDamp(0.01);
++// 固定边界条件以确保模拟环境稳定
++blkdyn.FixV("xyz", 0, "y", -0.01, 0.001);
+ 
+-
+-//求解
++// 执行求解过程并计算结果
+ dyna.Solve();
+ 
+-//显示单元本构模型
+-dyna.Plot("Elem","Model");
++// 显示单元本构模型
++dyna.Plot("Elem", "Model");
+ 
+-//释放动态链接库
++// 释放动态链接库
+ dyna.FreeUDF();

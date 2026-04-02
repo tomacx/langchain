@@ -1,0 +1,69 @@
+--- 案例库-CDyna案例-块体模块案例-扩展案例-裂隙渗流-宾汉体-理论解对比-三角形-宾汉流测试.js (ground_truth)
++++ 案例库-CDyna案例-块体模块案例-扩展案例-裂隙渗流-宾汉体-理论解对比-三角形-宾汉流测试.js (generated)
+@@ -1,41 +1,36 @@
+ //设置当前工作路径为JavaScript脚本文件所在路径
+ setCurDir(getSrcDir());
+ 
+-
+ igeo.clear();
+ imeshing.clear();
+-
+ dyna.Clear();
+ doc.clearResult();
+-
+-
+ 
+ //关闭力学计算开关
+ dyna.Set("Mechanic_Cal 0");
+ 
+-//包含裂隙计算模块，开辟相应内存
++//包含裂隙渗流计算功能，开辟渗流相关的内存
+ dyna.Set("Config_FracSeepage 1");
+ 
+-//打开裂隙渗流计算开关
++//开启裂隙渗流开关
+ dyna.Set("FracSeepage_Cal 1");
+ 
+-//设置3个方向的重力加速度
++//设置三个方向的重力加速度
+ dyna.Set("Gravity 0.0 0.0 0.0");
+ 
+-//设置结果输出时步
++//将结果输出时步设定为500步
+ dyna.Set("Output_Interval 500");
+ 
+-///2--宾汉流
++//监测结果输出时步间隔设定为100步
++dyna.Set("Monitor_Iter 100");
++
++///2--宾汉流模型
+ dyna.Set("Liquid_Seepage_Law 2");
+ 
+-
++//设置计算模式
+ dyna.Set("Seepage_Mode 1");
+ 
+-
+-dyna.Set("Monitor_Iter 100");
+-
+-
+-fracsp.ImportGrid("ansys","feng-tri.dat");
++fracsp.ImportGrid("ansys","feng-quad.dat");
+ 
+ var fwidth = 1e-3;
+ var fvisc  = 1e-2;
+@@ -44,13 +39,10 @@
+ 
+ fracsp.SetSinglePropByGroup ("Strength", 1.0, 1, 11);
+ 
+-
+ var grad = new Array(0, 0, 0); 
+ fracsp.ApplyConditionByCoord("pp", 1e4, grad, -0.01,0.01,-100,100,-100,100);
+ 
+-
+-dyna.Set("Time_Step 0.7");
+-
++dyna.Set("Time_Step 2");
+ 
+ //理论线
+ draw.setColor(125,125,125);

@@ -1,0 +1,35 @@
+--- 案例库-建模及网格案例-参数化几何及网格创建案例-参数化几何创建及网格剖分-产生空心球壳.js (ground_truth)
++++ 案例库-建模及网格案例-参数化几何及网格创建案例-参数化几何创建及网格剖分-产生空心球壳.js (generated)
+@@ -1,16 +1,23 @@
+-//设置当前工作路径为JS脚本所在路径
++// 设置当前工作路径为JS脚本所在路径
+ setCurDir(getSrcDir());
+ 
+ igeo.clear();
+ imeshing.clear();
+ 
+-//创建面
+-var id1 = igeo.genBall(0,0,0,1.0,0.1,1);
+-var id2 = igeo.genBall(0,0,0,0.8,0.1,2);
++// 创建一个球体
++var id1 = igeo.genBall(0, 0, 0, 5.0, 0.1, 1);
+ 
+-//创建体
+-var loop  = [id1, id2];
+-igeo.genVolume(loop,3);
++// 剖分网格
++imeshing.genMeshByGmsh(id1);
+ 
+-//借助Gmsh剖分网格
+-imeshing.genMeshByGmsh(3);
++// 对剖分后的网格进行颗粒分组操作
++for (var i = 0; i < 20; i++) {
++    let sel = new SelElems(imeshing);
++    sel.sphere(0, 0, 0, 5.0 - (i + 1) * 0.2, 5.0 - i * 0.2);
++    var iGrp = i + 1;
++    var strGrp = iGrp.toString();
++    imeshing.setGroup(strGrp, sel);
++}
++
++// 导出PDyna格式的网格文件
++imesh.exportPDyna(imeshing, "pdyna.dat");

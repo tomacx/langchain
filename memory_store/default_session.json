@@ -1,0 +1,40 @@
+{
+  "history": [
+    {
+      "role": "user",
+      "content": "请编写一个CDyna仿真脚本，实现扩展案例-颗粒离散元求解器组装-颗粒离散元自定义求解，并输出必要的结果与监测。",
+      "timestamp": "2026-04-01T16:58:06.213230"
+    },
+    {
+      "role": "assistant",
+      "content": "//设置工作路径为JS文件所在路径\nsetCurDir(getSrcDir());\n\n//清楚PDyna中内存数据\ndyna.Clear();\n\n//设置结果输出时步为500步\ndyna.Set(\"Output_Interval 500\");\n\n//创建规则排布的颗粒\npdyna.RegularCreateByCoord(2, 1, 0.5, -10, 10, -10, 10, 0,0);\n\n//设置颗粒模型为线弹性模型\npdyna.SetModel(\"linear\");\n\n//设置材料参数，依次为密度、弹性模量、泊松比、抗拉强度、粘聚力、内摩擦角、局部阻尼、粘性阻尼系数（临界阻尼比）\npdyna.SetMat(2500, 3e10, 0.25, 0, 0, 45, 0.8, 0.0);\n\n//固定模型底部速度\npdyna.FixV(\"xyz\", 0.0,\"y\", -11, -9);\n\n//加载动态链接库\ndyna.LoadUDF(\"CustomModel\");\n\n//运行动态链接库中的函数，自定义命令流\ndyna.RunUDFCmd(\"CalDist 0 0 0 10 10 0\");\n\n//打开允许用户在核心迭代中加入自定义函数功能\ndyna.Set(\"If_Allow_UDF_Kernel 1\");\n\n//求解\ndyna.Solve();\n\n//释放动态链接库\ndyna.FreeUDF();",
+      "timestamp": "2026-04-01T16:58:06.855979"
+    },
+    {
+      "role": "user",
+      "content": "请编写一个CDyna仿真脚本，实现扩展案例-颗粒飞散计算1-颗粒飞散，并输出必要的结果与监测。",
+      "timestamp": "2026-04-01T17:32:29.873499"
+    },
+    {
+      "role": "assistant",
+      "content": "//设置当前路径为JavaScript脚本所在的路径\nsetCurDir(getSrcDir());\n\n//设置结果的输出间隔为500步\ndyna.Set(\"Output_Interval 1000\");\n\n//关闭虚拟质量开关\ndyna.Set(\"If_Virtural_Mass 0\");\n\n//设置重力加速度\ndyna.Set(\"Gravity 0.0 -9.8 0.0\");\n\n//设置接触容差\ndyna.Set(\"Contact_Detect_Tol 0.0\");\n\ndyna.Set(\"GiD_Out 1\");\n\n//设置底部刚性面\nvar fCoord = [-1.0,0.0,0.0,2.0,0.0,0.0];\nrdface.Create (1, 1, 2, fCoord);\n\nvar fCoord2 = [-1.0,0.0,0.0,-1.0,2.0,0.0];\nvar fCoord3 = [2.0,0.0,0.0,2.0,2.0,0.0];\nrdface.Create (1, 1, 2, fCoord2);\nrdface.Create (1, 1, 2, fCoord3);\n\n//导入pdyna格式的颗粒并创建椭圆\npdyna.CrtEllipsePartFromFile(\"1m-1m-ball.dat\", \"uniform\", 0.8,1, \"uniform\", 0.2,1, \"uniform\", 0.0, 360.0, 12);\n\n//设置颗粒的材料参数，依次为密度、弹性模量、泊松比、抗拉强度、粘聚力、内摩擦角、局部阻尼、粘性阻尼系数（临界阻尼比）\npdyna.SetPartMat(2500, 5e7, 0.25, 0.0, 0.0, 10, 0.01, 0.1, 0.1);\n\n//设置颗粒接触模型为考虑应变软化的Mohr-Coulomb模型\npdyna.SetModel(\"brittleMC\");\n\n//设置动态计算时步为1e-4秒\ndyna.Set(\"Time_Step 1e-5\");\n\n//计算3万步\ndyna.Solve(100000);",
+      "timestamp": "2026-04-01T17:32:29.877165"
+    }
+  ],
+  "user_preferences": {},
+  "script_versions": [
+    {
+      "version": 1,
+      "code": "//设置工作路径为JS文件所在路径\nsetCurDir(getSrcDir());\n\n//清楚PDyna中内存数据\ndyna.Clear();\n\n//设置结果输出时步为500步\ndyna.Set(\"Output_Interval 500\");\n\n//创建规则排布的颗粒\npdyna.RegularCreateByCoord(2, 1, 0.5, -10, 10, -10, 10, 0,0);\n\n//设置颗粒模型为线弹性模型\npdyna.SetModel(\"linear\");\n\n//设置材料参数，依次为密度、弹性模量、泊松比、抗拉强度、粘聚力、内摩擦角、局部阻尼、粘性阻尼系数（临界阻尼比）\npdyna.SetMat(2500, 3e10, 0.25, 0, 0, 45, 0.8, 0.0);\n\n//固定模型底部速度\npdyna.FixV(\"xyz\", 0.0,\"y\", -11, -9);\n\n//加载动态链接库\ndyna.LoadUDF(\"CustomModel\");\n\n//运行动态链接库中的函数，自定义命令流\ndyna.RunUDFCmd(\"CalDist 0 0 0 10 10 0\");\n\n//打开允许用户在核心迭代中加入自定义函数功能\ndyna.Set(\"If_Allow_UDF_Kernel 1\");\n\n//求解\ndyna.Solve();\n\n//释放动态链接库\ndyna.FreeUDF();",
+      "context": "请编写一个CDyna仿真脚本，实现扩展案例-颗粒离散元求解器组装-颗粒离散元自定义求解，并输出必要的结果与监测。",
+      "timestamp": "2026-04-01T16:58:07.139148"
+    },
+    {
+      "version": 2,
+      "code": "//设置当前路径为JavaScript脚本所在的路径\nsetCurDir(getSrcDir());\n\n//设置结果的输出间隔为500步\ndyna.Set(\"Output_Interval 1000\");\n\n//关闭虚拟质量开关\ndyna.Set(\"If_Virtural_Mass 0\");\n\n//设置重力加速度\ndyna.Set(\"Gravity 0.0 -9.8 0.0\");\n\n//设置接触容差\ndyna.Set(\"Contact_Detect_Tol 0.0\");\n\ndyna.Set(\"GiD_Out 1\");\n\n//设置底部刚性面\nvar fCoord = [-1.0,0.0,0.0,2.0,0.0,0.0];\nrdface.Create (1, 1, 2, fCoord);\n\nvar fCoord2 = [-1.0,0.0,0.0,-1.0,2.0,0.0];\nvar fCoord3 = [2.0,0.0,0.0,2.0,2.0,0.0];\nrdface.Create (1, 1, 2, fCoord2);\nrdface.Create (1, 1, 2, fCoord3);\n\n//导入pdyna格式的颗粒并创建椭圆\npdyna.CrtEllipsePartFromFile(\"1m-1m-ball.dat\", \"uniform\", 0.8,1, \"uniform\", 0.2,1, \"uniform\", 0.0, 360.0, 12);\n\n//设置颗粒的材料参数，依次为密度、弹性模量、泊松比、抗拉强度、粘聚力、内摩擦角、局部阻尼、粘性阻尼系数（临界阻尼比）\npdyna.SetPartMat(2500, 5e7, 0.25, 0.0, 0.0, 10, 0.01, 0.1, 0.1);\n\n//设置颗粒接触模型为考虑应变软化的Mohr-Coulomb模型\npdyna.SetModel(\"brittleMC\");\n\n//设置动态计算时步为1e-4秒\ndyna.Set(\"Time_Step 1e-5\");\n\n//计算3万步\ndyna.Solve(100000);",
+      "context": "请编写一个CDyna仿真脚本，实现扩展案例-颗粒飞散计算1-颗粒飞散，并输出必要的结果与监测。",
+      "timestamp": "2026-04-01T17:32:30.493087"
+    }
+  ],
+  "simulation_summaries": []
+}

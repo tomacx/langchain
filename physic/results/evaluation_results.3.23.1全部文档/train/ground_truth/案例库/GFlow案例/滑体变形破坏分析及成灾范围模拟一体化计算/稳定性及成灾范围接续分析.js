@@ -1,0 +1,102 @@
+setCurDir(getSrcDir());
+
+
+//打开力学计算开关
+dyna.Set("Mechanic_Cal 1");
+
+//将结果输出间隔设定为 500 步
+dyna.Set("Output_Interval 1000");
+
+//关闭大变形计算开关
+dyna.Set("Large_Displace 0");
+
+//设置满足稳定条件的系统不平衡率
+dyna.Set("UnBalance_Ratio 1e-3");
+
+//设置 X、Y、Z 三个方向的重力加速度，
+dyna.Set("Gravity 0.0 0.0 -9.8");
+
+dyna.Set("Virtural_Step 0.5");
+
+dyna.Set("Contact_Search_Method 2");
+
+//建立长度为 10m 的立方体模型，每个方向的网格个数为 20 个，该模型的组号为 1
+blkdyn.ImportGrid("ansys", "erdaohe2.dat");
+
+
+//指定所有的单元的本构为线弹性本构
+blkdyn.SetModel("linear");
+
+//设置所有单元的材料参数，均为国际单位制
+//组1   碎石含土层
+blkdyn.SetMat(2000, 80e6, 0.25, 2e4, 1e4, 35, 10, 1);
+
+//组2    中风化花岗闪长岩
+blkdyn.SetMat(2680, 5.5e10, 0.2, 31e6, 15e6, 78, 10, 2);
+
+//组4    碎石填土层
+blkdyn.SetMat(1800, 80e6, 0.25, 0, 0, 36, 10, 4);
+
+//组5    碎石层
+blkdyn.SetMat(2000, 100e6, 0.2, 0, 0, 26, 10, 5);
+
+//组6    粉土层
+blkdyn.SetMat(1900, 70e6, 0.2, 10e3, 5e3, 20, 10, 6);
+
+//组3    中风化花岗闪长岩
+blkdyn.SetMat(2680, 5.5e10, 0.2, 31e6, 15e6, 78, 10, 3);
+
+//组7    中风化花岗闪长岩
+blkdyn.SetMat(2680, 5.5e10, 0.2, 31e6, 15e6, 78, 10, 7);
+
+
+////////////////////////////////////////////////////////////////////////////////////////////
+
+blkdyn.FixVAuto(0.1);
+
+
+//求解至稳定
+dyna.Solve();
+
+dyna.Save("Elastic.sav");
+
+
+var R = 130;
+var fValue = 0.4 + 0.4 * (130 - R) / (130 - 50);
+//组1   碎石含土层
+blkdyn.SetMat(2000, 80e6, 0.25, 2e4 * fValue, 1e4 * fValue, 35 * fValue, 10, 1);
+
+
+//塑性场的计算
+blkdyn.SetModel("MC");
+
+dyna.Set("Output_Interval 500");
+
+
+dyna.Solve(1000);
+dyna.Save("Plastic.sav");
+
+///导出计算网格
+///blkdyn.ExportTerrainData(<fXMin, fXMax, fYMin, fYMax, nXNo, nYNo, fCriDisp [, fZeroTol [, strFileName ]]>);
+blkdyn.ExportTerrainData(537340,537454,  378140, 378248, 100, 100, 0.5);
+
+//////////////////////////////////////////////
+gflow.clear();
+gflow.defGrid(537340, 537454,378140, 378248, 100, 100);
+gflow.setValue("LastTime", 80.0) ;
+gflow.setValue("CourantCoeff", 0.04) ;
+gflow.setValue("OutputInterval", 400) ;
+gflow.setValue("ParaNum", 32) ;
+gflow.importGrid("Cdem_zbed.dat");
+gflow.setMat(20, 0.0, 0.01);
+
+gflow.hist("Thickness", 537340 + 50, 378140 + 50);
+gflow.hist("Thickness", 537340 + 50, 378140 + 80);
+gflow.hist("Thickness", 537340 + 50, 378140 + 100);
+
+gflow.solve();
+
+//gflow.resultImport();
+
+//打印提示信息
+print("Solution is OK!")

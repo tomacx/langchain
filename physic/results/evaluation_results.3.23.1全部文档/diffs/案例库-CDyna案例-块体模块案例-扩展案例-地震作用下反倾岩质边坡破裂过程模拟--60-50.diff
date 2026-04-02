@@ -1,0 +1,299 @@
+--- 案例库-CDyna案例-块体模块案例-扩展案例-地震作用下反倾岩质边坡破裂过程模拟--60-50.js (ground_truth)
++++ 案例库-CDyna案例-块体模块案例-扩展案例-地震作用下反倾岩质边坡破裂过程模拟--60-50.js (generated)
+@@ -1,248 +1,72 @@
+-//设置当前工作路径为JavaScript脚本文件所在路径
++// 设置当前工作路径为JavaScript脚本文件所在路径
+ setCurDir(getSrcDir());
+ 
+-//打开力学计算开关
++// 打开力学计算开关
+ dyna.Set("Mechanic_Cal 1");
+ 
+-//设置不平衡率为1e-5
++// 设置三个方向的重力加速度
++dyna.Set("Gravity 0.0 -9.8 0.0");
++
++// 关闭大变形计算开关
++dyna.Set("Large_Displace 0");
++
++// 设置计算结果的输出间隔为1000步
++dyna.Set("Output_Interval 1000");
++
++// 打开虚质量计算开关
++dyna.Set("If_Virtural_Mass 1");
++
++// 设置虚质量时步为0.5
++dyna.Set("Virtural_Step 0.5");
++
++// 设置满足稳定条件的系统不平衡率
+ dyna.Set("UnBalance_Ratio 1e-4");
+ 
+-//设置三个方向的重力加速度值
+-dyna.Set("Gravity 0.0 -9.8 0.0");
++// 关闭接触更新计算开关
++dyna.Set("If_Renew_Contact 0");
+ 
+-//打开大变形计算开关
+-dyna.Set("Large_Displace 1");
++// 设置接触容差为0
++dyna.Set("Contact_Detect_Tol 0.0");
+ 
+-//设置云图输出间隔为5000
+-dyna.Set("Output_Interval 5000");
++// 包含裂隙渗流计算模块，开辟相应内存
++dyna.Set("Config_FracSeepage 1");
+ 
+-//设置监测信息提取间隔为100时步
+-dyna.Set("Moniter_Iter 100");
++// 关闭裂隙渗流计算开关
++dyna.Set("FracSeepage_Cal 0");
+ 
+-//打开虚质量计算开关
+-dyna.Set("If_Virtural_Mass 1");
++// 关闭裂隙渗流与固体耦合开关（孔隙渗流无此开关）
++dyna.Set("FS_Solid_Interaction 0");
+ 
+-//设置虚质量计算时步
+-dyna.Set("Virtural_Step 0.6");
+-
+-//设置单元体积膨胀断裂应变及等效剪切断裂应变
+-//dyna.Set("Block_Soften_Value 0.01 0.03");
+-
+-//导入midas格式的网格
+-var msh1 =imesh.importMidas("50.fpn");
++// 导入计算网格
++var msh1 = imesh.importGid("RockSlope.msh");
+ blkdyn.GetMesh(msh1);
+ 
+-blkdyn.CrtIFace();
++// 组号1,2之前切割形成接触面
++blkdyn.CrtIFace(1, 2);
++
++// 更新接触面网格
+ blkdyn.UpdateIFaceMesh();
+ 
+-//设置单元模型为线弹性模型
++// 设定所有单元的本构为线弹性本构
+ blkdyn.SetModel("linear");
+ 
+-//设置单元材料参数
+-blkdyn.SetMat(2600, 1e10, 0.15, 8e6, 8e6, 45, 10);
++// 设定组号为1-100之间的材料参数
++blkdyn.SetMat(2500, 5e10, 0.25, 3e6, 1e6, 30.0, 15.0, 1, 100);
+ 
+-//设置结构面模型
++// 设定所有接触面的本构为线弹性模型
+ blkdyn.SetIModel("linear");
+ 
+-blkdyn.SetIStrengthByElem();
+-blkdyn.SetIStiffByElem(10);
++// 设置接触面材料参数
++blkdyn.SetIMat(5e11, 5e11, 35, 3e6, 1e6);
++blkdyn.SetIMat(5e11, 5e11, 20, 2e5, 2e5, 1, 2);
+ 
+-//设置组间结构面材料参数
+-blkdyn.SetIMat(1e11, 1e11, 25, 8e5, 8e5, -1,-1);
++// 设定全部节点的局部阻尼系数为0.8
++blkdyn.SetLocalDamp(0.8);
+ 
+-//设置裂缝1材料参数
+-var coord1 = [179.308, 160, 0];
+-var coord2 = [179.308, 148, 0];
+-blkdyn.SetIMatByLine(1e11, 1e11, 25, 0, 0, coord1,coord2, 1e-2);
+-//设置裂缝2材料参数
+-var coord1 = [147.308, 160, 0];
+-var coord2 = [147.308, 132.724, 0];
+-blkdyn.SetIMatByLine(1e11, 1e11, 25, 0, 0, coord1,coord2, 1e-2);
+-//设置裂缝3材料参数
+-var coord1 = [115.308, 160, 0];
+-var coord2 = [115.308, 125.113, 0];
+-blkdyn.SetIMatByLine(1e11, 1e11, 25, 0, 0, coord1,coord2, 1e-2);
++// 固定模型四周的法向速度，为0.0
++blkdyn.FixV("x", 0.0, "x", -0.001, 0.001);
++blkdyn.FixV("x", 0.0, "x", 19.99, 20.01);
++blkdyn.FixV("y", 0.0, "y", -0.001, 0.001);
+ 
+-//设置裂缝4材料参数
+-var coord1 = [219.779, 40, 0];
+-var coord2 = [320, 40, 0];
+-blkdyn.SetIMatByLine(1e11, 1e11, 25, 0, 0, coord1,coord2, 1e-2);
+-
+-//设置所有节点的局部阻尼0.8
+-blkdyn.SetLocalDamp(0.8);
+-////////////////////////////////////////////////////////////////
+-//对模型左右两侧及底部进行法向约束
+-blkdyn.FixV("y", 0.0, "y", -0.01, 0.01);
+-blkdyn.FixV("x", 0.0, "x", -0.01, 0.01);
+-blkdyn.FixV("x", 0.0, "x", 399.99, 400.01);
+-
+-//施加重力
+-blkdyn.ApplyGravity();
+-
+-//监测典型位置的水平及竖直方向位移
+-dyna.Monitor("block", "xdis", 131.308, 160, 0);
+-dyna.Monitor("block", "ydis", 131.308, 160, 0);
+-dyna.Monitor("block", "magdis", 131.308, 160, 0);
+-dyna.Monitor("block", "xdis", 163.308, 160, 0);
+-dyna.Monitor("block", "ydis", 163.308, 160, 0);
+-dyna.Monitor("block", "magdis", 163.308, 160, 0);
+-dyna.Monitor("block", "xdis", 199.308, 160, 0);
+-dyna.Monitor("block", "ydis", 199.308, 160, 0);
+-dyna.Monitor("block", "magdis", 199.308, 160, 0);
+-
+-dyna.Monitor("block", "xdis", 244.481, 130, 0);
+-dyna.Monitor("block", "ydis", 244.481, 130, 0);
+-dyna.Monitor("block", "magdis", 244.481, 130, 0);
+-dyna.Monitor("block", "xdis", 294.827, 70, 0);
+-dyna.Monitor("block", "ydis", 294.827, 70, 0);
+-dyna.Monitor("block", "magdis", 294.827, 70, 0);
+-
+-//监测典型位置的水平及竖直方向加速度
+-dyna.Monitor("block", "xacc", 99.308, 160, 0);
+-dyna.Monitor("block", "yacc", 99.308, 160, 0);
+-dyna.Monitor("block", "magacc", 99.308, 160, 0);
+-dyna.Monitor("block", "xacc", 163.308, 160, 0);
+-dyna.Monitor("block", "yacc", 163.308, 160, 0);
+-dyna.Monitor("block", "magacc", 163.308, 160, 0);
+-dyna.Monitor("block", "xacc", 219.308, 160, 0);
+-dyna.Monitor("block", "yacc", 219.308, 160, 0);
+-dyna.Monitor("block", "magacc", 219.308, 160, 0);
+-
+-dyna.Monitor("block", "xacc", 99.308, 100, 0);
+-dyna.Monitor("block", "yacc", 99.308, 100, 0);
+-dyna.Monitor("block", "magacc", 99.308, 100, 0);
+-dyna.Monitor("block", "xacc", 163.308, 100, 0);
+-dyna.Monitor("block", "yacc", 163.308, 100, 0);
+-dyna.Monitor("block", "magacc", 163.308, 100, 0);
+-dyna.Monitor("block", "xacc", 219.308, 100, 0);
+-dyna.Monitor("block", "yacc", 219.308, 100, 0);
+-dyna.Monitor("block", "magacc", 219.308, 100, 0);
+-dyna.Monitor("block", "xacc", 269.654, 100, 0);
+-dyna.Monitor("block", "yacc", 269.654, 100, 0);
+-dyna.Monitor("block", "magacc", 269.654, 100, 0);
+-
+-dyna.Monitor("block", "xacc", 99.308, 40, 0);
+-dyna.Monitor("block", "yacc", 99.308, 40, 0);
+-dyna.Monitor("block", "magacc", 99.308, 40, 0);
+-dyna.Monitor("block", "xacc", 163.308, 40, 0);
+-dyna.Monitor("block", "yacc", 163.308, 40, 0);
+-dyna.Monitor("block", "magacc", 163.308, 40, 0);
+-dyna.Monitor("block", "xacc", 219.308, 40, 0);
+-dyna.Monitor("block", "yacc", 219.308, 40, 0);
+-dyna.Monitor("block", "magacc", 219.308, 40, 0);
+-dyna.Monitor("block", "xacc", 320, 40, 0);
+-dyna.Monitor("block", "yacc", 320, 40, 0);
+-dyna.Monitor("block", "magacc", 320, 40, 0);
+-dyna.Monitor("block", "xacc", 360, 40, 0);
+-dyna.Monitor("block", "yacc", 360, 40, 0);
+-dyna.Monitor("block", "magacc", 360, 40, 0);
+-//求解至稳定
++// 开始求解
+ dyna.Solve();
+-dyna.Save("Elastic.sav");
+-//dyna.Restore("Elastic.sav");
+-
+-//设置模型为Mohr-Coulomb应变软化模型
+-blkdyn.SetModel("MC");
+-
+-//求解至稳定
+-dyna.Solve();
+-dyna.Save("Plastic.sav");
+-//dyna.Restore("Plastic.sav");
+-
+-//**************************************************初始化位移
+-//定义三个方向基础值
+-var values = new Array(0.0,0.0, 0);
+-
+-//定义变化梯度
+-var gradient = new Array(0, 0, 0, 0, 0, 0, 0, 0, 0);
+-
+-//将控制范围内的位移清零
+-blkdyn.InitConditionByCoord("displace", values, gradient, -1e5, 1e5, -1e5, 1e5, -1e5, 1e5);
+-//**************************************************初始化位移
+-
+-
+-///////////////////////////////////以下为动力计算
+-
+-//blkdyn.SetIModel("brittleMC");
+-blkdyn.SetIModel("FracE");
+-blkdyn.SetIFracEnergyByGroupInterface(100,1000, -1,-1);
+-blkdyn.SetIFracEnergyByGroupInterface(100,1000,   0, 0);
+-//设置裂缝1材料参数
+-var coord1 = [179.308, 160, 0];
+-var coord2 = [179.308, 148, 0];
+-blkdyn.SetIFracEnergyByLine(0, 0, coord1,coord2, 1e-3);
+-//设置裂缝2材料参数
+-var coord1 = [147.308, 160, 0];
+-var coord2 = [147.308, 132.724, 0];
+-blkdyn.SetIFracEnergyByLine(0, 0, coord1,coord2, 1e-3);
+-//设置裂缝3材料参数
+-var coord1 = [115.308, 160, 0];
+-var coord2 = [115.308, 125.113, 0];
+-blkdyn.SetIFracEnergyByLine(0, 0, coord1,coord2, 1e-3);
+-
+-//设置裂缝4材料参数
+-var coord1 = [219.779, 40, 0];
+-var coord2 = [320, 40, 0];
+-blkdyn.SetIFracEnergyByLine(0, 0, coord1,coord2, 1e-3);
+-
+-//设置所有节点的局部阻尼0.0
+-blkdyn.SetLocalDamp(0.0);
+-
+-//关闭虚质量计算开关
+-dyna.Set("If_Virtural_Mass 0");
+-
+-//设置当前时间为0
+-dyna.Set("Time_Now 0");
+-
+-//设置动力计算时步
+-dyna.Set("Time_Step 5e-5");
+-
+-//计算时步自动修正
+-//blkdyn.TimeStepCorrect();
+-
+-//对模型左右两侧及底部的约束进行解除
+-blkdyn.FreeV("y", "y", -0.01, 0.01);
+-blkdyn.FreeV("x", "x", -0.01, 0.01);
+-blkdyn.FreeV("x", "x", 399.99, 400.01);
+-
+-//模型左右两侧施加自由场边界
+-blkdyn.SetFreeFieldBound("x", -0.01, 0.01);
+-blkdyn.SetFreeFieldBound("x", 399.99, 400.01);
+-
+-//模型底部施加无反射边界条件
+-blkdyn.SetQuietBoundByCoord(-2000,2000,-0.01,0.01,-2000,2000);
+-
+-
+-
+-
+-//**************************************************施加地震应力
+-//指定三个方向的载荷系数
+-var coeff1= new Array(6.72e6 / (2 * 3.14 * 5), 0, 0);
+-
+-//指定三个方向的载荷系数
+-//var coeff2= new Array(0, 10.8e6, 0);
+-
+-//x方向下限及上限
+-var x= new Array(-1000,1000);
+-
+-//y方向下限及上限
+-var y= new Array(-0.01, 0.01);
+-
+-//z方向下限及上限
+-var z= new Array(-1000,1000);
+-
+-//剪切波-面力、载荷系数、衰减指数、振幅、周期、初相位、开始时间、结束时间
+-blkdyn.ApplyDynaSinVarByCoord ("face_force", false, coeff1, 0, 1.0 * 9.8, 0.2, 0, 0, 20, x, y, z);
+-
+-//竖直方向地震应力-从文件中读入-从文件中读入振动速度时程曲线
+-//blkdyn.ApplyDynaVarFromFileByCoord ("face_force", false,coeff2, "nor-7-lef-ver.txt", x, y, z);
+-//**************************************************施加地震应力);
+-
+-//动态求解20s
+-dyna.DynaCycle(30.0);
+-dyna.Save("Dyna.sav");
+-
+-//打印提示信息
+-print("Solution Finished");
+-
+-//dyna.Plot("Interface","FractureEnergy", 1);

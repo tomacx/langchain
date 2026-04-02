@@ -1,0 +1,15 @@
+--- 案例库-CDyna案例-其他模块案例-刚体动力学案例-计算part的质量、质心及转动惯量-计算part的信息.js (ground_truth)
++++ 案例库-CDyna案例-其他模块案例-刚体动力学案例-计算part的质量、质心及转动惯量-计算part的信息.js (generated)
+@@ -1,9 +1,9 @@
+ setCurDir(getSrcDir());
+ 
++// 导入网格文件
+ imesh.importAnsys("bound.dat");
+ 
+-//gFun.calArbi3DModelInfo(<pBoundMesh, fDensity [, nTotal [, nPrtFlag [, nExpParFlag]] ]>);
+-
++// 计算part信息
+ var aa = gFun.calArbi3DModelInfo(cMesh[2], 1500, 100, 1, 1);
+ 
+-print(aa)
++print(aa);

@@ -1,0 +1,23 @@
+--- 案例库-建模及网格案例-参数化几何及网格创建案例-参数化网格调整-根据图片颜色分组并显示-SetGroup.js (ground_truth)
++++ 案例库-建模及网格案例-参数化几何及网格创建案例-参数化网格调整-根据图片颜色分组并显示-SetGroup.js (generated)
+@@ -2,14 +2,17 @@
+ 
+ igeo.clear();
+ imeshing.clear();
+-dyna.Clear();
+ 
+-
++// 创建二维砖块网格
+ imeshing.genBrick2D("horse",4,3,400,300);
+ 
+-
++// 根据图片颜色进行重新分组
+ imeshing.setGroupByImage(255, "horse.bmp");
+ 
++// 获取网格并设置失效条件和绘制背景网格
+ blkdyn.GetMesh(imeshing);
++mpm.SetModelByGroup("linear", 1, 11);
++mpm.DrawBackGrid(255, 0, 0);
+ 
++// 绘制元素分组信息
+ dyna.Plot("Elem","Group");

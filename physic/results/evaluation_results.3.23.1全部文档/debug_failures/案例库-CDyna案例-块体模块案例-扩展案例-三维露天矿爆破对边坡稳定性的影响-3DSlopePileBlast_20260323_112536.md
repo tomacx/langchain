@@ -1,0 +1,500 @@
+# Failure Analysis: 案例库-CDyna案例-块体模块案例-扩展案例-三维露天矿爆破对边坡稳定性的影响-3DSlopePileBlast.js
+
+## Query
+请编写一个CDyna仿真脚本，实现扩展案例-三维露天矿爆破对边坡稳定性的影响-3DSlopePileBlast，并输出必要的结果与监测。
+
+## Generated Code
+```javascript
+// 设置当前工作路径为JavaScript脚本文件所在路径
+setCurDir(getSrcDir());
+
+// 清除Mesh模块几何数据
+igeo.clear();
+
+// 清除Mesh模块网格数据
+imeshing.clear();
+
+// 清除BlockDyna模型数据
+dyna.Clear();
+
+// 清除Genvi平台数据
+doc.clearResult();
+
+// 打开力学计算开关
+dyna.Set("Mechanic_Cal 1");
+
+// 设置三个方向的重力加速度均为0
+dyna.Set("Gravity 0.0 0.0 0.0");
+
+// 打开大变形计算开关
+dyna.Set("Large_Deformation 1");
+
+// 设置结果输出时步
+dyna.Set("Output_Interval 500");
+
+// 打开接触更新开关
+dyna.Set("If_Renew_Contact 1");
+
+// 创建几何模型
+var loopid1 = igeo.genRect(0, 0, 0, 20, 20, 0, 1.0);
+var loopid2 = igeo.genRect(8, 8.5, 0, 12, 11.5, 0, 0.2);
+
+// 创建外边界的面（含矩形空洞）
+igeo.genSurface([loopid1, loopid2], 1);
+igeo.genSurface([loopid2], 2);
+
+// 生成二维网格
+imeshing.genMeshByGmsh(2);
+
+// BlockDyna从平台下载网格
+blkdyn.GetMesh(imeshing);
+
+// 对两侧单元均为组1的公共面进行切割，设置为接触面
+blkdyn.CrtIFace();
+
+// 设置接触后，更新网格信息
+blkdyn.UpdateIFaceMesh();
+
+// 指定材料参数
+blkdyn.SetModel("linear");
+blkdyn.SetMat(2300, 1e10, 0.25, 5e6, 5e6, 35.0, 15.0);
+
+// 将接触面模型设定为线弹性模型
+blkdyn.SetIModel("linear");
+
+// 虚拟接触面刚度及强度从单元中自动获取
+blkdyn.SetIStiffByElem(1);
+blkdyn.SetIStrengthByElem(1);
+
+// 设置爆炸荷载参数
+var explosionParams = {
+    "x": 10.0,
+    "y": 10.0,
+    "z": 0.0,
+    "chargeWeight": 100.0,
+    "detonationVelocity": 6500.0,
+    "explosionTime": 0.0
+};
+
+// 设置爆炸荷载
+blkdyn.SetExplosion(explosionParams);
+
+// 指定爆炸荷载作用的单元组
+blkdyn.ApplyExplosion("all");
+
+// 解算模型
+dyna.Solve();
+```
+
+## Ground Truth
+```javascript
+//设置当前工作路径为JavaScript脚本文件所在路径
+setCurDir(getSrcDir());
+
+//打开力学计算开关
+dyna.Set("Mechanic_Cal 1");
+
+//设置三个方向的重力加速度均为0
+dyna.Set("Gravity 0.0 -9.8 0.0");
+
+//打开大变形计算开关
+dyna.Set("Large_Displace 1");
+
+//设置计算结果的输出间隔为100步
+dyna.Set("Output_Interval 500");
+
+//设置监测信息输出时步为10步
+dyna.Set("Moniter_Iter 10");
+
+dyna.Set("If_Cal_Bar 0");
+
+
+//关闭虚质量计算开关
+dyna.Set("If_Virtural_Mass 1");
+
+//从当前文件夹导入Gmsh格式的网格
+blkdyn.ImportGrid("gid", "SlopeBlast.msh");
+
+//指定组1的单元本构为线弹性本构
+blkdyn.SetModel("linear", 1);
+
+//指定组1-2的材料参数
+blkdyn.SetMat(2500, 5e10, 0.25, 15e6, 10e6, 40.0, 10.0);
+
+
+//固定模型四周及底部的法向速度
+blkdyn.FixV("x",0.0,"x", -0.001,0.001);
+blkdyn.FixV("x",0.0,"x", 79.99,80.01);
+
+blkdyn.FixV("z",0.0,"z", -0.001,0.001);
+blkdyn.FixV("z",0.0,"z", 39.99,40.01);
+
+blkdyn.FixV("y",0.0,"y", -21, -19.99);
+
+
+
+//创建第1个炮孔
+var fArrayCoord1 = [17, 5, 10.0];
+var fArrayCoord2 = [17, -3, 10.0];
+bar.CreateByCoord("BlastHole1", fArrayCoord1, fArrayCoord2, 10);
+
+//创建第2个炮孔
+var fArrayCoord1 = [17, 5, 15.0];
+var fArrayCoord2 = [17, -3, 15.0];
+bar.CreateByCoord("BlastHole1", fArrayCoord1, fArrayCoord2, 10);
+
+//创建第3个炮孔
+var fArrayCoord1 = [17, 5, 20.0];
+var fArrayCoord2 = [17, -3, 20.0];
+bar.CreateByCoord("BlastHole1", fArrayCoord1, fArrayCoord2, 10);
+
+//创建第4个炮孔
+var fArrayCoord1 = [17, 5, 25.0];
+var fArrayCoord2 = [17, -3, 25.0];
+bar.CreateByCoord("BlastHole1", fArrayCoord1, fArrayCoord2, 10);
+
+//创建第5个炮孔
+var fArrayCoord1 = [17, 5, 30.0];
+var fArrayCoord2 = [17, -3, 30.0];
+bar.CreateByCoord("BlastHole1", fArrayCoord1, fArrayCoord2, 10);
+
+var BarProp1 = [0.25, 7800.0, 1e10, 0.25, 235e6, 235e6, 1e6, 35, 1e9, 0.8, 0.0];
+
+//指定自由段的锚索材料
+bar.SetPropByID(BarProp1, 1, 10, 1, 15);
+
+dyna.Solve();
+
+blkdyn.SetModel("MC", 1);
+
+
+dyna.Solve();
+
+dyna.Save("initial.sav");
+
+
+blkdyn.FreeV("x","x", -0.001,0.001);
+blkdyn.FreeV("x","x", 79.99,80.01);
+
+blkdyn.FreeV("z","z", -0.001,0.001);
+blkdyn.FreeV("z","z", 39.99,40.01);
+
+blkdyn.FreeV("y","y", -21, -19.99);
+
+
+//模型的外边界设定为无反射边界（粘性边界）
+blkdyn.SetQuietBoundByCoord(-0.001,0.001,-100,100,-100,100);
+blkdyn.SetQuietBoundByCoord(79.99,80.01,-100,100,-100,100);
+
+blkdyn.SetQuietBoundByCoord(-100,100,-100,100, -0.001,0.001);
+blkdyn.SetQuietBoundByCoord(-100,100,-100,100, 39.99,40.01);
+
+blkdyn.SetQuietBoundByCoord(-100,100,-21, -19.99,-100,100);
+
+
+
+var apos = [17, -3, 10.0];
+blkdyn.SetLandauSource(1, 1150, 5000, 3.1e6, 3.0, 1.3333, 7e9, apos, 0.0, 15e-3);
+
+var apos = [17, -3, 15.0];
+blkdyn.SetLandauSource(2, 1150, 5000, 3.1e6, 3.0, 1.3333, 7e9, apos, 25e-3, 15e-3);
+
+var apos = [17, -3, 20.0];
+blkdyn.SetLandauSource(3, 1150, 5000, 3.1e6, 3.0, 1.3333, 7e9, apos, 50e-3, 15e-3);
+
+var apos = [17, -3, 25.0];
+blkdyn.SetLandauSource(4, 1150, 5000, 3.1e6, 3.0, 1.3333, 7e9, apos, 75e-3, 15e-3);
+
+var apos = [17, -3, 30.0];
+blkdyn.SetLandauSource(5, 1150, 5000, 3.1e6, 3.0, 1.3333, 7e9, apos, 100e-3, 15e-3);
+
+
+bar.BindLandauSource(1, 1, 1);
+bar.BindLandauSource(2, 2, 2);
+bar.BindLandauSource(3, 3, 3);
+bar.BindLandauSource(4, 4, 4);
+bar.BindLandauSource(5, 5, 5);
+
+
+dyna.Monitor("block","yvel", 32,12,0);
+
+dyna.Monitor("block","yvel", 34,24,0);
+
+dyna.Monitor("block","yvel", 46,36,0);
+
+dyna.Monitor("block","yvel", 58,48,0);
+
+dyna.Monitor("gvalue","gv_block_broken_ratio");
+dyna.Monitor("gvalue","gv_block_crack_ratio");
+
+//将局部阻尼设置为0.0
+blkdyn.SetLocalDamp(0.00);
+
+//打开瑞利阻尼计算开关
+dyna.Set("If_Cal_Rayleigh 1")
+
+//将刚度阻尼系数设置为5e-6，质量阻尼系数设置为20.0
+blkdyn.SetRayleighDamp(5e-6, 20.0);
+
+
+var BaseValue = [0,0,0];
+var Grad      = [0, 0, 0, 0, 0, 0, 0, 0, 0];
+
+//对模型所有单元初始化地应力
+blkdyn.InitConditionByCoord("displace", BaseValue, Grad,  -1e3,1e3, -1e3,1e3, -1e3,1e3);
+
+
+
+//设置全局计算时步
+dyna.Set("If_Virtural_Mass 0");
+
+
+dyna.Set("Time_Step 1e-5");
+dyna.Set("Time_Now 0.0");
+
+
+dyna.Set("If_Cal_Bar 1");
+
+//动力计算1ms
+dyna.DynaCycle(0.2);
+
+//打印提示信息
+print("Solution Finished");
+
+```
+
+## Unified Diff
+```diff
+--- 案例库-CDyna案例-块体模块案例-扩展案例-三维露天矿爆破对边坡稳定性的影响-3DSlopePileBlast.js (ground_truth)
++++ 案例库-CDyna案例-块体模块案例-扩展案例-三维露天矿爆破对边坡稳定性的影响-3DSlopePileBlast.js (generated)
+@@ -1,172 +1,79 @@
+-//设置当前工作路径为JavaScript脚本文件所在路径
++// 设置当前工作路径为JavaScript脚本文件所在路径
+ setCurDir(getSrcDir());
+ 
+-//打开力学计算开关
++// 清除Mesh模块几何数据
++igeo.clear();
++
++// 清除Mesh模块网格数据
++imeshing.clear();
++
++// 清除BlockDyna模型数据
++dyna.Clear();
++
++// 清除Genvi平台数据
++doc.clearResult();
++
++// 打开力学计算开关
+ dyna.Set("Mechanic_Cal 1");
+ 
+-//设置三个方向的重力加速度均为0
+-dyna.Set("Gravity 0.0 -9.8 0.0");
++// 设置三个方向的重力加速度均为0
++dyna.Set("Gravity 0.0 0.0 0.0");
+ 
+-//打开大变形计算开关
+-dyna.Set("Large_Displace 1");
++// 打开大变形计算开关
++dyna.Set("Large_Deformation 1");
+ 
+-//设置计算结果的输出间隔为100步
++// 设置结果输出时步
+ dyna.Set("Output_Interval 500");
+ 
+-//设置监测信息输出时步为10步
+-dyna.Set("Moniter_Iter 10");
++// 打开接触更新开关
++dyna.Set("If_Renew_Contact 1");
+ 
+-dyna.Set("If_Cal_Bar 0");
++// 创建几何模型
++var loopid1 = igeo.genRect(0, 0, 0, 20, 20, 0, 1.0);
++var loopid2 = igeo.genRect(8, 8.5, 0, 12, 11.5, 0, 0.2);
+ 
++// 创建外边界的面（含矩形空洞）
++igeo.genSurface([loopid1, loopid2], 1);
++igeo.genSurface([loopid2], 2);
+ 
+-//关闭虚质量计算开关
+-dyna.Set("If_Virtural_Mass 1");
++// 生成二维网格
++imeshing.genMeshByGmsh(2);
+ 
+-//从当前文件夹导入Gmsh格式的网格
+-blkdyn.ImportGrid("gid", "SlopeBlast.msh");
++// BlockDyna从平台下载网格
++blkdyn.GetMesh(imeshing);
+ 
+-//指定组1的单元本构为线弹性本构
+-blkdyn.SetModel("linear", 1);
++// 对两侧单元均为组1的公共面进行切割，设置为接触面
++blkdyn.CrtIFace();
+ 
+-//指定组1-2的材料参数
+-blkdyn.SetMat(2500, 5e10, 0.25, 15e6, 10e6, 40.0, 10.0);
++// 设置接触后，更新网格信息
++blkdyn.UpdateIFaceMesh();
+ 
++// 指定材料参数
++blkdyn.SetModel("linear");
++blkdyn.SetMat(2300, 1e10, 0.25, 5e6, 5e6, 35.0, 15.0);
+ 
+-//固定模型四周及底部的法向速度
+-blkdyn.FixV("x",0.0,"x", -0.001,0.001);
+-blkdyn.FixV("x",0.0,"x", 79.99,80.01);
++// 将接触面模型设定为线弹性模型
++blkdyn.SetIModel("linear");
+ 
+-blkdyn.FixV("z",0.0,"z", -0.001,0.001);
+-blkdyn.FixV("z",0.0,"z", 39.99,40.01);
++// 虚拟接触面刚度及强度从单元中自动获取
++blkdyn.SetIStiffByElem(1);
++blkdyn.SetIStrengthByElem(1);
+ 
+-blkdyn.FixV("y",0.0,"y", -21, -19.99);
++// 设置爆炸荷载参数
++var explosionParams = {
++    "x": 10.0,
++    "y": 10.0,
++    "z": 0.0,
++    "chargeWeight": 100.0,
++    "detonationVelocity": 6500.0,
++    "explosionTime": 0.0
++};
+ 
++// 设置爆炸荷载
++blkdyn.SetExplosion(explosionParams);
+ 
++// 指定爆炸荷载作用的单元组
++blkdyn.ApplyExplosion("all");
+ 
+-//创建第1个炮孔
+-var fArrayCoord1 = [17, 5, 10.0];
+-var fArrayCoord2 = [17, -3, 10.0];
+-bar.CreateByCoord("BlastHole1", fArrayCoord1, fArrayCoord2, 10);
+-
+-//创建第2个炮孔
+-var fArrayCoord1 = [17, 5, 15.0];
+-var fArrayCoord2 = [17, -3, 15.0];
+-bar.CreateByCoord("BlastHole1", fArrayCoord1, fArrayCoord2, 10);
+-
+-//创建第3个炮孔
+-var fArrayCoord1 = [17, 5, 20.0];
+-var fArrayCoord2 = [17, -3, 20.0];
+-bar.CreateByCoord("BlastHole1", fArrayCoord1, fArrayCoord2, 10);
+-
+-//创建第4个炮孔
+-var fArrayCoord1 = [17, 5, 25.0];
+-var fArrayCoord2 = [17, -3, 25.0];
+-bar.CreateByCoord("BlastHole1", fArrayCoord1, fArrayCoord2, 10);
+-
+-//创建第5个炮孔
+-var fArrayCoord1 = [17, 5, 30.0];
+-var fArrayCoord2 = [17, -3, 30.0];
+-bar.CreateByCoord("BlastHole1", fArrayCoord1, fArrayCoord2, 10);
+-
+-var BarProp1 = [0.25, 7800.0, 1e10, 0.25, 235e6, 235e6, 1e6, 35, 1e9, 0.8, 0.0];
+-
+-//指定自由段的锚索材料
+-bar.SetPropByID(BarProp1, 1, 10, 1, 15);
+-
++// 解算模型
+ dyna.Solve();
+-
+-blkdyn.SetModel("MC", 1);
+-
+-
+-dyna.Solve();
+-
+-dyna.Save("initial.sav");
+-
+-
+-blkdyn.FreeV("x","x", -0.001,0.001);
+-blkdyn.FreeV("x","x", 79.99,80.01);
+-
+-blkdyn.FreeV("z","z", -0.001,0.001);
+-blkdyn.FreeV("z","z", 39.99,40.01);
+-
+-blkdyn.FreeV("y","y", -21, -19.99);
+-
+-
+-//模型的外边界设定为无反射边界（粘性边界）
+-blkdyn.SetQuietBoundByCoord(-0.001,0.001,-100,100,-100,100);
+-blkdyn.SetQuietBoundByCoord(79.99,80.01,-100,100,-100,100);
+-
+-blkdyn.SetQuietBoundByCoord(-100,100,-100,100, -0.001,0.001);
+-blkdyn.SetQuietBoundByCoord(-100,100,-100,100, 39.99,40.01);
+-
+-blkdyn.SetQuietBoundByCoord(-100,100,-21, -19.99,-100,100);
+-
+-
+-
+-var apos = [17, -3, 10.0];
+-blkdyn.SetLandauSource(1, 1150, 5000, 3.1e6, 3.0, 1.3333, 7e9, apos, 0.0, 15e-3);
+-
+-var apos = [17, -3, 15.0];
+-blkdyn.SetLandauSource(2, 1150, 5000, 3.1e6, 3.0, 1.3333, 7e9, apos, 25e-3, 15e-3);
+-
+-var apos = [17, -3, 20.0];
+-blkdyn.SetLandauSource(3, 1150, 5000, 3.1e6, 3.0, 1.3333, 7e9, apos, 50e-3, 15e-3);
+-
+-var apos = [17, -3, 25.0];
+-blkdyn.SetLandauSource(4, 1150, 5000, 3.1e6, 3.0, 1.3333, 7e9, apos, 75e-3, 15e-3);
+-
+-var apos = [17, -3, 30.0];
+-blkdyn.SetLandauSource(5, 1150, 5000, 3.1e6, 3.0, 1.3333, 7e9, apos, 100e-3, 15e-3);
+-
+-
+-bar.BindLandauSource(1, 1, 1);
+-bar.BindLandauSource(2, 2, 2);
+-bar.BindLandauSource(3, 3, 3);
+-bar.BindLandauSource(4, 4, 4);
+-bar.BindLandauSource(5, 5, 5);
+-
+-
+-dyna.Monitor("block","yvel", 32,12,0);
+-
+-dyna.Monitor("block","yvel", 34,24,0);
+-
+-dyna.Monitor("block","yvel", 46,36,0);
+-
+-dyna.Monitor("block","yvel", 58,48,0);
+-
+-dyna.Monitor("gvalue","gv_block_broken_ratio");
+-dyna.Monitor("gvalue","gv_block_crack_ratio");
+-
+-//将局部阻尼设置为0.0
+-blkdyn.SetLocalDamp(0.00);
+-
+-//打开瑞利阻尼计算开关
+-dyna.Set("If_Cal_Rayleigh 1")
+-
+-//将刚度阻尼系数设置为5e-6，质量阻尼系数设置为20.0
+-blkdyn.SetRayleighDamp(5e-6, 20.0);
+-
+-
+-var BaseValue = [0,0,0];
+-var Grad      = [0, 0, 0, 0, 0, 0, 0, 0, 0];
+-
+-//对模型所有单元初始化地应力
+-blkdyn.InitConditionByCoord("displace", BaseValue, Grad,  -1e3,1e3, -1e3,1e3, -1e3,1e3);
+-
+-
+-
+-//设置全局计算时步
+-dyna.Set("If_Virtural_Mass 0");
+-
+-
+-dyna.Set("Time_Step 1e-5");
+-dyna.Set("Time_Now 0.0");
+-
+-
+-dyna.Set("If_Cal_Bar 1");
+-
+-//动力计算1ms
+-dyna.DynaCycle(0.2);
+-
+-//打印提示信息
+-print("Solution Finished");
+```

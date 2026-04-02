@@ -18,7 +18,7 @@ except Exception:
 
 # LangChain imports
 from langchain_chroma import Chroma
-from langchain_core.tools import create_retriever_tool
+from langchain_core.tools import create_retriever_tool, Tool
 try:
     from langchain_core.tools import tool as lc_tool
 except Exception:
@@ -109,6 +109,16 @@ def _env_flag(key: str, default: bool) -> bool:
     return bool(default)
 
 
+def _env_int(key: str, default: int) -> int:
+    raw = (os.environ.get(key) or "").strip()
+    if not raw:
+        return int(default)
+    try:
+        return int(raw)
+    except Exception:
+        return int(default)
+
+
 @dataclass
 class AgentFeatureFlags:
     enable_vector_kb: bool = True
@@ -120,7 +130,10 @@ class AgentFeatureFlags:
     enable_generation_memory: bool = True
     enable_strict_retry: bool = True
     enable_prompt_optimizer: bool = True
+    enable_workflow_optimizer: bool = True
     prompt_optimizer: str = "textgrad"
+    workflow_optimizer_rounds: int = 2
+    workflow_optimizer_candidates: int = 3
 
     @staticmethod
     def from_env() -> "AgentFeatureFlags":
@@ -134,7 +147,10 @@ class AgentFeatureFlags:
             enable_generation_memory=_env_flag("CDEM_ENABLE_GENERATION_MEMORY", True),
             enable_strict_retry=_env_flag("CDEM_ENABLE_STRICT_RETRY", True),
             enable_prompt_optimizer=_env_flag("CDEM_ENABLE_PROMPT_OPTIMIZER", True),
+            enable_workflow_optimizer=_env_flag("CDEM_ENABLE_WORKFLOW_OPTIMIZER", True),
             prompt_optimizer=(os.environ.get("CDEM_PROMPT_OPTIMIZER") or "textgrad").strip().lower() or "textgrad",
+            workflow_optimizer_rounds=_env_int("CDEM_WORKFLOW_OPTIMIZER_ROUNDS", 2),
+            workflow_optimizer_candidates=_env_int("CDEM_WORKFLOW_OPTIMIZER_CANDIDATES", 3),
         )
 
 
@@ -148,19 +164,20 @@ class PromptOptimizer(Protocol):
 class TextGradPromptOptimizer:
     def __init__(self, llm: Any):
         self.llm = llm
+        self.last_trace: List[Dict[str, Any]] = []
 
     def optimize_retry_prompt(self, issues: Sequence[str], query: str) -> str:
         base = "拟合度优先：确保脚本可直接运行，补全缺失模块调用与求解入口，禁止输出 JSON/工具名。物理合规性优先：强调收敛与能量监测（若 API 支持）。"
-        candidates = [base]
+        candidates: List[Tuple[str, str]] = [("base", base)]
 
         if "json_output" in issues:
-            candidates.append(base + " 严禁输出 JSON；只允许输出 ```javascript 代码块```。")
+            candidates.append(("rule_json_output", base + " 严禁输出 JSON；只允许输出 ```javascript 代码块```。"))
         if "tool_leak" in issues:
-            candidates.append(base + " 严禁在代码中出现 search_physics_knowledge；不要写任何检索函数。")
+            candidates.append(("rule_tool_leak", base + " 严禁在代码中出现 search_physics_knowledge；不要写任何检索函数。"))
         if "missing_modules" in issues:
-            candidates.append(base + " 必须补齐必要模块调用；不要省略初始化与求解入口。")
+            candidates.append(("rule_missing_modules", base + " 必须补齐必要模块调用；不要省略初始化与求解入口。"))
         if "too_short" in issues:
-            candidates.append(base + " 生成完整脚本，不要输出片段或伪代码。")
+            candidates.append(("rule_too_short", base + " 生成完整脚本，不要输出片段或伪代码。"))
 
         allow_llm = _env_flag("CDEM_PROMPT_OPTIMIZER_USE_LLM", True)
         if allow_llm and self.llm is not None:
@@ -173,12 +190,32 @@ class TextGradPromptOptimizer:
                 resp = self.llm.invoke([SystemMessage(content=sys), HumanMessage(content=json.dumps(user, ensure_ascii=False))])
                 text = (getattr(resp, "content", "") or "").strip()
                 if text:
-                    candidates.append(text)
+                    candidates.append(("llm", text))
             except Exception:
                 pass
 
-        best = max(candidates, key=lambda x: self._score_prompt(x, issues))
-        return best
+        scored: List[Dict[str, Any]] = []
+        best_score = None
+        best_prompt = base
+        best_source = "base"
+        for source, prompt in candidates:
+            s = float(self._score_prompt(prompt, issues))
+            scored.append(
+                {
+                    "source": source,
+                    "score": s,
+                    "issues": list(issues or []),
+                    "prompt": prompt,
+                }
+            )
+            if best_score is None or s > best_score:
+                best_score = s
+                best_prompt = prompt
+                best_source = source
+        for it in scored:
+            it["selected"] = bool(it.get("source") == best_source and it.get("prompt") == best_prompt)
+        self.last_trace = scored
+        return best_prompt
 
     def _score_prompt(self, prompt: str, issues: Sequence[str]) -> float:
         s = 0.0
@@ -203,6 +240,32 @@ class TextGradPromptOptimizer:
             if it == "too_short" and ("完整" in prompt or "不要输出片段" in prompt):
                 s += 1.0
         return s
+
+
+@dataclass
+class AdaptiveToolSpec:
+    name: str
+    description: str
+    template: str
+
+
+@dataclass
+class WorkflowCandidate:
+    name: str
+    dyn_prompt: str
+    tool_names: List[str]
+    score: float
+    issue_tags: List[str]
+    tool_calls: int = 0
+
+
+@dataclass
+class TaskProfile:
+    name: str
+    require_prelude: bool = False
+    prelude_snippet: str = ""
+    require_solve: bool = False
+    min_effective_lines: int = 10
 
 
 class VectorKnowledgeBaseModule:
@@ -831,6 +894,385 @@ class ToolConstructionModule:
         )
         return search_physics_knowledge
 
+    def build_gaia_offline_tools(self) -> List[Any]:
+        import csv
+        import io
+        import zipfile
+        import tempfile
+        from pathlib import Path
+        import xml.etree.ElementTree as ET
+
+        def _resolve_abs(p: str) -> Path:
+            pp = Path((p or "").strip()).expanduser()
+            if not pp.is_absolute():
+                raise ValueError("path 必须是绝对路径")
+            return pp.resolve()
+
+        def _allowed(pp: Path) -> bool:
+            root = (os.environ.get("GAIA_ROOT") or "").strip()
+            if not root:
+                return True
+            rr = Path(root).expanduser().resolve()
+            try:
+                return pp.is_relative_to(rr)
+            except Exception:
+                try:
+                    pp.relative_to(rr)
+                    return True
+                except Exception:
+                    return False
+
+        def _clip(text: str, limit: int = 20000) -> str:
+            t = (text or "")
+            if len(t) <= limit:
+                return t
+            return t[:limit] + "\n...（已截断）"
+
+        def _read_bytes(pp: Path, max_bytes: int = 2_000_000) -> bytes:
+            data = pp.read_bytes()
+            if len(data) > max_bytes:
+                return data[:max_bytes]
+            return data
+
+        def _read_text(pp: Path) -> str:
+            data = _read_bytes(pp)
+            for enc in ("utf-8", "utf-8-sig", "gb18030", "gbk", "cp936"):
+                try:
+                    return data.decode(enc)
+                except Exception:
+                    continue
+            return data.decode("utf-8", errors="replace")
+
+        def _jsonl_preview(pp: Path, max_lines: int = 80) -> str:
+            lines = []
+            with open(pp, "r", encoding="utf-8", errors="replace") as f:
+                for i, line in enumerate(f, 1):
+                    if i > max_lines:
+                        break
+                    lines.append(line.rstrip("\n"))
+            return "\n".join(lines)
+
+        def _read_pdf(pp: Path, max_pages: int = 6) -> str:
+            try:
+                import fitz
+            except Exception as e:
+                return f"无法读取 PDF（缺少 PyMuPDF/fitz）：{e}"
+            doc = fitz.open(str(pp))
+            n = doc.page_count
+            out = [f"PDF pages: {n}"]
+            take = min(max_pages, n)
+            for i in range(take):
+                page = doc.load_page(i)
+                txt = (page.get_text("text") or "").strip()
+                if txt:
+                    out.append(f"\n--- page {i+1} ---\n{txt}")
+            doc.close()
+            return _clip("\n".join(out), 24000)
+
+        def _read_excel(pp: Path) -> str:
+            try:
+                import pandas as pd
+            except Exception as e:
+                return f"无法读取 Excel（缺少 pandas）：{e}"
+            xls = pd.ExcelFile(str(pp))
+            sheets = list(xls.sheet_names or [])
+            out = [f"Excel sheets: {sheets}"]
+            sheet0 = sheets[0] if sheets else None
+            if sheet0:
+                df = pd.read_excel(str(pp), sheet_name=sheet0, nrows=30)
+                out.append(f"\nSheet: {sheet0}")
+                out.append(df.to_string(index=False))
+            return _clip("\n".join(out), 24000)
+
+        def _read_csv_file(pp: Path) -> str:
+            try:
+                import pandas as pd
+            except Exception:
+                with open(pp, "r", encoding="utf-8", errors="replace") as f:
+                    reader = csv.reader(f)
+                    rows = []
+                    for i, row in enumerate(reader, 1):
+                        rows.append(row)
+                        if i >= 40:
+                            break
+                sio = io.StringIO()
+                for r in rows:
+                    sio.write("\t".join(r) + "\n")
+                return _clip(sio.getvalue(), 24000)
+            df = pd.read_csv(str(pp), nrows=50)
+            return _clip(df.to_string(index=False), 24000)
+
+        def _extract_docx_text(pp: Path) -> str:
+            try:
+                with zipfile.ZipFile(str(pp), "r") as z:
+                    xml_bytes = z.read("word/document.xml")
+            except Exception as e:
+                return f"无法读取 docx：{e}"
+            try:
+                root = ET.fromstring(xml_bytes)
+            except Exception as e:
+                return f"无法解析 docx XML：{e}"
+            texts = []
+            for node in root.iter():
+                if node.tag.endswith("}t") and node.text:
+                    texts.append(node.text)
+            return _clip("".join(texts), 24000)
+
+        def _extract_pptx_text(pp: Path) -> str:
+            try:
+                with zipfile.ZipFile(str(pp), "r") as z:
+                    slide_names = sorted([n for n in z.namelist() if n.startswith("ppt/slides/slide") and n.endswith(".xml")])
+                    out = []
+                    for name in slide_names[:20]:
+                        xml_bytes = z.read(name)
+                        try:
+                            root = ET.fromstring(xml_bytes)
+                        except Exception:
+                            continue
+                        texts = []
+                        for node in root.iter():
+                            if node.tag.endswith("}t") and node.text:
+                                texts.append(node.text)
+                        if texts:
+                            out.append(f"[{Path(name).name}]\n" + "".join(texts))
+            except Exception as e:
+                return f"无法读取 pptx：{e}"
+            return _clip("\n\n".join(out), 24000)
+
+        def _safe_extract_zip(pp: Path) -> str:
+            base = (os.environ.get("GAIA_WORK_DIR") or "").strip()
+            if not base:
+                base = str(Path(tempfile.gettempdir()) / "gaia_work")
+            base_dir = Path(base).expanduser().resolve()
+            base_dir.mkdir(parents=True, exist_ok=True)
+            out_dir = base_dir / pp.stem
+            out_dir.mkdir(parents=True, exist_ok=True)
+            extracted = []
+            with zipfile.ZipFile(str(pp), "r") as z:
+                for info in z.infolist():
+                    name = info.filename
+                    if not name or name.endswith("/"):
+                        continue
+                    p = Path(name)
+                    parts = [x for x in p.parts if x not in ("", ".", "..")]
+                    safe = Path(*parts)
+                    dest = (out_dir / safe).resolve()
+                    if not dest.is_relative_to(out_dir.resolve()):
+                        continue
+                    dest.parent.mkdir(parents=True, exist_ok=True)
+                    with z.open(info) as src, open(dest, "wb") as dst:
+                        dst.write(src.read())
+                    extracted.append(str(dest))
+            return _clip("Extracted to: " + str(out_dir) + "\n" + "\n".join(extracted[:200]), 24000)
+
+        def read_local_file(path: str) -> str:
+            pp = _resolve_abs(path)
+            if not _allowed(pp):
+                return "拒绝访问：路径不在 GAIA_ROOT 下"
+            if not pp.exists():
+                return "文件不存在"
+            if pp.is_dir():
+                entries = []
+                for p in sorted(pp.iterdir()):
+                    entries.append(p.name + ("/" if p.is_dir() else ""))
+                    if len(entries) >= 200:
+                        break
+                return "DIR:\n" + "\n".join(entries)
+            ext = pp.suffix.lower()
+            if ext in {".txt", ".md", ".py", ".js", ".json", ".xml", ".html", ".htm", ".csv", ".tsv"}:
+                if ext == ".jsonl":
+                    return _clip(_jsonl_preview(pp), 24000)
+                if ext in {".csv", ".tsv"}:
+                    return _read_csv_file(pp)
+                if ext == ".json":
+                    try:
+                        obj = json.loads(_read_text(pp))
+                        return _clip(json.dumps(obj, ensure_ascii=False, indent=2), 24000)
+                    except Exception:
+                        return _clip(_read_text(pp), 24000)
+                if ext == ".xml":
+                    return _clip(_read_text(pp), 24000)
+                return _clip(_read_text(pp), 24000)
+            if ext in {".jsonl"}:
+                return _clip(_jsonl_preview(pp), 24000)
+            if ext in {".xlsx", ".xlsm", ".xls"}:
+                return _read_excel(pp)
+            if ext == ".pdf":
+                return _read_pdf(pp)
+            if ext == ".docx":
+                return _extract_docx_text(pp)
+            if ext == ".pptx":
+                return _extract_pptx_text(pp)
+            if ext == ".zip":
+                return _safe_extract_zip(pp)
+            if ext in {".png", ".jpg", ".jpeg", ".webp"}:
+                try:
+                    from PIL import Image
+                except Exception as e:
+                    return f"无法读取图片（缺少 PIL）：{e}"
+                try:
+                    im = Image.open(pp)
+                    w, h = im.size
+                    mode = im.mode
+                    fmt = im.format
+                    return f"Image: {fmt} {w}x{h} mode={mode}\n未启用 OCR（如需 OCR 请安装 pytesseract + 系统 tesseract）"
+                except Exception as e:
+                    return f"无法读取图片：{e}"
+            if ext in {".mp3", ".m4a", ".wav"}:
+                return "音频暂不支持离线转写"
+            return "不支持的文件类型: " + ext
+
+        def list_local_dir(path: str) -> str:
+            pp = _resolve_abs(path)
+            if not _allowed(pp):
+                return "拒绝访问：路径不在 GAIA_ROOT 下"
+            if not pp.exists():
+                return "路径不存在"
+            if not pp.is_dir():
+                return "不是目录"
+            entries = []
+            for p in sorted(pp.iterdir()):
+                entries.append(p.name + ("/" if p.is_dir() else ""))
+                if len(entries) >= 500:
+                    break
+            return "DIR:\n" + "\n".join(entries)
+
+        return [
+            Tool(name="read_local_file", func=read_local_file, description="读取本地文件内容（绝对路径）。支持 txt/json/jsonl/xml/csv/xlsx/pdf/docx/pptx/zip；目录会列出文件名。"),
+            Tool(name="list_local_dir", func=list_local_dir, description="列出本地目录内容（绝对路径）。"),
+        ]
+
+
+class ContextMemoryManager:
+    """上下文记忆管理器：滑动窗口+向量检索双路方案，支持跨会话持久化"""
+    def __init__(self, session_id: str = "default_session", persist_dir: str = "./memory_store", window_size: int = 5, vectorstore: Optional[Any] = None, llm: Optional[Any] = None):
+        self.session_id = session_id
+        self.persist_dir = Path(persist_dir)
+        self.persist_dir.mkdir(parents=True, exist_ok=True)
+        self.window_size = window_size
+        self.vectorstore = vectorstore # Chroma DB for long-term memory
+        self.llm = llm # For summarization/compression
+        
+        # State
+        self.history: List[Dict[str, str]] = []
+        self.user_preferences: Dict[str, Any] = {}
+        self.script_versions: List[Dict[str, Any]] = []
+        self.simulation_summaries: List[Dict[str, Any]] = []
+        
+        self.load_session()
+        
+    def add_message(self, role: str, content: str):
+        self.history.append({"role": role, "content": content, "timestamp": datetime.now().isoformat()})
+        if self.vectorstore and len(content) > 50:
+            try:
+                from langchain_core.documents import Document
+                doc = Document(page_content=content, metadata={"role": role, "session_id": self.session_id, "type": "chat_history"})
+                self.vectorstore.add_documents([doc])
+            except Exception:
+                pass
+        self.save_session()
+        
+    def add_script_version(self, code: str, context: str = ""):
+        version = len(self.script_versions) + 1
+        self.script_versions.append({
+            "version": version,
+            "code": code,
+            "context": context,
+            "timestamp": datetime.now().isoformat()
+        })
+        self.save_session()
+        
+    def add_simulation_summary(self, result: str, metrics: Dict[str, Any]):
+        self.simulation_summaries.append({
+            "result": result,
+            "metrics": metrics,
+            "timestamp": datetime.now().isoformat()
+        })
+        self.save_session()
+        
+    def get_sliding_window(self) -> List[Dict[str, str]]:
+        return self.history[-self.window_size*2:]
+        
+    def recall_context(self, query: str, k: int = 3) -> str:
+        """从长时记忆（向量库）召回相关的历史对话/脚本/经验"""
+        recalled = []
+        if self.vectorstore:
+            try:
+                docs = self.vectorstore.similarity_search(query, k=k, filter={"session_id": self.session_id})
+                recalled = [d.page_content for d in docs]
+            except Exception:
+                pass
+        
+        recent_history = self.get_sliding_window()
+        context_parts = []
+        if self.user_preferences:
+            context_parts.append(f"[用户偏好]: {json.dumps(self.user_preferences, ensure_ascii=False)}")
+        if recalled:
+            context_parts.append(f"[相关历史召回]:\n" + "\n---\n".join(recalled))
+        if recent_history:
+            recent_str = "\n".join([f"{msg['role']}: {msg['content'][:200]}..." for msg in recent_history])
+            context_parts.append(f"[近期对话窗口]:\n{recent_str}")
+        if self.script_versions:
+            last_script = self.script_versions[-1]
+            context_parts.append(f"[当前脚本版本 v{last_script['version']}]:\n{last_script['code'][:300]}...")
+        if self.simulation_summaries:
+            last_sim = self.simulation_summaries[-1]
+            context_parts.append(f"[最新仿真结果]:\n{last_sim['result']}")
+            
+        return "\n\n".join(context_parts)
+        
+    def compress_history(self):
+        """利用LLM压缩早期对话为摘要，减小上下文窗口"""
+        if len(self.history) <= self.window_size * 2 or not self.llm:
+            return
+            
+        to_compress = self.history[:-self.window_size*2]
+        self.history = self.history[-self.window_size*2:]
+        
+        text_to_compress = "\n".join([f"{m['role']}: {m['content']}" for m in to_compress])
+        try:
+            from langchain_core.messages import HumanMessage
+            prompt = f"请简要总结以下对话的历史记录和核心需求，保留重要的事实、参数和用户偏好，以便后续参考：\n{text_to_compress}"
+            summary = self.llm.invoke([HumanMessage(content=prompt)]).content
+            
+            if self.vectorstore:
+                from langchain_core.documents import Document
+                doc = Document(page_content=summary, metadata={"role": "system", "session_id": self.session_id, "type": "compressed_summary"})
+                self.vectorstore.add_documents([doc])
+                
+            self.history.insert(0, {"role": "system", "content": f"历史压缩摘要: {summary}", "timestamp": datetime.now().isoformat()})
+        except Exception:
+            pass
+        self.save_session()
+
+    def update_preferences(self, preferences: Dict[str, Any]):
+        self.user_preferences.update(preferences)
+        self.save_session()
+        
+    def save_session(self):
+        file_path = self.persist_dir / f"{self.session_id}.json"
+        data = {
+            "history": self.history,
+            "user_preferences": self.user_preferences,
+            "script_versions": self.script_versions,
+            "simulation_summaries": self.simulation_summaries
+        }
+        with open(file_path, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+            
+    def load_session(self):
+        file_path = self.persist_dir / f"{self.session_id}.json"
+        if file_path.exists():
+            try:
+                with open(file_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    self.history = data.get("history", [])
+                    self.user_preferences = data.get("user_preferences", {})
+                    self.script_versions = data.get("script_versions", [])
+                    self.simulation_summaries = data.get("simulation_summaries", [])
+            except Exception:
+                pass
+
 
 class AgentConstructionModule:
     """智能体构造与执行模块：负责LLM初始化、Agent构建及代码生成"""
@@ -842,6 +1284,7 @@ class AgentConstructionModule:
         vectorstore: Optional[Any] = None,
         feature_flags: Optional[AgentFeatureFlags] = None,
         prompt_optimizer: Optional[PromptOptimizer] = None,
+        memory_manager: Optional[ContextMemoryManager] = None,
     ):
         self.tools = tools
         self.model_name = model_name
@@ -851,11 +1294,17 @@ class AgentConstructionModule:
         self.prompt_optimizer = prompt_optimizer
         self.last_run_metrics: Dict[str, Any] = {}
         self._build_agent()
+        
+        self.memory_manager = memory_manager
+        if self.memory_manager is None and self.vectorstore:
+            self.memory_manager = ContextMemoryManager(vectorstore=self.vectorstore, llm=getattr(self, "llm", None))
+            
         if self.prompt_optimizer is None and self.feature_flags.enable_prompt_optimizer:
             self.prompt_optimizer = TextGradPromptOptimizer(llm=getattr(self, "llm", None))
         
         self.preprocessor = None
         self.reset_generation_memory()
+        self._executor_cache: Dict[tuple, Any] = {}
 
     def reset_generation_memory(self):
         self._generation_memory = {
@@ -863,6 +1312,238 @@ class AgentConstructionModule:
             "last_query": "",
             "global_feedback": [],
         }
+
+    def _infer_task_profile(self, query: str) -> TaskProfile:
+        q = (query or "").strip()
+        ql = q.lower()
+        if not q:
+            return TaskProfile(name="generic_code", min_effective_lines=6)
+
+        cdem_markers = [
+            "cdem", "cdyna", "gflow", "mudsim", "supercdem",
+            "igeo", "imeshing", "pdyna", "rdface", "blkdyn", "dyna",
+            "sfracsp", "skwave",
+        ]
+        if any(m in ql for m in cdem_markers):
+            return TaskProfile(
+                name="cdem_js",
+                require_prelude=True,
+                prelude_snippet="setCurDir(getSrcDir());",
+                require_solve=True,
+                min_effective_lines=10,
+            )
+        if any(k in ql for k in ["javascript", "js", ".js", "node"]):
+            return TaskProfile(name="generic_js", min_effective_lines=8)
+        if any(k in ql for k in ["python", ".py", "pydantic", "fastapi"]):
+            return TaskProfile(name="generic_py", min_effective_lines=8)
+        return TaskProfile(name="generic_code", min_effective_lines=6)
+
+    def _tool_leak_hit(self, code: str, tool_names: List[str]) -> bool:
+        if not code:
+            return False
+        for n in tool_names or []:
+            if not n:
+                continue
+            if n in code:
+                return True
+        return False
+
+    def _executor_key(self, tools: List[Any]) -> tuple:
+        names: List[str] = []
+        for t in (tools or []):
+            n = getattr(t, "name", None) or getattr(t, "__name__", None) or str(t)
+            n = str(n).strip()
+            if n:
+                names.append(n)
+        return tuple(sorted(set(names)))
+
+    def _get_executor(self, tools: List[Any]):
+        if not tools:
+            return None
+        key = self._executor_key(tools)
+        if key in self._executor_cache:
+            return self._executor_cache[key]
+        ex = create_agent(model=self.llm, tools=tools, system_prompt=self.system_prompt)
+        self._executor_cache[key] = ex
+        return ex
+
+    def _sanitize_tool_name(self, raw: str) -> str:
+        s = (raw or "").strip().lower()
+        if not s:
+            return ""
+        s = re.sub(r"\s+", "_", s)
+        s = re.sub(r"[^a-z0-9_]+", "_", s)
+        s = re.sub(r"_+", "_", s).strip("_")
+        if not s:
+            return ""
+        if not re.match(r"^[a-z_]", s):
+            s = "hint_" + s
+        if not s.startswith("hint_"):
+            s = "hint_" + s
+        if s == "search_physics_knowledge":
+            s = "hint_search_physics_knowledge"
+        return s[:48]
+
+    def _detect_issue_tags(self, code: str, required_modules: List[str], profile: TaskProfile, tool_names: List[str]) -> List[str]:
+        tags: List[str] = []
+        min_lines = int(getattr(profile, "min_effective_lines", 10) or 10)
+        normalized = CodeSimilarityCalculator._normalize_code(code or "")
+        if not normalized or len(normalized.splitlines()) < max(3, min_lines):
+            return ["too_short"]
+        if self._tool_leak_hit(code, tool_names=tool_names):
+            tags.append("tool_leak")
+        stripped = code.strip()
+        if stripped.startswith("{") and '"name"' in stripped:
+            tags.append("json_output")
+        if getattr(profile, "require_prelude", False):
+            prelude = (getattr(profile, "prelude_snippet", "") or "").strip()
+            if prelude and prelude not in code:
+                tags.append("missing_prelude")
+        if getattr(profile, "require_solve", False):
+            if not re.search(r"\bSolve\s*\(|\.\s*Solve\s*\(", code):
+                tags.append("missing_solve")
+        if re.search(r"\bwhile\s*\(\s*true\s*\)", code):
+            tags.append("while_true")
+        if code.count("{") != code.count("}"):
+            tags.append("braces_mismatch")
+        if code.count("(") != code.count(")"):
+            tags.append("parens_mismatch")
+        missing = self._missing_required_modules(code, required_modules)
+        if missing:
+            tags.append("missing_modules")
+        return tags
+
+    def _execution_heuristic(self, code: str) -> float:
+        if not code or len(code.strip()) < 10:
+            return 0.0
+        score = 5.0
+        if "{" in code and "}" in code:
+            score += 2
+        if "function" in code or "=>" in code:
+            score += 1
+        if ";" in code:
+            score += 1
+        if code.count("(") == code.count(")"):
+            score += 1
+        return min(10.0, score)
+
+    def _score_generated_code(self, code: str, issue_tags: List[str]) -> float:
+        q = CodeQualityEvaluator.evaluate(code)
+        e = self._execution_heuristic(code)
+        score = 0.65 * q + 0.35 * e
+        penalties = {
+            "tool_leak": 6.0,
+            "json_output": 5.0,
+            "too_short": 4.0,
+            "missing_modules": 3.0,
+            "missing_prelude": 2.0,
+            "missing_solve": 3.0,
+            "braces_mismatch": 2.5,
+            "parens_mismatch": 2.0,
+            "while_true": 1.5,
+        }
+        for t in issue_tags or []:
+            score -= penalties.get(t, 1.0)
+        if not issue_tags:
+            score += 2.0
+        return float(round(score, 4))
+
+    def _propose_adaptive_tool_specs(self, query: str, issue_tags: List[str], profile: TaskProfile, max_n: int = 3) -> List[AdaptiveToolSpec]:
+        allow_llm = _env_flag("CDEM_WORKFLOW_TOOLGEN_USE_LLM", True)
+        if allow_llm and getattr(self, "llm", None) is not None and lc_tool is not None:
+            sys = (
+                "你是任务代码生成的工具设计器。根据任务(query)与失败信号(issues)，输出 1~3 个可调用的【提示型工具】定义。\n"
+                "每个工具必须：\n"
+                "1) 只返回字符串提示/模板片段，不执行外部动作；\n"
+                "2) 工具名必须是 snake_case，建议以 hint_ 开头；\n"
+                "3) 说明要短；模板(template)要具体可直接粘贴到脚本里或作为检查清单。\n"
+                "输出必须是严格 JSON 数组，数组元素包含 name, description, template 三个字段。禁止输出额外文字。"
+            )
+            user = {"query": query, "issues": list(issue_tags or []), "profile": getattr(profile, "name", "")}
+            try:
+                resp = self.llm.invoke([SystemMessage(content=sys), HumanMessage(content=json.dumps(user, ensure_ascii=False))])
+                content = (getattr(resp, "content", "") or "").strip()
+                m = re.search(r"\[[\s\S]*\]", content)
+                if m:
+                    data = json.loads(m.group(0))
+                    if isinstance(data, list):
+                        specs: List[AdaptiveToolSpec] = []
+                        for it in data:
+                            if not isinstance(it, dict):
+                                continue
+                            name = self._sanitize_tool_name(str(it.get("name") or ""))
+                            desc = str(it.get("description") or "").strip()
+                            templ = str(it.get("template") or "").strip()
+                            if not name or not desc or not templ:
+                                continue
+                            specs.append(AdaptiveToolSpec(name=name, description=desc, template=templ))
+                        if specs:
+                            uniq: Dict[str, AdaptiveToolSpec] = {}
+                            for s in specs:
+                                if s.name not in uniq:
+                                    uniq[s.name] = s
+                            return list(uniq.values())[: max(1, min(max_n, 3))]
+            except Exception:
+                pass
+
+        q = (query or "").lower()
+        out: List[AdaptiveToolSpec] = []
+        if getattr(profile, "name", "") in {"cdem_js"}:
+            if any(x in q for x in ["收敛", "conver", "迭代", "稳定"]):
+                out.append(
+                    AdaptiveToolSpec(
+                        name="hint_convergence_monitor",
+                        description="收敛与稳定性检查清单",
+                        template="收敛/稳定性建议：\n- 记录残差或不平衡力（若API支持），设置阈值并在发散时减小dt。\n- 若出现高频振荡：增加阻尼或调整接触刚度/时间步。\n- 输出关键量随时间曲线用于回归验证。",
+                    )
+                )
+            if any(x in q for x in ["能量", "energy", "守恒"]):
+                out.append(
+                    AdaptiveToolSpec(
+                        name="hint_energy_monitor",
+                        description="能量监测与漂移处理",
+                        template="能量监测建议：\n- 每个输出步记录：动能/内能/外功/耗散（若API提供）。\n- 若能量漂移超阈值：降低dt，检查边界功与阻尼项设置。\n- 对比能量闭合误差用于判定模型与参数合理性。",
+                    )
+                )
+        if any(x in issue_tags or [] for x in ["missing_prelude", "missing_solve", "missing_modules", "json_output", "tool_leak", "too_short"]):
+            out.append(
+                AdaptiveToolSpec(
+                    name="hint_script_sanity_check",
+                    description="输出硬约束检查",
+                    template="硬约束：\n- 严禁在最终输出里出现任何工具名或 JSON。\n- 只输出一个代码块（语言与任务一致）。\n- 代码必须可运行，包含必要的入口函数/主流程。",
+                )
+            )
+        uniq2: Dict[str, AdaptiveToolSpec] = {}
+        for s in out:
+            if s.name not in uniq2:
+                uniq2[s.name] = s
+        return list(uniq2.values())[: max(1, min(max_n, 3))]
+
+    def _build_adaptive_hint_tools(self, query: str, specs: List[AdaptiveToolSpec]) -> List[Any]:
+        if lc_tool is None:
+            return []
+        tools_out: List[Any] = []
+        seen = set()
+        for spec in specs or []:
+            name = self._sanitize_tool_name(spec.name)
+            if not name or name in seen:
+                continue
+            seen.add(name)
+            desc = (spec.description or "").strip()
+            templ = (spec.template or "").strip()
+            if not desc or not templ:
+                continue
+
+            @lc_tool(name)
+            def _hint_tool(task: str = "", _templ=templ, _q=query) -> str:
+                """Return a hint/template string for completing the task."""
+                t = (task or "").strip() or _q
+                out = _templ.replace("{query}", _q).replace("{task}", t)
+                return out.strip()
+
+            _hint_tool.description = desc
+            tools_out.append(_hint_tool)
+        return tools_out
 
     def _build_task_steps(self, query: str, reference_context: str) -> List[str]:
         prompt = (
@@ -899,14 +1580,16 @@ class AgentConstructionModule:
             "调用求解入口并保存结果文件",
         ]
 
-    def _build_feedback_items(self, code: str, required_modules: List[str]) -> List[str]:
+    def _build_feedback_items(self, code: str, required_modules: List[str], profile: TaskProfile, tool_names: List[str]) -> List[str]:
         issues: List[str] = []
         if not code or len(code.strip()) < 10:
             return ["代码为空或过短"]
-        if "search_physics_knowledge" in code:
-            issues.append("代码中出现 search_physics_knowledge（严禁出现在最终脚本）")
-        if "setCurDir(getSrcDir());" not in code:
-            issues.append("缺少脚本起手式：setCurDir(getSrcDir());")
+        if self._tool_leak_hit(code, tool_names=tool_names):
+            issues.append("最终输出中出现工具名（严禁出现在最终输出）")
+        if getattr(profile, "require_prelude", False):
+            prelude = (getattr(profile, "prelude_snippet", "") or "").strip()
+            if prelude and prelude not in code:
+                issues.append(f"缺少必要起手式：{prelude}")
         if re.search(r"\bwhile\s*\(\s*true\s*\)", code):
             issues.append("包含 while(true) 可能导致脚本自身无限循环")
         if code.count("{") != code.count("}"):
@@ -916,9 +1599,10 @@ class AgentConstructionModule:
         missing = self._missing_required_modules(code, required_modules)
         if missing:
             issues.append("缺少必要模块调用: " + ", ".join(missing))
-        solve_like = bool(re.search(r"\bSolve\s*\(|\.\s*Solve\s*\(", code))
-        if not solve_like:
-            issues.append("未检测到求解/执行入口（Solve）")
+        if getattr(profile, "require_solve", False):
+            solve_like = bool(re.search(r"\bSolve\s*\(|\.\s*Solve\s*\(", code))
+            if not solve_like:
+                issues.append("未检测到求解/执行入口（Solve）")
         return issues
 
     def _build_agent(self):
@@ -960,7 +1644,17 @@ class AgentConstructionModule:
             )
         
         # 3. 系统提示词
-        if globals().get('HAS_CUSTOM_PROMPT', False) and globals().get('agent_system') is not None:
+        gaia_mode = _env_flag("GAIA_MODE", False) or (os.environ.get("CDEM_EVAL_PROFILE") or "").strip().lower() == "gaia"
+        sys_mode = (os.environ.get("CDEM_SYSTEM_PROMPT_MODE") or "").strip().lower()
+        if gaia_mode:
+            system_prompt = (
+                "You are an offline agent for GAIA-style tasks.\n"
+                "Use tools to inspect local attachments when needed.\n"
+                "Keep answers short and return the final answer in the required format."
+            )
+        elif sys_mode in {"generic", "general", "base"}:
+            system_prompt = self._get_generic_system_prompt()
+        elif globals().get('HAS_CUSTOM_PROMPT', False) and globals().get('agent_system') is not None:
             system_prompt = agent_system.AGENT_SYSTEM_PROMPT0
         else:
             system_prompt = self._get_default_system_prompt()
@@ -1009,6 +1703,7 @@ class AgentConstructionModule:
             return "", 0
 
         docs = []
+        self._last_retrieval_docs_meta = []
         try:
             def search_with_fallback(q: str, k: int, source_types: Optional[List[str]] = None) -> List:
                 if not source_types:
@@ -1126,6 +1821,18 @@ class AgentConstructionModule:
             return 2
         
         docs_sorted = sorted(docs, key=source_priority)
+        try:
+            self._last_retrieval_docs_meta = [
+                {
+                    "source": (d.metadata or {}).get("source", "unknown"),
+                    "source_type": (d.metadata or {}).get("source_type", ""),
+                    "doc_id": (d.metadata or {}).get("doc_id", ""),
+                    "path": (d.metadata or {}).get("path", ""),
+                }
+                for d in docs_sorted
+            ]
+        except Exception:
+            self._last_retrieval_docs_meta = []
         api_docs = [d for d in docs_sorted if (d.metadata or {}).get("source_type") == "api_reference"]
         manual_docs = [d for d in docs_sorted if (d.metadata or {}).get("source_type") == "manual"]
         case_docs = [d for d in docs_sorted if (d.metadata or {}).get("source_type") in {"case", "training_case"}]
@@ -1245,6 +1952,19 @@ class AgentConstructionModule:
 只输出JavaScript代码，不要添加任何解释性文字。代码应该可以直接执行。
 """
 
+    def _get_generic_system_prompt(self) -> str:
+        return """你是一个专业的任务执行与代码生成助手。
+
+你的任务是：
+1. 分析用户需求并在必要时拆解步骤
+2. 如果提供了参考资料，请优先依据参考资料，不要臆造接口
+3. 如果可以调用工具，请在推理过程中调用；最终输出中严禁出现任何工具名或工具调用描述
+
+输出规则：
+- 如果用户要求生成代码：只输出一个代码块（语言与需求一致），不要输出解释文字
+- 如果用户要求问答：用简洁中文回答；资料不足则说明资料不足
+"""
+
     def generate_code(self, query: str, verbose: bool = False, dynamic_sys_prompt: str = "") -> tuple[str, float, int]:
         """生成代码的主入口"""
         start_time = time.time()
@@ -1270,6 +1990,10 @@ class AgentConstructionModule:
             }
         
         def build_memory_prompt() -> str:
+            if getattr(self, "memory_manager", None):
+                context_str = self.memory_manager.recall_context(query)
+                return "【全局上下文记忆】\n" + context_str
+                
             if not flags.enable_generation_memory:
                 return ""
             parts: List[str] = []
@@ -1281,12 +2005,13 @@ class AgentConstructionModule:
                 parts.append("【近期常见失败点（请主动规避）】\n- " + "\n- ".join(global_fb[-5:]))
             return "\n\n".join(parts).strip()
 
-        def run_once(prompt_text: str, dyn_prompt: str = "") -> tuple[str, int, float]:
+        def run_once(prompt_text: str, dyn_prompt: str = "", executor_override: Any = None) -> tuple[str, int, float, Dict[str, Any]]:
             t0 = time.time()
             local_retrieved = 0
             local_generated = ""
             last_ai_text = ""
             final_messages = []
+            cutoff_info: Dict[str, Any] = {}
             
             input_messages = [HumanMessage(content=prompt_text)]
             memory_prompt = build_memory_prompt()
@@ -1297,16 +2022,14 @@ class AgentConstructionModule:
             if dyn_prompt:
                 input_messages.insert(0, SystemMessage(content=f"【动态优化指令】\n{dyn_prompt}"))
 
-            # 兼容性处理：如果 executor 期待 list，传入 list；如果期待 dict，传入 dict
-            # 标准 create_agent 生成的 executor 通常接受 {"messages": ...}
-            
-            if not getattr(self, "agent_executor", None):
+            executor = executor_override if executor_override is not None else getattr(self, "agent_executor", None)
+            if not executor:
                 try:
                     resp = self.llm.invoke(input_messages)
                     local_generated = getattr(resp, "content", "") or ""
                 except Exception:
                     local_generated = ""
-                return local_generated, 0, time.time() - t0
+                return local_generated, 0, time.time() - t0, cutoff_info
 
             step = 0
             tool_calls = 0
@@ -1314,7 +2037,7 @@ class AgentConstructionModule:
             hit_reason = ""
             last_sig = ""
             repeat_sig = 0
-            for chunk in self.agent_executor.stream(
+            for chunk in executor.stream(
                 {"messages": input_messages},
                 stream_mode="values",
                 config={"recursion_limit": max_recursion_limit},
@@ -1412,7 +2135,7 @@ class AgentConstructionModule:
                         print(f"\n⚠️ 降级为直连模型生成失败: {e}")
             
             if hit_limit:
-                self.last_run_metrics["cutoff"] = {
+                cutoff_info = {
                     "hit": True,
                     "reason": hit_reason,
                     "steps": step,
@@ -1420,7 +2143,7 @@ class AgentConstructionModule:
                     "elapsed_s": round(time.time() - t0, 3),
                 }
 
-            return local_generated, local_retrieved, time.time() - t0
+            return local_generated, local_retrieved, time.time() - t0, cutoff_info
 
         try:
             if verbose:
@@ -1469,9 +2192,27 @@ class AgentConstructionModule:
 
             if verbose:
                 print(f"RAG: {retrieved_count} chunks")
-                print("\n【参考文档内容】")
-                print(reference_context)
-                print("【参考文档结束】\n")
+                docs_meta = getattr(self, "_last_retrieval_docs_meta", None) or []
+                sources = []
+                for m in docs_meta:
+                    if not isinstance(m, dict):
+                        continue
+                    src = (m.get("source") or m.get("path") or m.get("doc_id") or "").strip()
+                    if not src:
+                        continue
+                    stype = (m.get("source_type") or "").strip()
+                    label = f"{stype}:{src}" if stype else src
+                    if label not in sources:
+                        sources.append(label)
+                print("\n【参考文档清单】")
+                if sources:
+                    for s in sources[:24]:
+                        print(f"- {s}")
+                    if len(sources) > 24:
+                        print(f"... 以及 {len(sources) - 24} 条")
+                else:
+                    print("- （无）")
+                print("【参考文档清单结束】\n")
             
             # --- 意图识别与分支 ---
             # 简单启发式：如果包含“脚本”、“生成”、“代码”、“case”、“example”且不包含“问”、“什么”、“解释”，则倾向于生成脚本
@@ -1488,32 +2229,51 @@ class AgentConstructionModule:
             # 2. 如果包含 QA 触发词，且不包含明确的代码生成指令，则判定为 QA
             elif any(t in q_lower for t in qa_triggers):
                 is_coding_task = False
+
+            if _env_flag("GAIA_MODE", False) or (os.environ.get("CDEM_EVAL_PROFILE") or "").strip().lower() == "gaia":
+                is_coding_task = False
             
             if not is_coding_task:
                 if verbose:
                     print("🔍 识别为 QA 问答任务")
                 
-                qa_prompt = (
-                    "【角色设定】\n"
-                    "你是 CDEM 物理仿真软件的技术支持专家。请基于参考资料回答用户问题。\n\n"
-                    "【用户问题】\n"
-                    f"{query}\n\n"
-                    "【参考资料】\n"
-                    f"{reference_context}\n\n"
-                    "【回答要求】\n"
-                    "1. 必须基于参考资料回答，不要编造。\n"
-                    "2. 如果资料中没有相关信息，请直接说明“资料不足”。\n"
-                    "3. 如果涉及 API 用法，请给出简短的代码示例（使用 ```javascript ... ```）。\n"
-                    "4. 回答要简洁明了，使用中文。\n"
-                )
+                gaia_mode = _env_flag("GAIA_MODE", False) or (os.environ.get("CDEM_EVAL_PROFILE") or "").strip().lower() == "gaia"
+                if gaia_mode:
+                    qa_prompt = (
+                        "You are a helpful assistant solving GAIA tasks offline.\n"
+                        "You can use available tools to read local files (spreadsheets, PDFs, text, zip).\n"
+                        "If the question includes an attachment path, use tools to inspect that file.\n\n"
+                        "Output format requirements:\n"
+                        "- Output a single line only.\n"
+                        "- Start with: Final answer: \n"
+                        "- Put the answer immediately after it, with no extra commentary.\n\n"
+                        "User question:\n"
+                        f"{query}\n"
+                    )
+                else:
+                    qa_prompt = (
+                        "【角色设定】\n"
+                        "你是 CDEM 物理仿真软件的技术支持专家。请基于参考资料回答用户问题。\n\n"
+                        "【用户问题】\n"
+                        f"{query}\n\n"
+                        "【参考资料】\n"
+                        f"{reference_context}\n\n"
+                        "【回答要求】\n"
+                        "1. 必须基于参考资料回答，不要编造。\n"
+                        "2. 如果资料中没有相关信息，请直接说明“资料不足”。\n"
+                        "3. 如果涉及 API 用法，请给出简短的代码示例（使用 ```javascript ... ```）。\n"
+                        "4. 回答要简洁明了，使用中文。\n"
+                    )
                 
-                qa_resp, _, _ = run_once(qa_prompt)
+                qa_resp, _, _, cutoff_info = run_once(qa_prompt)
                 
                 self.last_run_metrics = {
                     "task_type": "qa",
                     "retrieved_docs_count": int(retrieved_count),
                     "duration_s": 0.0, 
                 }
+                if cutoff_info:
+                    self.last_run_metrics["cutoff"] = cutoff_info
                 
                 if verbose:
                     print("\n【QA 回答】")
@@ -1541,25 +2301,240 @@ class AgentConstructionModule:
 
             steps_text = "\n".join([f"{i}. {s}" for i, s in enumerate(steps, 1)])
 
-            base_prompt = (
-                "【任务拆解】\n"
-                + steps_text
-                + "\n\n"
-                "【用户需求与背景】\n"
-                + query
-                + reference_context
-                + "\n\n【生成要求】\n"
-                "1. 请仔细分析上述提供的【知识库检索结果】（如果有）。\n"
-                "2. 以【技术手册/API】为准确认接口与参数含义；【案例参考】仅用于借鉴流程结构与参数范围，禁止逐行抄写整段代码。\n"
-                "3. 最终输出：只提供完整的 JavaScript 脚本代码（使用 ```javascript 包裹）。\n"
-                "4. 严禁在代码中包含 `search_physics_knowledge` 调用，严禁输出 JSON 格式。"
-            )
+            profile = self._infer_task_profile(query)
 
-            required_modules = self._extract_required_modules(query)
+            if getattr(profile, "name", "") == "cdem_js":
+                base_prompt = (
+                    "【任务拆解】\n"
+                    + steps_text
+                    + "\n\n"
+                    "【用户需求与背景】\n"
+                    + query
+                    + reference_context
+                    + "\n\n【生成要求】\n"
+                    "1. 请仔细分析上述提供的【知识库检索结果】（如果有）。\n"
+                    "2. 以【技术手册/API】为准确认接口与参数含义；【案例参考】仅用于借鉴流程结构与参数范围，禁止逐行抄写整段代码。\n"
+                    "3. 最终输出：只提供完整的 JavaScript 脚本代码（使用 ```javascript 包裹）。\n"
+                    "4. 严禁在代码中包含任何工具名，严禁输出 JSON 格式。"
+                )
+            else:
+                base_prompt = (
+                    "【任务拆解】\n"
+                    + steps_text
+                    + "\n\n"
+                    "【用户需求与背景】\n"
+                    + query
+                    + (("\n\n【可用参考资料】\n" + reference_context) if reference_context else "")
+                    + "\n\n【生成要求】\n"
+                    "1. 输出与任务一致的可运行代码（语言由需求决定）。\n"
+                    "2. 最终只输出一个代码块；不要输出解释文字。\n"
+                    "3. 严禁在最终输出中包含任何工具名或 JSON。"
+                )
 
-            generated_text, retrieved_once, dur_once = run_once(base_prompt)
+            required_modules = self._extract_required_modules(query) if getattr(profile, "name", "") == "cdem_js" else []
+            workflow_best: Optional[WorkflowCandidate] = None
+            workflow_best_code = ""
+            workflow_best_tools: List[Any] = list(self.tools or [])
+            workflow_best_cutoff: Dict[str, Any] = {}
+            workflow_best_dur = 0.0
+            workflow_candidates: List[WorkflowCandidate] = []
+            optimization_trace: List[Dict[str, Any]] = []
+
+            def trace(event: Dict[str, Any]):
+                try:
+                    optimization_trace.append(dict(event or {}))
+                except Exception:
+                    pass
+
+            def eval_workflow(name: str, dyn_prompt: str, tools_for_run: List[Any], phase: str = "eval") -> Tuple[WorkflowCandidate, str, float, Dict[str, Any]]:
+                ex = self._get_executor(tools_for_run)
+                txt, tool_msgs, dur, cutoff = run_once(base_prompt, dyn_prompt=dyn_prompt, executor_override=ex)
+                code = self._extract_code(txt)
+                tool_names = list(self._executor_key(tools_for_run))
+                tags = self._detect_issue_tags(code, required_modules, profile=profile, tool_names=tool_names)
+                score = self._score_generated_code(code, tags) - 0.15 * float(tool_msgs)
+                cand = WorkflowCandidate(
+                    name=name,
+                    dyn_prompt=(dyn_prompt or "").strip(),
+                    tool_names=list(self._executor_key(tools_for_run)),
+                    score=float(score),
+                    issue_tags=list(tags),
+                    tool_calls=int(tool_msgs),
+                )
+                trace(
+                    {
+                        "phase": phase,
+                        "candidate": cand.name,
+                        "score": float(cand.score),
+                        "issue_tags": list(cand.issue_tags or []),
+                        "tool_names": list(cand.tool_names or []),
+                        "tool_calls": int(cand.tool_calls),
+                        "duration_s": round(float(dur), 3),
+                        "dyn_prompt_preview": (cand.dyn_prompt[:360] + ("..." if len(cand.dyn_prompt) > 360 else "")) if cand.dyn_prompt else "",
+                        "code_chars": len(code or ""),
+                        "cutoff": dict(cutoff or {}),
+                    }
+                )
+                return cand, code, float(dur), dict(cutoff or {})
+
+            if flags.enable_workflow_optimizer and flags.enable_prompt_optimizer and (flags.prompt_optimizer or "").strip().lower() == "textgrad":
+                base_tools = list(self.tools or []) if flags.enable_tools else []
+                toolgen_specs = self._propose_adaptive_tool_specs(query=query, issue_tags=[], profile=profile, max_n=2)
+                hint_tools = self._build_adaptive_hint_tools(query=query, specs=toolgen_specs)
+                base_dyn = ""
+                cands: List[Tuple[str, str, List[Any]]] = []
+                cands.append(("wf_base", base_dyn, base_tools))
+                if hint_tools:
+                    dyn2 = "先调用与任务最相关的 hint_ 工具获取检查清单/模板，再生成完整脚本；最终只输出一个代码块（语言与任务一致）。"
+                    cands.append(("wf_hint", dyn2, base_tools + hint_tools))
+                cands.append(("wf_no_tools", "只基于已提供的参考资料生成完整脚本；不要调用任何工具；最终只输出一个代码块（语言与任务一致）。", []))
+                max_k = max(1, int(flags.workflow_optimizer_candidates))
+                cand_total = len(cands)
+                trace(
+                    {
+                        "phase": "start",
+                        "profile": getattr(profile, "name", ""),
+                        "candidates_target": int(max_k),
+                        "candidates_actual": int(cand_total),
+                        "rounds": int(flags.workflow_optimizer_rounds),
+                        "base_tools": list(self._executor_key(base_tools)),
+                        "hint_tool_specs": [{"name": s.name, "description": s.description} for s in (toolgen_specs or [])],
+                        "hint_tools": [getattr(t, "name", "") for t in (hint_tools or []) if getattr(t, "name", "")],
+                    }
+                )
+                if verbose:
+                    print("\n【工作流优化】")
+                    print(f"- profile={getattr(profile, 'name', '')}")
+                    print(f"- candidates={int(max_k)}(target)/{int(cand_total)}(actual) rounds={int(flags.workflow_optimizer_rounds)}")
+                    if toolgen_specs:
+                        print("- hint_tool_specs:")
+                        for s in toolgen_specs:
+                            print(f"  - {s.name}: {s.description}")
+                for name, dp, tl in cands[:max_k]:
+                    cand, code, dur, cutoff = eval_workflow(name, dp, tl, phase="init")
+                    workflow_candidates.append(cand)
+                    if (workflow_best is None) or (cand.score > workflow_best.score):
+                        workflow_best = cand
+                        workflow_best_code = code
+                        workflow_best_tools = list(tl)
+                        workflow_best_cutoff = dict(cutoff or {})
+                        workflow_best_dur = float(dur)
+                    if verbose:
+                        print(f"- {cand.name}: score={cand.score:.3f} tool_calls={cand.tool_calls} issues={cand.issue_tags} tools={cand.tool_names}")
+                if workflow_best and verbose:
+                    print(f"- best(init)={workflow_best.name} score={workflow_best.score:.3f}")
+
+                rounds = max(0, int(flags.workflow_optimizer_rounds))
+                for r in range(rounds):
+                    if not workflow_best:
+                        break
+                    tags = list(workflow_best.issue_tags or [])
+                    if not tags:
+                        trace({"phase": "early_stop", "round": int(r + 1), "reason": "no_issue_tags"})
+                        if verbose:
+                            print(f"- stop(round={r+1}): no_issue_tags")
+                        break
+                    dyn_text = ""
+                    if self.prompt_optimizer is not None:
+                        try:
+                            dyn_text = self.prompt_optimizer.optimize_retry_prompt(issues=tags, query=query)
+                        except Exception:
+                            dyn_text = ""
+                    textgrad_trace = []
+                    if isinstance(self.prompt_optimizer, TextGradPromptOptimizer):
+                        try:
+                            textgrad_trace = [
+                                {
+                                    "source": t.get("source"),
+                                    "score": t.get("score"),
+                                    "selected": t.get("selected"),
+                                    "prompt_preview": (t.get("prompt", "")[:240] + ("..." if len(t.get("prompt", "")) > 240 else "")) if t.get("prompt") else "",
+                                }
+                                for t in (getattr(self.prompt_optimizer, "last_trace", None) or [])
+                            ][:8]
+                        except Exception:
+                            textgrad_trace = []
+                    specs_r = self._propose_adaptive_tool_specs(query=query, issue_tags=tags, profile=profile, max_n=3)
+                    hint_tools_r = self._build_adaptive_hint_tools(query=query, specs=specs_r)
+                    tools_r = (list(base_tools) + list(hint_tools_r)) if hint_tools_r else list(base_tools)
+                    dyn_r = "\n".join([x for x in [workflow_best.dyn_prompt, dyn_text] if x]).strip()
+                    trace(
+                        {
+                            "phase": "iter_prepare",
+                            "round": int(r + 1),
+                            "base_best": {"name": workflow_best.name, "score": float(workflow_best.score), "issue_tags": tags},
+                            "dyn_text_preview": (dyn_text[:360] + ("..." if len(dyn_text) > 360 else "")) if dyn_text else "",
+                            "textgrad": textgrad_trace,
+                            "hint_tool_specs": [{"name": s.name, "description": s.description} for s in (specs_r or [])],
+                            "hint_tools": [getattr(t, "name", "") for t in (hint_tools_r or []) if getattr(t, "name", "")],
+                        }
+                    )
+                    if verbose:
+                        print(f"- round={r+1} optimize(issues={tags})")
+                        if dyn_text:
+                            preview = dyn_text[:360] + ("..." if len(dyn_text) > 360 else "")
+                            print(f"  - dyn_text: {preview}")
+                        if textgrad_trace:
+                            print("  - textgrad:")
+                            for t in textgrad_trace:
+                                sel = "*" if t.get("selected") else " "
+                                print(f"    {sel} {t.get('source')}: score={t.get('score')} {t.get('prompt_preview')}")
+                        if specs_r:
+                            print("  - hint_tool_specs:")
+                            for s in specs_r:
+                                print(f"    - {s.name}: {s.description}")
+                    cand_r, code_r, dur_r, cutoff_r = eval_workflow(f"wf_iter_{r+1}", dyn_r, tools_r, phase=f"iter_{r+1}")
+                    workflow_candidates.append(cand_r)
+                    if verbose:
+                        print(f"  - {cand_r.name}: score={cand_r.score:.3f} tool_calls={cand_r.tool_calls} issues={cand_r.issue_tags} tools={cand_r.tool_names}")
+                    if cand_r.score > workflow_best.score:
+                        trace(
+                            {
+                                "phase": "improve",
+                                "round": int(r + 1),
+                                "from": {"name": workflow_best.name, "score": float(workflow_best.score)},
+                                "to": {"name": cand_r.name, "score": float(cand_r.score)},
+                                "delta": float(cand_r.score - workflow_best.score),
+                            }
+                        )
+                        workflow_best = cand_r
+                        workflow_best_code = code_r
+                        workflow_best_tools = list(tools_r)
+                        workflow_best_cutoff = dict(cutoff_r or {})
+                        workflow_best_dur = float(dur_r)
+                        if verbose:
+                            print(f"  - best(update)={workflow_best.name} score={workflow_best.score:.3f}")
+                    else:
+                        trace({"phase": "no_improve", "round": int(r + 1), "best": {"name": workflow_best.name, "score": float(workflow_best.score)}})
+                        if verbose:
+                            print(f"  - best(keep)={workflow_best.name} score={workflow_best.score:.3f}")
+
+            if workflow_best is None:
+                workflow_best, workflow_best_code, workflow_best_dur, workflow_best_cutoff = eval_workflow("wf_default", "", list(self.tools or []), phase="default")
+                workflow_best_tools = list(self.tools or [])
+                workflow_candidates = [workflow_best]
+                trace({"phase": "fallback_default"})
+
+            if workflow_best:
+                trace(
+                    {
+                        "phase": "selected",
+                        "candidate": workflow_best.name,
+                        "score": float(workflow_best.score),
+                        "issue_tags": list(workflow_best.issue_tags or []),
+                        "tool_names": list(workflow_best.tool_names or []),
+                        "tool_calls": int(getattr(workflow_best, "tool_calls", 0)),
+                    }
+                )
+                if verbose:
+                    print(f"- selected={workflow_best.name} score={workflow_best.score:.3f} issues={workflow_best.issue_tags} tools={workflow_best.tool_names}")
+                    print("【工作流优化结束】\n")
+
+            generated_code = workflow_best_code
+            dur_once = workflow_best_dur
+            retrieved_once = int(workflow_best.tool_calls)
             retrieved_count = max(retrieved_count, retrieved_once)
-            generated_code = self._extract_code(generated_text)
+            cutoff_info = dict(workflow_best_cutoff or {})
             
             if verbose:
                 print("\n【生成脚本】")
@@ -1576,35 +2551,58 @@ class AgentConstructionModule:
             used_strict_retry = False
             
             # 移除 retrieved_once == 0 的检查，因为我们采用了 Pre-retrieval 模式
-            if flags.enable_strict_retry and (("search_physics_knowledge" in generated_code) or len(normalized.splitlines()) < 10 or is_json_output or missing_modules):
+            tool_names_for_check = list(self._executor_key(workflow_best_tools if isinstance(workflow_best_tools, list) else list(self.tools or [])))
+            tool_leak = self._tool_leak_hit(generated_code, tool_names=tool_names_for_check)
+            min_lines = int(getattr(profile, "min_effective_lines", 10) or 10)
+            if flags.enable_strict_retry and (tool_leak or len(normalized.splitlines()) < max(3, min_lines) or is_json_output or missing_modules):
                 used_strict_retry = True
+                trace(
+                    {
+                        "phase": "strict_retry_start",
+                        "issues": {
+                            "tool_leak": bool(tool_leak),
+                            "too_short": bool(len(normalized.splitlines()) < max(3, min_lines)),
+                            "json_output": bool(is_json_output),
+                            "missing_modules": list(missing_modules or []),
+                        },
+                    }
+                )
                 if verbose:
                     print("⚠️ 首轮生成不符合要求，将触发一次严格重试...")
                 
                 retry_instruction = "上一次你没有正确完成任务。"
                 if is_json_output:
                     retry_instruction += "错误原因：你输出了 JSON 格式的工具调用描述，而不是 JavaScript 代码。请不要列出工具名，而是直接写代码。"
-                elif "search_physics_knowledge" in generated_code:
-                     retry_instruction += "错误原因：你**在生成的代码中**调用了 `search_physics_knowledge`。这是极其严重的错误！\n"
-                     retry_instruction += "请直接根据提供的【知识库检索结果】编写代码，不要在代码里写检索函数。"
-                elif len(normalized.splitlines()) < 10:
+                elif tool_leak:
+                     retry_instruction += "错误原因：你**在最终输出中**泄漏了工具名（严禁出现在最终代码/答案中）。\n"
+                     retry_instruction += "请只输出最终代码，不要提及任何工具。"
+                elif len(normalized.splitlines()) < max(3, min_lines):
                     retry_instruction += "错误原因：生成的代码太短，可能不完整。"
                 elif missing_modules:
                     retry_instruction += f"错误原因：生成的代码缺少必要的模块调用: {', '.join(missing_modules)}。请确保使用了这些模块。"
                 
-                strict_prompt = (
-                    base_prompt
-                    + f"\n\n【严重错误修正】{retry_instruction}\n"
-                    "这次请务必：\n"
-                    "1. 参考上文提供的检索结果。\n"
-                    "2. 只输出 JavaScript 代码块，不要 JSON，不要包含 `search_physics_knowledge`。"
-                )
+                if getattr(profile, "name", "") == "cdem_js":
+                    strict_prompt = (
+                        base_prompt
+                        + f"\n\n【严重错误修正】{retry_instruction}\n"
+                        "这次请务必：\n"
+                        "1. 参考上文提供的检索结果。\n"
+                        "2. 只输出 ```javascript``` 代码块，不要 JSON，不要包含任何工具名。"
+                    )
+                else:
+                    strict_prompt = (
+                        base_prompt
+                        + f"\n\n【严重错误修正】{retry_instruction}\n"
+                        "这次请务必：\n"
+                        "1. 参考上文提供的参考资料（如果有）。\n"
+                        "2. 只输出一个代码块，不要 JSON，不要包含任何工具名。"
+                    )
                 issues: List[str] = []
                 if is_json_output:
                     issues.append("json_output")
-                if "search_physics_knowledge" in generated_code:
+                if tool_leak:
                     issues.append("tool_leak")
-                if len(normalized.splitlines()) < 10:
+                if len(normalized.splitlines()) < max(3, min_lines):
                     issues.append("too_short")
                 if missing_modules:
                     issues.append("missing_modules")
@@ -1615,16 +2613,67 @@ class AgentConstructionModule:
                         dyn = self.prompt_optimizer.optimize_retry_prompt(issues=issues, query=query)
                     except Exception:
                         pass
+                strict_textgrad_trace = []
+                if isinstance(self.prompt_optimizer, TextGradPromptOptimizer):
+                    try:
+                        strict_textgrad_trace = [
+                            {
+                                "source": t.get("source"),
+                                "score": t.get("score"),
+                                "selected": t.get("selected"),
+                                "prompt_preview": (t.get("prompt", "")[:240] + ("..." if len(t.get("prompt", "")) > 240 else "")) if t.get("prompt") else "",
+                            }
+                            for t in (getattr(self.prompt_optimizer, "last_trace", None) or [])
+                        ][:8]
+                    except Exception:
+                        strict_textgrad_trace = []
+                if strict_textgrad_trace:
+                    trace({"phase": "strict_retry_textgrad", "textgrad": strict_textgrad_trace})
 
-                generated_text_strict, retrieved_retry, dur_retry = run_once(strict_prompt, dyn_prompt=dyn)
+                dyn_retry = "\n".join([x for x in [getattr(workflow_best, "dyn_prompt", ""), dyn] if x]).strip()
+                ex_retry = self._get_executor(workflow_best_tools if isinstance(workflow_best_tools, list) else list(self.tools or []))
+                generated_text_strict, retrieved_retry, dur_retry, cutoff_info_strict = run_once(strict_prompt, dyn_prompt=dyn_retry, executor_override=ex_retry)
                 if generated_text_strict:
                     generated_code = self._extract_code(generated_text_strict)
                     retrieved_count = max(retrieved_count, retrieved_retry, retrieved_count)
                     dur_once = max(dur_once, dur_retry)
+                    if cutoff_info_strict:
+                        cutoff_info = dict(cutoff_info_strict)
+                    trace(
+                        {
+                            "phase": "strict_retry_done",
+                            "tool_calls": int(retrieved_retry),
+                            "duration_s": round(float(dur_retry), 3),
+                            "cutoff": dict(cutoff_info_strict or {}),
+                            "code_chars": len(generated_code or ""),
+                        }
+                    )
+                else:
+                    trace({"phase": "strict_retry_failed"})
             
             final_is_json_output = generated_code.strip().startswith("{") and '"name":' in generated_code
             final_missing_modules = self._missing_required_modules(generated_code, required_modules)
-            cutoff_info = dict(self.last_run_metrics.get("cutoff") or {}) if isinstance(self.last_run_metrics, dict) else {}
+            wf_summary = {}
+            if workflow_best is not None:
+                wf_summary = {
+                    "selected": workflow_best.name,
+                    "score": float(workflow_best.score),
+                    "issue_tags": list(workflow_best.issue_tags or []),
+                    "tool_names": list(workflow_best.tool_names or []),
+                    "tool_calls": int(getattr(workflow_best, "tool_calls", 0)),
+                    "candidates": [
+                        {
+                            "name": c.name,
+                            "score": float(c.score),
+                            "issue_tags": list(c.issue_tags or []),
+                            "tool_names": list(c.tool_names or []),
+                            "tool_calls": int(getattr(c, "tool_calls", 0)),
+                        }
+                        for c in (workflow_candidates or [])[:8]
+                    ],
+                }
+            if optimization_trace:
+                wf_summary["trace"] = optimization_trace
             self.last_run_metrics = {
                 "retrieved_docs_count": int(retrieved_count),
                 "used_strict_retry": bool(used_strict_retry),
@@ -1632,11 +2681,12 @@ class AgentConstructionModule:
                 "final_missing_modules": list(final_missing_modules),
                 "duration_s": round(float(dur_once), 3),
                 "task_steps": list(steps),
+                "workflow": wf_summary,
             }
             if cutoff_info:
                 self.last_run_metrics["cutoff"] = cutoff_info
             
-            feedback_items = self._build_feedback_items(generated_code, required_modules)
+            feedback_items = self._build_feedback_items(generated_code, required_modules, profile=profile, tool_names=tool_names_for_check)
             
             if flags.enable_generation_memory:
                 if feedback_items:
@@ -1648,6 +2698,11 @@ class AgentConstructionModule:
                 else:
                     self._generation_memory["last_query"] = query
                     self._generation_memory["last_feedback"] = ""
+
+            if getattr(self, "memory_manager", None):
+                self.memory_manager.add_message("user", query)
+                self.memory_manager.add_message("assistant", generated_code)
+                self.memory_manager.add_script_version(generated_code, context=query)
 
             elapsed_time = time.time() - start_time
             return generated_code, elapsed_time, retrieved_count
@@ -2231,10 +3286,14 @@ class CDEMAgentEvaluator:
         
         self.tool_module = None
         tools: List[Any] = []
-        if self.feature_flags.enable_tools and self.vector_module is not None:
+        if self.feature_flags.enable_tools:
             self.tool_module = ToolConstructionModule(model_name=model_name, feature_flags=self.feature_flags)
-            physics_tool = self.tool_module.build_physics_search_tool(self.vector_module)
-            tools = [physics_tool]
+            gaia_mode = _env_flag("GAIA_MODE", False) or (os.environ.get("CDEM_EVAL_PROFILE") or "").strip().lower() == "gaia"
+            if gaia_mode:
+                tools.extend(self.tool_module.build_gaia_offline_tools())
+            if self.vector_module is not None:
+                physics_tool = self.tool_module.build_physics_search_tool(self.vector_module)
+                tools.append(physics_tool)
         
         self.agent_module = AgentConstructionModule(
             tools=tools,
@@ -2410,7 +3469,7 @@ def main():
     if proceed.lower() == 'y':
         evaluator.evaluate_test_set(
             DATASET_SPLIT_JSON,
-            verbose=False  # 测试集不打印详细过程
+            verbose=True  # 测试集不打印详细过程
         )
     
     print("\n✅ 评估完成！")

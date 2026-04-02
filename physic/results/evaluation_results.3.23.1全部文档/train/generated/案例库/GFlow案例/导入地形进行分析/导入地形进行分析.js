@@ -1,0 +1,10 @@
+setCurDir(getSrcDir());
+gflow.clear();
+gflow.importGrid("Cdem_zbed.dat");
+gflow.setValue("LastTime", 80.0);
+gflow.setValue("CourantCoeff", 0.04);
+gflow.hist("Thickness", 30, 50);
+gflow.hist("Thickness", 50, 50);
+gflow.hist("Thickness", 80, 50);
+gflow.solve();
+print("Solution is OK!");

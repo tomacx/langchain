@@ -1,0 +1,108 @@
+--- 案例库-CDyna案例-块体模块案例-扩展案例-刚性面施加地震波-RdFace-Block.js (ground_truth)
++++ 案例库-CDyna案例-块体模块案例-扩展案例-刚性面施加地震波-RdFace-Block.js (generated)
+@@ -1,67 +1,64 @@
+-//设置当前路径为JavaScript脚本所在的路径
++// 设置当前工作路径为JavaScript脚本文件所在路径
+ setCurDir(getSrcDir());
+ 
+-//清除GDEM-Pdyna计算核心中的内存数据
+-dyna.Clear();
++// 打开力学计算开关
++dyna.Set("Mechanic_Cal 1");
+ 
+-//清除GDEM-Env中的结果数据
+-doc.clearResult();
++// 设置三个方向的重力加速度均为0
++dyna.Set("Gravity 0.0 0.0 0.0");
+ 
+-//设置结果的输出间隔为500步
++// 打开大变形计算开关
++dyna.Set("Large_Displace 1");
++
++// 设置计算结果的输出间隔为500步
+ dyna.Set("Output_Interval 500");
+ 
+-//关闭虚拟质量开关
++// 关闭虚质量计算开关
+ dyna.Set("If_Virtural_Mass 0");
+ 
+-//设置重力加速度
+-dyna.Set("Gravity 0.0 -9.8 0.0");
+-
+-//打开大变形计算开关
+-dyna.Set("Large_Displace 1");
+-
+-//颗粒接触的更新时步为10
+-dyna.Set("Renew_Interval 10");
+-
+-//设置接触容差为0
+-dyna.Set("Contact_Detect_Tol 5e-3");
+-
++// 打开接触更新计算开关
+ dyna.Set("If_Renew_Contact 1");
+ 
+-dyna.Set("If_Cal_EE_Contact 1");
++// 设置子空间更新时步为100步
++dyna.Set("Renew_Interval 100");
+ 
+-imeshing.genBrick3D("g1",5,5,5,5,5,5);
++// 设置接触容差为1mm
++dyna.Set("Contact_Detect_Tol 2e-3");
+ 
+-blkdyn.GetMesh(imeshing);
++// 刚性面创建
++var fCoord = new Array();
++fCoord[0] = new Array(-5, -5, 0);
++fCoord[1] = new Array(5, -5, 0);
++rdface.Create (1, 1, 2, fCoord);
+ 
++// 导入网格文件
++blkdyn.ImportGrid("gid", "block.msh");
++
++// 对所有单元的接触面进行切割
+ blkdyn.CrtIFace();
+ 
++// 更新接触面网格
+ blkdyn.UpdateIFaceMesh();
+ 
++// 设定所有单元的本构为线弹性本构
+ blkdyn.SetModel("linear");
+ 
+-blkdyn.SetMat(2500,5e8, 0.25, 1e4, 1e4, 15, 10);
++// 设定组号为1-100之间的材料参数
++blkdyn.SetMat(2500, 3e8, 0.25, 3e6, 1e6, 40.0, 10.0);
+ 
++// 设定所有接触面的本构为脆性断裂的Mohr-Coulomb本构
+ blkdyn.SetIModel("brittleMC");
+ 
+-blkdyn.SetIStiffByElem(1.0);
+-blkdyn.SetIStrengthByElem();
++// 设定接触面上的材料，依次为单位面积法向刚度、单位面积切向刚度、内摩擦角、粘聚力、抗拉强度
++blkdyn.SetIMat(5e10, 5e10, 10.0, 0.0, 0.0);
+ 
++// 设定全部节点的局部阻尼系数为0.01
+ blkdyn.SetLocalDamp(0.01);
+ 
+-rdface.Create(2,2,4,[-10,0,-10,  15,0,-10,  15,0,15,  -10,0,15]);
++// 设置计算时步
++dyna.Set("Time_Step 2e-5");
+ 
+-rdface.ApplyDynaVel("nor-7-lef-hori.txt", [3,0,3], [1,0,1], 1, 11);
+-rdface.ApplyDynaVel("nor-7-lef-ver.txt", [0,3,0], [0,1,0], 1, 11);
+-
+-//设定动态计算时步
+-dyna.TimeStepCorrect(0.5);
+-
+-dyna.Monitor("rdface", "rg_xVel",  1, 11,0);
+-dyna.Monitor("rdface", "rg_yVel",  1, 11,0);
+-dyna.Monitor("rdface", "rg_zVel",  1, 11,0);
+-
+-//动态求解28s
+-dyna.DynaCycle(28.0);
+-
+-//打印提示信息
+-print("Solution Finished");
++// 计算5万步
++for (var i = 0; i < 50000; i++) {
++    dyna.Solve();
++}

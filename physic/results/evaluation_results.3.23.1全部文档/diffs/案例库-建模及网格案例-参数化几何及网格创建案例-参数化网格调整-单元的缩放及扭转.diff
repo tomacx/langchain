@@ -1,0 +1,47 @@
+--- 案例库-建模及网格案例-参数化几何及网格创建案例-参数化网格调整-单元的缩放及扭转.js (ground_truth)
++++ 案例库-建模及网格案例-参数化几何及网格创建案例-参数化网格调整-单元的缩放及扭转.js (generated)
+@@ -1,15 +1,36 @@
+-//设置工作目录为脚本文件所在目录
++// 设置当前目录为脚本文件所在目录
+ setCurDir(getSrcDir());
+ 
+-//清除几何信息
++// 清除几何信息和网格信息
+ igeo.clear();
+-
+-//清除网格信息
+ imeshing.clear();
+ 
+-//产生砖块网格
+-imeshing.genBrick2D("fg",2,10,20,200);
++// 生成一个二维圆形网格
++igeo.genCircleS(0, 0, 0, 1e-3, 0.2e-3, 1);
+ 
++// 使用Gmsh进行网格划分
++imeshing.genMeshByGmsh(2);
+ 
+-//进行缩放及扭转
+-imeshing.zoomAndTorsion(1,0,0,1,10,0,1,1,0,720);
++// 创建拉伸路径的坐标数组
++var afCoord = new Array();
++
++var frad = 0.002;
++var quanshu = 4.0;
++var luojuDist = 0.005;
++
++var deltdeg = 10.0;
++var deltdist = luojuDist / 360.0 * deltdeg;
++var totalseg = quanshu * 360.0 / deltdeg;
++
++for (var i = 0; i <= totalseg; i++) {
++    var hudu = i * deltdeg / 180.0 * Math.PI;
++    var xcoord = frad * Math.cos(hudu) - frad;
++    var ycoord = frad * Math.sin(hudu);
++    var zcoord = i * deltdist;
++    afCoord[i] = [xcoord, ycoord, zcoord];
++}
++
++// 执行高级拉伸操作
++imeshing.advExtrude(afCoord, 0.05, 1, 1);
++
++print("Finished");

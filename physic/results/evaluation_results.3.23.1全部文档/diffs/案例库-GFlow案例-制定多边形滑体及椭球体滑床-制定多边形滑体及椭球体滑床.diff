@@ -1,0 +1,79 @@
+--- 案例库-GFlow案例-制定多边形滑体及椭球体滑床-制定多边形滑体及椭球体滑床.js (ground_truth)
++++ 案例库-GFlow案例-制定多边形滑体及椭球体滑床-制定多边形滑体及椭球体滑床.js (generated)
+@@ -1,54 +1,33 @@
+ setCurDir(getSrcDir());
++
++// 清除当前环境设置
+ gflow.clear();
+-gflow.defGrid( 0.0, 100.0, 0.0, 100.0, 200, 200);
+-gflow.setValue("LastTime", 80.0) ;
+-gflow.setValue("CourantCoeff", 0.04) ;
+-gflow.setValue("OutputInterval", 400) ;
+-gflow.setValue("ParaNum", 32) ;
+ 
++// 设置网格参数并导入地形数据文件
++gflow.setValue("LastTime", 1500.0);
++gflow.setValue("CourantCoeff", 0.2);
++gflow.setValue("OutputInterval", 200);
++gflow.setValue("ParaNum", 32);
++gflow.importGrid("data.txt");
+ 
+-var aCoord = new Array(24);
+-aCoord[0]=	[	19.9503	,	37.7018	];
+-aCoord[1]=	[	18.7395	,	48.6763	];
+-aCoord[2]=	[	24.5513	,	58.0369	];
+-aCoord[3]=	[	36.6592	,	68.2045	];
+-aCoord[4]=	[	56.1126	,	69.4956	];
+-aCoord[5]=	[	68.2205	,	63.5242	];
+-aCoord[6]=	[	78.9562	,	47.8693	];
+-aCoord[7]=	[	78.0683	,	32.0531	];
+-aCoord[8]=	[	68.0591	,	22.3697	];
+-aCoord[9]=	[	62.1666	,	31.0041	];
+-aCoord[10]=	[	62.1666	,	40.5261	];
+-aCoord[11]=	[	56.6777	,	49.4832	];
+-aCoord[12]=	[	52.0766	,	49.4832	];
+-aCoord[13]=	[	52.0766	,	39.235	];
+-aCoord[14]=	[	52.0766	,	27.6149	];
+-aCoord[15]=	[	46.6684	,	25.4361	];
+-aCoord[16]=	[	44.489	,	34.7967	];
+-aCoord[17]=	[	43.6011	,	43.6732	];
+-aCoord[18]=	[	41.1795	,	50.5323	];
+-aCoord[19]=	[	35.6099	,	45.4485	];
+-aCoord[20]=	[	36.5785	,	32.9408	];
+-aCoord[21]=	[	31.8161	,	22.9346	];
+-aCoord[22]=	[	21.0804	,	23.9836	];
+-aCoord[23]=	[	18.9817	,	29.3095	];
++// 设置多边形滑体
++var afCoord = new Array(5);
++afCoord[0] = [8.86251e+06, 2.9273e+06];
++afCoord[1] = [8.86259e+06, 2.9276e+06];
++afCoord[2] = [8.86272e+06, 2.92745e+06];
++afCoord[3] = [8.86263e+06, 2.9271e+06];
++gflow.setSlidingBodyByPolygon(afCoord, 10, 0);
+ 
+-gflow.setSlidingBodyByPolygon(aCoord,10);
++// 增加椭球体滑床
++gflow.setTerrainByEllipsoid(8.86259e+06, 2.9276e+06, 100, 100, 100, 0, 0);
+ 
+-gflow.setMat(50, 0.0, 0.01);
++// 设定监测点以记录时程信息
++gflow.hist("Thickness", 8.86251e+06, 2.9273e+06);
++gflow.hist("Thickness", 8.86272e+06, 2.92745e+06);
+ 
+-gflow.setTerrainByEllipsoid( 70, 80, 10, 20, 10, 45, 0);
+-
++// 执行求解
+ gflow.exportGrid();
+-
+-gflow.hist("Thickness", 30, 50);
+-gflow.hist("Thickness", 50, 50);
+-gflow.hist("Thickness", 80, 50);
+-
+ gflow.solve();
+ 
+-//gflow.resultImport();
+-
++// 打印提示信息
+ print("Solution is OK!");
+-
+-

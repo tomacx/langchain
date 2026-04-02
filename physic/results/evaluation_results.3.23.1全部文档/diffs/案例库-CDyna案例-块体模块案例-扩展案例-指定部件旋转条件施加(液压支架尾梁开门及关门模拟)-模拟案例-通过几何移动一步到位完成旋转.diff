@@ -1,0 +1,216 @@
+--- 案例库-CDyna案例-块体模块案例-扩展案例-指定部件旋转条件施加(液压支架尾梁开门及关门模拟)-模拟案例-通过几何移动一步到位完成旋转.js (ground_truth)
++++ 案例库-CDyna案例-块体模块案例-扩展案例-指定部件旋转条件施加(液压支架尾梁开门及关门模拟)-模拟案例-通过几何移动一步到位完成旋转.js (generated)
+@@ -1,179 +1,49 @@
++// 设置当前工作路径为JavaScript脚本文件所在路径
++setCurDir(getSrcDir());
+ 
+-/////////////////////////////////////////////////////////////////////////////////////////////////////////
+-////////////函数定义
++// 关闭力学计算开关
++dyna.Set("Mechanic_Cal 0");
+ 
+-//////////////////////////////////////////////////////开门
+-function OpenDoor(id1, id2, id3, id4, id5) {
++// 包含孔隙渗流计算功能，开辟渗流相关的内存
++dyna.Set("Config_PoreSeepage 1");
+ 
+-    //id1，掩护梁节点1
+-    var x1 = blkdyn.GetNodeValue(id1, "Coord", 1);
+-    var y1 = blkdyn.GetNodeValue(id1, "Coord", 2);
+-    //id2，掩护梁节点2
+-    var x2 = blkdyn.GetNodeValue(id2, "Coord", 1);
+-    var y2 = blkdyn.GetNodeValue(id2, "Coord", 2);
++// 开启孔隙渗流开关
++dyna.Set("PoreSeepage_Cal 1");
+ 
+-    //id3，掩护梁与尾梁交点
+-    var x3 = blkdyn.GetNodeValue(id3, "Coord", 1);
+-    var y3 = blkdyn.GetNodeValue(id3, "Coord", 2);
+-    
+-    //id4，尾梁节点1
+-    var x4 = blkdyn.GetNodeValue(id4, "Coord", 1);
+-    var y4 = blkdyn.GetNodeValue(id4, "Coord", 2);
++// 设置三个方向的重力加速度
++dyna.Set("Gravity 0.0 -10.0 0.0");
+ 
+-    //id5，尾梁节点2
+-    var x5 = blkdyn.GetNodeValue(id5, "Coord", 1);
+-    var y5 = blkdyn.GetNodeValue(id5, "Coord", 2);
+-    
+-    var alpha = 0.0;
+-    var beta  = 0.0;
+-    if( Math.abs(y2 - y1) > 1e-6 )
+-    {
+-        var sita = (x2 - x1) / (y2 -y1);
+-        alpha = 180.0 / Math.PI * Math.atan(sita);
+-    }
+-    else
+-    {
+-        if(x2 > x1)
+-        {
+-            alpha = 90.0;
+-        }
+-        else
+-        {
+-            alpha = -90.0;
+-        }
+-    }
++// 将结果输出时步设定为500步
++dyna.Set("Output_Interval 500");
+ 
+-    
+-    if( Math.abs(y5 - y4) > 1e-6 )
+-    {
+-        var sita = (x5 - x4) / (y5 - y4);
+-        beta = 180.0 / Math.PI * Math.atan(sita);
+-    }
+-    else
+-    {
+-        if(x5 > x4)
+-        {
+-            beta = 90.0;
+-        }
+-        else
+-        {
+-            beta = -90.0;
+-        }
+-    }
+-    
+-    var deltaSita = beta;
+-    return deltaSita;
+-}
++// 监测结果输出时步间隔设定为100步
++dyna.Set("Moniter_Iter 100");
+ 
++// 创建二维矩形网格，尺寸为10x10，每个方向上50个单元格
++blkdyn.GenBrick2D(10.0, 10.0, 50, 50, 1);
+ 
+-//////////////////////////////////////////////////////////////////
+-////关门
+-function CloseDoor(id1, id2, id3, id4, id5) {
++// 定义X、Y、Z三个方向的渗透系数
++var arrayK = new Array(1e-10, 1e-10, 1e-10);
+ 
+-    //id1，掩护梁节点1
+-    var x1 = blkdyn.GetNodeValue(id1, "Coord", 1);
+-    var y1 = blkdyn.GetNodeValue(id1, "Coord", 2);
+-    //id2，掩护梁节点2
+-    var x2 = blkdyn.GetNodeValue(id2, "Coord", 1);
+-    var y2 = blkdyn.GetNodeValue(id2, "Coord", 2);
++// 指定坐标控制范围内的孔隙渗流参数，依次为流体密度、体积模量、饱和度、孔隙率、渗透系数、比奥系数
++poresp.SetPropByCoord(1000.0, 1e6, 0.0, 0.3, arrayK, 1.0, -500, 500, -500, 500, -500, 500);
+ 
+-    //id3，掩护梁与尾梁交点
+-    var x3 = blkdyn.GetNodeValue(id3, "Coord", 1);
+-    var y3 = blkdyn.GetNodeValue(id3, "Coord", 2);
+-    
+-    //id4，尾梁节点1
+-    var x4 = blkdyn.GetNodeValue(id4, "Coord", 1);
+-    var y4 = blkdyn.GetNodeValue(id4, "Coord", 2);
++// 定义梯度
++var fArrayGrad = new Array(0.0, 0.0, 0.0);
+ 
+-    //id5，尾梁节点2
+-    var x5 = blkdyn.GetNodeValue(id5, "Coord", 1);
+-    var y5 = blkdyn.GetNodeValue(id5, "Coord", 2);
+-    
+-    var alpha = 0.0;
+-    var beta  = 0.0;
+-    if( Math.abs(y2 - y1) > 1e-6 )
+-    {
+-        var sita = (x2 - x1) / (y2 -y1);
+-        alpha = 180.0 / Math.PI * Math.atan(sita);
+-    }
+-    else
+-    {
+-        if(x2 > x1)
+-        {
+-            alpha = 90.0;
+-        }
+-        else
+-        {
+-            alpha = -90.0;
+-        }
+-    }
++// 设定模型四周的水压力边界条件
++poresp.ApplyConditionByCoord("pp", 1e7, fArrayGrad, -100, 100, -100, 100, -500, 500, false);
+ 
+-    
+-    if( Math.abs(y5 - y4) > 1e-6 )
+-    {
+-        var sita = (x5 - x4) / (y5 - y4);
+-        beta = 180.0 / Math.PI * Math.atan(sita);
+-    }
+-    else
+-    {
+-        if(x5 > x4)
+-        {
+-            beta = 90.0;
+-        }
+-        else
+-        {
+-            beta = -90.0;
+-        }
+-    }
+-    
+-    var deltaSita = beta - alpha;
+-    return deltaSita;
+-}
++// 对典型位置的孔隙压力进行监测
++dyna.Monitor("block", "fpp", 7, 5, 0);
++dyna.Monitor("block", "fpp", 8, 5, 0);
++dyna.Monitor("block", "fpp", 9, 5, 0);
+ 
++// 设定计算时步为100s
++dyna.Set("Time_Step 100");
+ 
++// 迭代2万步
++dyna.Solve(20000);
+ 
+-
+-//////////////////////////////////////////////////////////////////////结束函数定义
+-
+-//测试案例
+-setCurDir(getSrcDir());
+-dyna.Clear();
+-doc.clearResult();
+-blkdyn.ImportGrid("gid","rota.msh");
+-
+-//掩护梁节点
+-var id1 = blkdyn.GetNodeID(2.63135,  4.04115, 0);
+-var id2 = blkdyn.GetNodeID(1.52583, 2.86997, 0);
+-
+-//掩护梁与尾梁交接点
+-var id3 = blkdyn.GetNodeID(1.1296, 1.77758, 0);
+-
+-//尾梁坐标
+-var id4 = blkdyn.GetNodeID(0.429072, 1.60245, 0);
+-var id5 = blkdyn.GetNodeID(-0.267075, 0.84063, 0);
+-
+-
+-//再次读取交点坐标，原来输入的值可能不精确
+-var fcx = blkdyn.GetNodeValue(id3,"Coord",1);
+-var fcy = blkdyn.GetNodeValue(id3,"Coord",2);
+-var fcz = blkdyn.GetNodeValue(id3,"Coord",3);
+-
+-/////////////////////////////////////////////////////////////////////////////////////////
+-//////一步到位模拟
+-
+-for(var i = 0; i < 20; i++)
+-{
+-var OpenSita =  OpenDoor(id1, id2, id3, id4, id5);
+-print("转动角度：    " + OpenSita);
+-blkdyn.RotateGrid(OpenSita  , [fcx, fcy, fcz], [0.0, 0.0, 1.0], 2, 2);
+-
+-sleep(500);
+-
+-var CloseSita =  CloseDoor(id1, id2, id3, id4, id5);
+-print("转动角度：    " + CloseSita);
+-blkdyn.RotateGrid(CloseSita  , [fcx, fcy, fcz], [0.0, 0.0, 1.0], 2, 2);
+-
+-sleep(500);
+-}
+-
+-
++// 打印提示信息
++print("Solution Finished");

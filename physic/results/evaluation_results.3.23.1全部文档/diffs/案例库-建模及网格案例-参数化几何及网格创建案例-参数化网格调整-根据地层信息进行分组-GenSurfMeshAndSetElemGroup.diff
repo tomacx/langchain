@@ -1,0 +1,69 @@
+--- 案例库-建模及网格案例-参数化几何及网格创建案例-参数化网格调整-根据地层信息进行分组-GenSurfMeshAndSetElemGroup.js (ground_truth)
++++ 案例库-建模及网格案例-参数化几何及网格创建案例-参数化网格调整-根据地层信息进行分组-GenSurfMeshAndSetElemGroup.js (generated)
+@@ -1,42 +1,31 @@
+-////设置脚本路径为当前工作路径
+ setCurDir(getSrcDir());
+ 
+-////导入地层散点数据，产生GdemGrid格式的栅格文件
+-/////"test1.txt"  ~  "test4.txt" 为地层散点数据
+-imeshing. genSurfMesh ( "rock1", "test1.txt", 100,100,"quad","invdist1", "grid1.dat");
+-imeshing. genSurfMesh ( "rock2", "test2.txt", 100,100,"quad","invdist1", "grid2.dat");
+-imeshing. genSurfMesh( "rock3", "test3.txt", 100,100,"quad","invdist1", "grid3.dat");
+-imeshing. genSurfMesh ( "rock4", "test4.txt", 10,10,"quad","invdist1", "grid4.dat");
+-
+-
+-////////////////////////////////////////////////////////////
+-///////产生"arrange.txt"网格文件
+-
+-var fso = new ActiveXObject("Scripting.FileSystemObject");//创建FileSystemObject对象
+-//1-仅读入，2-仅写，3-追加
+-var DynaP = fso.CreateTextFile("arrange.txt", true);
+-
+-//////一共4个地层文件
+-DynaP.WriteLine("4");
+-
+-/////每个地层文件名
+-DynaP.WriteLine("grid1.dat");
+-DynaP.WriteLine("grid2.dat");
+-DynaP.WriteLine("grid3.dat");
+-DynaP.WriteLine("grid4.dat");
+-
+-DynaP.Close();
+-
+-///////文件书写完毕
+-////////////////////////////////////////////////////////////
+-
+-
+-/////几何及网格清除
++// 清除之前的几何和网格数据
+ igeo.clear();
+ imeshing.clear();
+ 
+-/////创建参数化网格
+-imeshing.genBrick3D("1", 5,5,3, 50,50, 50);
++// 创建参数化三维砖块网格
++imeshing.genBrick3D("1", 5, 5, 3, 50, 50, 50);
+ 
+-///所有单元均进行地层分组
++// 导入地层信息文件以生成GdemGrid格式网格并进行分组处理
++var fso = new ActiveXObject("Scripting.FileSystemObject");
++var DynaP = fso.CreateTextFile("arrange.txt", true);
++DynaP.WriteLine("4"); // 地层数量
++DynaP.WriteLine("grid1.dat"); // 第一个地层网格文件名
++DynaP.WriteLine("grid2.dat"); // 第二个地层网格文件名
++DynaP.WriteLine("grid3.dat"); // 第三个地层网格文件名
++DynaP.WriteLine("grid4.dat"); // 第四个地层网格文件名
++DynaP.Close();
++
++// 根据地层信息对网格进行分组处理
+ imeshing.setGroupByStratum("arrange.txt");
++
++// 调用GetMesh方法从平台获取网格数据加载到求解器中
++var msh1 = imesh.importAnsys("bar.dat");
++bar.GetMesh(msh1);
++
++// 参数化网格调整示例（例如，缩放）
++imeshing.scale(0.5, 0.5, 0.5); // 缩小网格
++
++// 输出最终的网格文件
++imesh.exportPDyna(imeshing, "final_mesh.dat");

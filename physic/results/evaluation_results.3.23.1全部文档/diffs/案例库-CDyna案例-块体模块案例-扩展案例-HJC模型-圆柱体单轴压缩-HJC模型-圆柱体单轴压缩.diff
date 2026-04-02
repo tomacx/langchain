@@ -1,0 +1,100 @@
+--- 案例库-CDyna案例-块体模块案例-扩展案例-HJC模型-圆柱体单轴压缩-HJC模型-圆柱体单轴压缩.js (ground_truth)
++++ 案例库-CDyna案例-块体模块案例-扩展案例-HJC模型-圆柱体单轴压缩-HJC模型-圆柱体单轴压缩.js (generated)
+@@ -1,52 +1,59 @@
++// 设置脚本文件所在路径为工作路径
+ setCurDir(getSrcDir());
+ 
+-imeshing.clear();
++// 清除dyna核心模块及平台doc结果文件模块
+ dyna.Clear();
+ doc.clearResult();
+ 
+-dyna.Set("Mechanic_Cal 1");
++// 创建三维长方体模型
++igeo.genBox(0, 0, 0, 1.0, 1.0, 1.0);
++imeshing.genMeshByGmsh(2);
+ 
+-
+-dyna.Set("UnBalance_Ratio 1e-5");
+-
+-dyna.Set("Gravity 0.0 0.0 0.0");
+-
+-dyna.Set("Large_Displace 1");
+-
+-dyna.Set("Output_Interval 100");
+-
+-
+-dyna.Set("GiD_Out 0");
+-
+-dyna.Set("Msr_Out 0");
+-
+-dyna.Set("Moniter_Iter 10");
+-
+-dyna.Set("If_Virtural_Mass 0");
+-
+-dyna.Set("Virtural_Step 0.6");
+-
+-dyna.Set("If_Cal_Rayleigh 1");
+-
+-
+-imeshing.genCylinder("1", 0.0, 0.1, 0, 0, 0, 0, 0.2, 0, 10, 36, 20);
++// 获取网格数据
+ blkdyn.GetMesh(imeshing);
+ 
+-blkdyn.SetModel("HJC", 1);
+-blkdyn.SetMat(2500, 8e10, 0.3, 3.7e7, 1e7, 35.0, 15.0, 1);
++// 设置大变形开关
++dyna.Set("Large_Displace", 1);
+ 
+-var HJCMat = [4.8e7, 0.79, 1.60, 0.61, 0.007, 7.0, 14.86e9, 0.04, 1.0, 0.01, 0.016e9, 0.001, 85e9, -171e9, 208e9, 0.8e9, 0.1, 0.004e9];
+-blkdyn.SetHJCMat(1, HJCMat);
+-blkdyn.BindHJCMat(1, 1, 1);
++// 设置计算输出间隔为500步
++dyna.Set("Output_Interval", 500);
+ 
+-blkdyn.FixV("y", 0, "y", -1, 0.001);
+-blkdyn.FixV("y", -1000, "y", 0.199, 1.01);
++// 打开虚拟质量开关
++dyna.Set("If_Virtural_Mass", 1);
+ 
+-blkdyn.SetLocalDamp(0.0);
+-blkdyn.SetRayleighDamp(5e-7, 0.0);
++// 设置重力为0
++dyna.Set("Gravity", 0, 0, 0);
+ 
+-dyna.Set("Time_Step 5e-8");
++// 设置虚拟时步为0.5
++dyna.Set("Virtural_Step", 0.5);
+ 
+-dyna.DynaCycle(1e-4);
++// 设置单元本构模型为橡胶MR模型
++blkdyn.SetModel("MR");
+ 
+-print("Solution Finished");
++// 设置基础材料参数
++blkdyn.SetMat(1100, 2e7, 0.485, 1e6, 1e6, 35, 15);
++
++// 设置橡胶参数，C10 = 0.8073MPa，C01=0.1689MPa，D=100MPa
++var MRMat = [0.8073, 0.1689, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 10.0, 0.0];
++
++// 增加橡胶参数
++blkdyn.SetMRMat(1, MRMat);
++
++// 关联橡胶参数
++blkdyn.BindMRMat(1, 1, 100);
++
++// 左侧法向固定
++blkdyn.FixV("x", 0, "x", -0.0001, 0.0001);
++
++// 右侧施加准静态速度载荷
++blkdyn.FixV("x", 3e-7, "x", 0.999, 1.001);
++
++// 设置局部阻尼为0.2
++blkdyn.SetLocalDamp(0.2);
++
++// 监测x方向正应变
++dyna.Monitor("block", "soxx", 0.5, 0.5, 0);
++dyna.Monitor("block", "sxx", 0.5, 0.5, 0);
++
++// 计算14万步
++dyna.Solve(140000);

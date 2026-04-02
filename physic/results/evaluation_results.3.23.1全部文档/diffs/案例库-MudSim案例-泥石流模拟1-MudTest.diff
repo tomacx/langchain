@@ -1,0 +1,36 @@
+--- 案例库-MudSim案例-泥石流模拟1-MudTest.js (ground_truth)
++++ 案例库-MudSim案例-泥石流模拟1-MudTest.js (generated)
+@@ -1,23 +1,28 @@
+ setCurDir(getSrcDir());
+ 
+-mflow.importGrid("GdemGrid","ModelFinal.dat");
++// 导入计算网格
++mflow.importGrid("GdemGrid", "ModelFinal.dat");
+ 
++// 设置降雨时程曲线
+ mflow.setRainData([0.0, 1e-3, 1e6, 1e-3]);
+ 
++// 设置颗粒级配曲线
+ mflow.setParData([0.005, 0.2, 0.01, 0.4, 0.1, 0.4]);
+ 
++// 配置输出间隔和临时文件输出选项
+ mflow.setValue("Output_Interval", 10.0);
+-
+ mflow.setValue("TempFile_Out", 1);
+ mflow.setValue("TecFile_Out", 1);
+ 
++// 添加监测点信息
+ mflow.hist("height", 1041.56390976999, 2235.13784461003);
+ mflow.hist("magvel", 1041.56390976999, 2235.13784461003);
+ 
++mflow.hist("height", 1764.09022556001, 1282.45614035003);
++mflow.hist("magvel", 1764.09022556001, 1282.45614035003);
+ 
+-mflow.hist("height", 1764.09022556001,1282.45614035003);
+-mflow.hist("magvel", 1764.09022556001,1282.45614035003);
+-
++// 求解
+ mflow.solve(120.0);
+ 
++// 导出文本数据
+ mflow.exportTextData();

@@ -1,0 +1,122 @@
+setCurDir(getSrcDir());
+
+dyna.Set("Mechanic_Cal 1");
+
+
+dyna.Set("UnBalance_Ratio 1e-5");
+
+dyna.Set("Gravity 0.0 0.0 0.0");
+
+dyna.Set("Large_Displace 1");
+
+dyna.Set("Output_Interval 100");
+
+
+dyna.Set("GiD_Out 0");
+
+dyna.Set("Msr_Out 0");
+
+dyna.Set("Moniter_Iter 10");
+
+dyna.Set("If_Virtural_Mass 0");
+
+dyna.Set("Virtural_Step 0.6");
+
+dyna.Set("Block_Soften_Value 5e-3 3e-2")
+
+dyna.Set("If_Cal_Rayleigh 1")
+blkdyn.ImportGrid("gmsh", "boreblast.msh");
+
+
+
+blkdyn.SetMatByGroupRange(1221, 2.65e9, 0.23, 3.8e6, 0.64e6, 34.0, 15.0, 1, 2);
+blkdyn.SetModel("SoftenMC", 1);
+
+
+var apos = [10.0, 10.0, 0.0];
+blkdyn.SetLandauSource(1, 1150, 5000, 3.1e6, 3.0, 1.3333, 7e9, apos, 0.0, 10);
+blkdyn.BindLandauSource(1, 2, 2);
+blkdyn.SetModel("Landau", 2);
+
+blkdyn.SetQuietBoundByCoord(-0.001,0.001,-100,100,-100,100);
+blkdyn.SetQuietBoundByCoord(19.999, 31,-100,100,-100,100);
+blkdyn.SetQuietBoundByCoord(-100,100,-0.001,0.001,-100,100);
+blkdyn.SetQuietBoundByCoord(-100,100,19.999, 31,-100,100);
+
+
+dyna.Monitor("block", "sxx", 11, 10, 0);
+dyna.Monitor("block", "sxx", 13, 10, 0);
+dyna.Monitor("block", "sxx", 16, 10, 0);
+
+
+blkdyn.SetLocalDamp(0.0);
+blkdyn.SetRayleighDamp(5e-6, 0.0);
+
+dyna.Set("Time_Step 2e-6");
+
+dyna.DynaCycle(5e-3);
+
+
+
+function StatisticDamage(fCenterX, fCenterY, fCenterZ, fStatisRad, iTotalSeg) {
+
+    //获得总单元数
+    var TotalBlock = Math.round(dyna.GetValue("Total_Block_Num"));
+
+    var StaticR = fStatisRad;
+    var TotalSeg = iTotalSeg;
+    var aDist = new Array(TotalSeg)
+    var aDamage = new Array(TotalSeg);
+    var aBlkNo = new Array(TotalSeg);
+
+    for (var i = 0; i < TotalSeg; i++) {
+        aDist[i] = 0.0;
+        aDamage[i] = 0.0;
+        aBlkNo[i] = 0.0;
+    }
+
+    //循环所有单元
+    for (var ib = 1; ib <= TotalBlock; ib++) {
+        //获取每个单元的力学本构模型编号
+        var imodel = Math.round(blkdyn.GetElemValue(ib, "Model", 1));
+        //如果编号为4，应变软化模型
+        if (imodel == 4) {
+            //获取单元的体心坐标
+            var xc = blkdyn.GetElemValue(ib, "Centroid", 1);
+            var yc = blkdyn.GetElemValue(ib, "Centroid", 2);
+            var zc = blkdyn.GetElemValue(ib, "Centroid", 3);
+
+            //计算单元体心到输入体心的距离
+            var dist = Math.sqrt((xc - fCenterX) * (xc - fCenterX) +
+            (yc - fCenterY) * (yc - fCenterY) + (zc - fCenterZ) * (zc - fCenterZ));
+
+            //如果距离小于统计半径
+            if (dist < StaticR) {
+                //计算每一段的长度
+                var SegL = StaticR / TotalSeg;
+
+                //计算每一段的编号
+                var iseg = Math.floor(dist / SegL)
+
+                ////体积加权损伤
+                aDamage[iseg] += blkdyn.GetElemValue(ib, "Damage", 3) * blkdyn.GetElemValue(ib, "Volume");
+
+                //加权距离累积
+                aDist[iseg] += dist * blkdyn.GetElemValue(ib, "Volume");
+
+                /////体积求和
+                aBlkNo[iseg] += blkdyn.GetElemValue(ib, "Volume");
+
+            }
+        }
+    }
+
+    //打印统计结果
+    for (var iseg = 0; iseg < TotalSeg; iseg++) {
+        print(aDist[iseg] / aBlkNo[iseg], aDamage[iseg] / aBlkNo[iseg]);
+    }
+}
+
+StatisticDamage(10,10,0,5,25);
+
+print("Solution Finished");

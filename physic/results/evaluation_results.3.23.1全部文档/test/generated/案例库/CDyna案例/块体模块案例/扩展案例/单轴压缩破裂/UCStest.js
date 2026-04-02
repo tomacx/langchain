@@ -1,0 +1,54 @@
+//设置当前工作路径为JavaScript脚本文件所在路径
+setCurDir(getSrcDir());
+
+//打开力学计算开关
+dyna.Set("Mechanic_Cal 1");
+
+//设置3个方向的重力加速度值(均为0)
+dyna.Set("Gravity 0.0 0.0 0.0");
+
+//关闭大变形计算开关
+dyna.Set("Large_Displace 0");
+
+//设置计算结果的输出间隔为500步
+dyna.Set("Output_Interval 500");
+
+//设置监测结果的输出时步为10步
+dyna.Set("Moniter_Iter 10");
+
+//打开虚质量计算开关
+dyna.Set("If_Virtural_Mass 1");
+
+//设置虚质量时步为0.6
+dyna.Set("Virtural_Step 0.6");
+
+//允许自动在Result文件夹下输出Save文件
+dyna.Set("SaveFile_Out 1");
+
+//设置单元体积膨胀断裂应变及等效剪切断裂应变
+dyna.Set("Block_Soften_Value 0.005 0.01");
+
+//导入Patran格式的网格
+blkdyn.ImportGrid("patran", "rockSample.out");
+
+//设置所有单元为线弹性模型
+blkdyn.SetModel("SoftenMC");
+
+//设置组1的材料参数，分别为密度，弹性模量，泊松比，粘聚力、抗拉强度、内摩擦角、剪胀角、组号
+blkdyn.SetMatByGroup(2500, 3e10, 0.25, 3e6, 3e6, 30.0, 10.0, 1);
+
+//Y方向底部法向约束
+blkdyn.FixV("y", 8e-8, "y", -0.001, 0.001);
+
+//Y方向顶部施加准静态竖直向下的速度载荷
+blkdyn.FixV("y", -8e-8, "y", 0.199, 0.201);
+
+//设置全部节点的局部阻尼为0.8
+blkdyn.SetLocalDamp(0.8);
+
+//监测典型测点的y方向的应力
+dyna.Monitor("block", "syy", 0.05, 0.2, 0);
+dyna.Monitor("block", "syy", 0.05, 0.1, 0);
+
+//计算12000步
+dyna.Solve(12000);

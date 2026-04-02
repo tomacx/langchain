@@ -1,0 +1,56 @@
+--- 案例库-CDyna案例-块体模块案例-扩展案例-三维水力压裂模拟-savepic.js (ground_truth)
++++ 案例库-CDyna案例-块体模块案例-扩展案例-三维水力压裂模拟-savepic.js (generated)
+@@ -1,17 +1,39 @@
+-for(var i = 0; i < 360; i++)
+-{
+-view.rotate(1,0,0,1);
++// 设置工作路径为脚本文件所在路径
++SetCurDir(GetSrcDir());
+ 
+-var oss = "0";
++// 清除dyna模块数据
++dyna.Clear();
+ 
+-if(i < 10)
+-{
+-oss = "000";
++// 清除平台数据
++doc.ClearResult();
++
++// 指定施加点坐标
++var fC = new Array(0.0, 0.0, 0.0);
++
++// 设置简单水力压裂参数
++blkdyn.SetSimpleHyFracPram (1, 1, 1e6, 0.9, fC, true);
++
++// 设置流体自由面位置文件，设置流体的液位线
++var strFileName = "fluid_level.txt";
++var fDensity = 1000; // 流体密度（单位：kg/m^3）
++var fGravity = 9.81; // 重力加速度值的绝对值（单位：m/s^2）
++blkdyn.SetFluidLevel(strFileName, fDensity, fGravity, 1, 1);
++
++// 设置计算时间步为0.01秒
++dyna.Set("Time_Step", "0.01");
++
++// 计算5秒
++var totalSteps = Math.round(5 / 0.01);
++for (var i = 0; i < totalSteps; i++) {
++    dyna.DynaCycle(1); // 每次计算一个时间步
++
++    // 可以在此处添加保存图片的代码，例如：
++    var oss = "0";
++    if(i < 10) {
++        oss = "000";
++    } else if(i < 100) {
++        oss = "00";
++    }
++    view.saveJpeg(oss + i + ".jpg");
++    sleep(40);
+ }
+-else if(i < 100)
+-{
+-oss = "00";
+-}
+-view. saveJpeg(oss + i + ".jpg");
+-sleep(40);
+-}

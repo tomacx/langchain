@@ -1,0 +1,90 @@
+--- 案例库-建模及网格案例-参数化几何及网格创建案例-参数化几何创建及网格剖分-创建隧道几何模型.js (ground_truth)
++++ 案例库-建模及网格案例-参数化几何及网格创建案例-参数化几何创建及网格剖分-创建隧道几何模型.js (generated)
+@@ -21,12 +21,13 @@
+ var size1 = 0.1;
+ var size2 = 1.0;
+ 
+-var P0 = igeo.genPoint(TunnelBottomX, CircleY,0.0, size1);
++// 创建点
++var P0 = igeo.genPoint(TunnelBottomX, CircleY, 0.0, size1);
+ 
+-var P1 = igeo.genPoint(TunnelBottomX - BottomL * 0.5 - Thick1 - Thick2, TunnelBottomY,0.0, size1);
+-var P2 = igeo.genPoint(TunnelBottomX - BottomL * 0.5 - Thick1        , TunnelBottomY,0.0, size1);
+-var P3 = igeo.genPoint(TunnelBottomX + BottomL * 0.5+ Thick1      , TunnelBottomY,0.0, size1);
+-var P4 = igeo.genPoint(TunnelBottomX + BottomL * 0.5 + Thick1 + Thick2, TunnelBottomY,0.0, size1);
++var P1 = igeo.genPoint(TunnelBottomX - BottomL * 0.5 - Thick1 - Thick2, TunnelBottomY, 0.0, size1);
++var P2 = igeo.genPoint(TunnelBottomX - BottomL * 0.5 - Thick1        , TunnelBottomY, 0.0, size1);
++var P3 = igeo.genPoint(TunnelBottomX + BottomL * 0.5+ Thick1      , TunnelBottomY, 0.0, size1);
++var P4 = igeo.genPoint(TunnelBottomX + BottomL * 0.5 + Thick1 + Thick2, TunnelBottomY, 0.0, size1);
+ 
+ var P5 = igeo.genPoint(TunnelBottomX - BottomL * 0.5, TunnelBottomY + Thick1, 0.0, size1);
+ var P6 = igeo.genPoint(TunnelBottomX + BottomL * 0.5, TunnelBottomY + Thick1, 0.0, size1);
+@@ -35,46 +36,31 @@
+ var P8 = igeo.genPoint(TunnelBottomX - BottomL * 0.5 - Thick1        , CircleY, 0.0, size1);
+ var P9 = igeo.genPoint(TunnelBottomX - BottomL * 0.5                , CircleY, 0.0, size1);
+ var P10 = igeo.genPoint(TunnelBottomX + BottomL * 0.5                , CircleY, 0.0, size1);
+-var P11 = igeo.genPoint(TunnelBottomX + BottomL * 0.5   + Thick1     , CircleY, 0.0, size1);
+-var P12 = igeo.genPoint(TunnelBottomX + BottomL * 0.5   + Thick1  + Thick2   , CircleY, 0.0, size1);
++var P11 = igeo.genPoint(TunnelBottomX + BottomL * 0.5   + Thick1      , CircleY, 0.0, size1);
+ 
+-var P13 = igeo.genPoint(TunnelBottomX , CircleY + Rad1, 0.0, size1);
+-var P14 = igeo.genPoint(TunnelBottomX , CircleY + Rad2, 0.0, size1);
+-var P15 = igeo.genPoint(TunnelBottomX , CircleY + Rad3, 0.0, size1);
++// 创建线
++var L1 = igeo.genLine(P1, P2);
++var L2 = igeo.genLine(P3, P4);
++var L3 = igeo.genArc(P7, P8, Rad1);
++var L4 = igeo.genArc(P9, P10, Rad2);
+ 
+-///水平
+-var H1 = igeo.genLine(P1, P2);
+-var H2 = igeo.genLine(P2, P3);
+-var H3 = igeo.genLine(P3, P4);
+-var H4 = igeo.genLine(P5, P6);
++// 创建线环
++var LL1 = igeo.genLineLoop([L1]);
++var LL2 = igeo.genLineLoop([L2]);
++var LL3 = igeo.genLineLoop([L3]);
++var LL4 = igeo.genLineLoop([L4]);
+ 
+-///竖直
+-var V1 =  igeo.genLine(P1, P7);
+-var V2 =  igeo.genLine(P8, P2);
+-var V3 =  igeo.genLine(P9, P5);
+-var V4 =  igeo.genLine(P10, P6);
+-var V5 =  igeo.genLine(P11, P3);
+-var V6 =  igeo.genLine(P12, P4);
++// 创建面
++var S1 = igeo.genSurface([LL1], 1);
++var S2 = igeo.genSurface([LL2], 1);
++var S3 = igeo.genSurface([LL3], 1);
++var S4 = igeo.genSurface([LL4], 1);
+ 
+-///圆弧
+-var ArcIn1 = igeo.genArc(P9, P0, P13);
+-var ArcIn2 = igeo.genArc(P13, P0, P10);
+-var ArcMid1 = igeo.genArc(P8, P0, P14);
+-var ArcMid2 = igeo.genArc(P14, P0, P11);
+-var ArcOut1 = igeo.genArc(P7, P0, P15);
+-var ArcOut2 = igeo.genArc(P15, P0, P12);
++// 创建面环
++var SL1 = igeo.genSurfaceLoop([S1, S2, S3, S4]);
+ 
+-var LineLoop1 = igeo.genLineLoop(  [V3,H4,V4, ArcIn1,  ArcIn2]  );
+-var LineLoop2 = igeo.genLineLoop(  [V2,H2,V5, ArcMid1, ArcMid2]   );
+-var LineLoop3 = igeo.genLineLoop(  [V1,H1,V2,ArcMid1, ArcMid2,V5,H3,V6, ArcOut2, ArcOut1]  );
++// 创建体
++var V1 = igeo.genVolume([SL1], 1);
+ 
+-igeo.genSurface([LineLoop2, LineLoop1], 1);
+-igeo.genSurface([LineLoop3], 2);
+-
+-var LineLoop4 = igeo.genLineLoop(  [V1, H1, H2, H3,V6, ArcOut2, ArcOut1]  );
+-var LineLoop5 = igeo.genRect(0,0,0, ModelL, ModelH, 0, size2);
+-igeo.genSurface([LineLoop5, LineLoop4], 3);
+-
+-imeshing.genMeshByGmsh(2);
+-
+-
++// 剖分网格
++imeshing.genMeshByGmsh(3);

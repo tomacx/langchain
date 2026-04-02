@@ -1,0 +1,308 @@
+# Failure Analysis: 案例库-CDyna案例-块体模块案例-扩展案例-混凝土微观破裂模拟-ConcreteTest(混凝土).js
+
+## Query
+请编写一个CDyna仿真脚本，实现扩展案例-混凝土微观破裂模拟-ConcreteTest(混凝土)，并输出必要的结果与监测。
+
+## Generated Code
+```javascript
+// 设置当前路径为JavaScript脚本所在的路径
+setCurDir(getSrcDir());
+
+// 设置输出的间隔为500步
+dyna.Set("Output_Interval 500");
+
+// 关闭虚质量计算开关
+dyna.Set("If_Virtural_Mass 0");
+
+// 设置三个方向的全局重力加速度为0
+dyna.Set("Gravity 0.0 0.0 0.0");
+
+// 打开单元大变形计算开关
+dyna.Set("Large_Displace 1");
+
+// 打开单元接触更新开关
+dyna.Set("If_Renew_Contact 1");
+
+// 设置接触容差为1cm
+dyna.Set("Contact_Detect_Tol 2e-3");
+
+// 设置计算时步为5e-5
+dyna.Set("Time_Step 2e-5");
+
+// 从GiD导入颗粒
+pdyna.Import("gid","Impact3.msh");
+
+// 设置颗粒模型为脆性断裂模型
+pdyna.SetModel("SSMC");
+
+// 设置颗粒材料参数，依次为密度、弹性模量、泊松比、抗拉强度、粘聚力、内摩擦角、局部阻尼、粘性阻尼系数（临界阻尼比）
+pdyna.SetMat(7800, 2.1e11, 0.33, 500e6, 500e6, 0.0, 0.0, 0.05, 2);
+pdyna.SetMat(2500, 3e10, 0.2, 10e6, 10e6, 40, 0.0, 0.05,1);
+
+// 设置初始速度条件
+var fvalue = new Array(0.0, -500.0, 0.0);
+pdyna.InitCondByGroup ("velocity", fvalue, 2,2);
+
+// 固定边界条件
+pdyna.FixV("xyz", 0.0, "x", -1, 0.05);
+pdyna.FixV("xyz", 0.0, "x", 1.95, 3);
+pdyna.FixV("xyz", 0.0, "z", -1, 0.05);
+pdyna.FixV("xyz", 0.0, "z", 1.95, 3);
+
+// 调整时间步长
+dyna.TimeStepCorrect(0.8);
+
+// 求解1万步
+dyna.Solve(10000);
+
+// 打印信息
+print("Solution is ok!");
+```
+
+## Ground Truth
+```javascript
+//设置当前工作路径为JavaScript脚本文件所在路径
+setCurDir(getSrcDir());
+
+//打开力学计算开关
+dyna.Set("Mechanic_Cal 1");
+
+
+//设置不平衡率为1e-5
+dyna.Set("UnBalance_Ratio 1e-5");
+
+//设置3个方向的重力加速度均为0.0
+dyna.Set("Gravity 0 0.0 0");
+
+//关闭大变形计算开关
+dyna.Set("Large_Displace 0");
+
+dyna.Set("If_Renew_Contact 0")
+
+//设置结果输出时步为500步
+dyna.Set("Output_Interval 1000");
+
+//监测信息的输出时步为100步
+dyna.Set("Moniter_Iter 100");
+
+//打开虚拟质量计算开关
+dyna.Set("If_Virtural_Mass 1");
+
+//设置虚拟时步为0.5
+dyna.Set("Virtural_Step 0.5");
+
+dyna.Set("Contact_Detect_Tol 0.0");
+
+//导入GiD格式的巷道网格文件
+blkdyn.ImportGrid("gmsh", "150mm150mm.msh");
+
+
+blkdyn.CrtIFace();
+
+blkdyn.UpdateIFaceMesh();
+
+
+//设置实体单元为线弹性模型
+blkdyn.SetModel("linear");
+
+//随机骨料
+blkdyn.RandomizeGroupByBall(0.005, 0.015, -0.008,1000, 1);
+
+//组1设定为砂浆
+blkdyn.SetMatByGroup(2000, 1e10, 0.3, 3e6, 1e6, 25.0, 10.0, 1);
+
+//组2到极限大值设定为骨料
+blkdyn.SetMat(2500, 5e10, 0.25, 10e6, 5e6, 45.0, 10.0, 2,1000);
+
+
+blkdyn.FixV("y", 0.0, "y", -0.001, 0.001);
+
+blkdyn.FixV("y", -1e-9, "y", 0.1499, 0.16);
+
+
+//设定所有接触面的本构为脆性断裂的Mohr-Coulomb本构
+blkdyn.SetIModel("brittleMC");
+
+//设定接触面上的材料，依次为单位面积法向刚度、单位面积切向刚度、内摩擦角、粘聚力、抗拉强度
+
+//骨料接触材料设定，设置为骨料参数
+blkdyn.SetIMat(5e13,5e13,45,10e6,5e6);
+
+//砂浆接触材料设定
+blkdyn.SetIMat(5e13,5e13,25,3e6,1e6,1);
+
+//骨料与骨料、骨料与砂浆接触材料设定
+blkdyn.SetIMat(5e13,5e13,20,1e6,1e6, -1, -1);
+
+
+//设置局部阻尼为0.2
+blkdyn.SetLocalDamp(0.2);
+
+//监测y方向应力
+//顶部5个点
+
+dyna.Monitor("block", "ydis", 0,     0.15, 0);
+
+dyna.Monitor("block", "syy", 0,     0.15, 0);
+dyna.Monitor("block", "syy", 0.05,  0.15, 0);
+dyna.Monitor("block", "syy", 0.075, 0.15, 0);
+dyna.Monitor("block", "syy", 0.1,   0.15, 0);
+dyna.Monitor("block", "syy", 0.15,  0.15, 0);
+
+//底部5个点
+dyna.Monitor("block", "syy", 0,     0.0, 0);
+dyna.Monitor("block", "syy", 0.05,  0.0, 0);
+dyna.Monitor("block", "syy", 0.075, 0.0, 0);
+dyna.Monitor("block", "syy", 0.1,   0.0, 0);
+dyna.Monitor("block", "syy", 0.15,  0.0, 0);
+
+
+//求解10万步
+dyna.Solve(100000);
+
+print("Solution is OK!");
+
+```
+
+## Unified Diff
+```diff
+--- 案例库-CDyna案例-块体模块案例-扩展案例-混凝土微观破裂模拟-ConcreteTest(混凝土).js (ground_truth)
++++ 案例库-CDyna案例-块体模块案例-扩展案例-混凝土微观破裂模拟-ConcreteTest(混凝土).js (generated)
+@@ -1,100 +1,52 @@
+-//设置当前工作路径为JavaScript脚本文件所在路径
++// 设置当前路径为JavaScript脚本所在的路径
+ setCurDir(getSrcDir());
+ 
+-//打开力学计算开关
+-dyna.Set("Mechanic_Cal 1");
++// 设置输出的间隔为500步
++dyna.Set("Output_Interval 500");
+ 
++// 关闭虚质量计算开关
++dyna.Set("If_Virtural_Mass 0");
+ 
+-//设置不平衡率为1e-5
+-dyna.Set("UnBalance_Ratio 1e-5");
++// 设置三个方向的全局重力加速度为0
++dyna.Set("Gravity 0.0 0.0 0.0");
+ 
+-//设置3个方向的重力加速度均为0.0
+-dyna.Set("Gravity 0 0.0 0");
++// 打开单元大变形计算开关
++dyna.Set("Large_Displace 1");
+ 
+-//关闭大变形计算开关
+-dyna.Set("Large_Displace 0");
++// 打开单元接触更新开关
++dyna.Set("If_Renew_Contact 1");
+ 
+-dyna.Set("If_Renew_Contact 0")
++// 设置接触容差为1cm
++dyna.Set("Contact_Detect_Tol 2e-3");
+ 
+-//设置结果输出时步为500步
+-dyna.Set("Output_Interval 1000");
++// 设置计算时步为5e-5
++dyna.Set("Time_Step 2e-5");
+ 
+-//监测信息的输出时步为100步
+-dyna.Set("Moniter_Iter 100");
++// 从GiD导入颗粒
++pdyna.Import("gid","Impact3.msh");
+ 
+-//打开虚拟质量计算开关
+-dyna.Set("If_Virtural_Mass 1");
++// 设置颗粒模型为脆性断裂模型
++pdyna.SetModel("SSMC");
+ 
+-//设置虚拟时步为0.5
+-dyna.Set("Virtural_Step 0.5");
++// 设置颗粒材料参数，依次为密度、弹性模量、泊松比、抗拉强度、粘聚力、内摩擦角、局部阻尼、粘性阻尼系数（临界阻尼比）
++pdyna.SetMat(7800, 2.1e11, 0.33, 500e6, 500e6, 0.0, 0.0, 0.05, 2);
++pdyna.SetMat(2500, 3e10, 0.2, 10e6, 10e6, 40, 0.0, 0.05,1);
+ 
+-dyna.Set("Contact_Detect_Tol 0.0");
++// 设置初始速度条件
++var fvalue = new Array(0.0, -500.0, 0.0);
++pdyna.InitCondByGroup ("velocity", fvalue, 2,2);
+ 
+-//导入GiD格式的巷道网格文件
+-blkdyn.ImportGrid("gmsh", "150mm150mm.msh");
++// 固定边界条件
++pdyna.FixV("xyz", 0.0, "x", -1, 0.05);
++pdyna.FixV("xyz", 0.0, "x", 1.95, 3);
++pdyna.FixV("xyz", 0.0, "z", -1, 0.05);
++pdyna.FixV("xyz", 0.0, "z", 1.95, 3);
+ 
++// 调整时间步长
++dyna.TimeStepCorrect(0.8);
+ 
+-blkdyn.CrtIFace();
++// 求解1万步
++dyna.Solve(10000);
+ 
+-blkdyn.UpdateIFaceMesh();
+-
+-
+-//设置实体单元为线弹性模型
+-blkdyn.SetModel("linear");
+-
+-//随机骨料
+-blkdyn.RandomizeGroupByBall(0.005, 0.015, -0.008,1000, 1);
+-
+-//组1设定为砂浆
+-blkdyn.SetMatByGroup(2000, 1e10, 0.3, 3e6, 1e6, 25.0, 10.0, 1);
+-
+-//组2到极限大值设定为骨料
+-blkdyn.SetMat(2500, 5e10, 0.25, 10e6, 5e6, 45.0, 10.0, 2,1000);
+-
+-
+-blkdyn.FixV("y", 0.0, "y", -0.001, 0.001);
+-
+-blkdyn.FixV("y", -1e-9, "y", 0.1499, 0.16);
+-
+-
+-//设定所有接触面的本构为脆性断裂的Mohr-Coulomb本构
+-blkdyn.SetIModel("brittleMC");
+-
+-//设定接触面上的材料，依次为单位面积法向刚度、单位面积切向刚度、内摩擦角、粘聚力、抗拉强度
+-
+-//骨料接触材料设定，设置为骨料参数
+-blkdyn.SetIMat(5e13,5e13,45,10e6,5e6);
+-
+-//砂浆接触材料设定
+-blkdyn.SetIMat(5e13,5e13,25,3e6,1e6,1);
+-
+-//骨料与骨料、骨料与砂浆接触材料设定
+-blkdyn.SetIMat(5e13,5e13,20,1e6,1e6, -1, -1);
+-
+-
+-//设置局部阻尼为0.2
+-blkdyn.SetLocalDamp(0.2);
+-
+-//监测y方向应力
+-//顶部5个点
+-
+-dyna.Monitor("block", "ydis", 0,     0.15, 0);
+-
+-dyna.Monitor("block", "syy", 0,     0.15, 0);
+-dyna.Monitor("block", "syy", 0.05,  0.15, 0);
+-dyna.Monitor("block", "syy", 0.075, 0.15, 0);
+-dyna.Monitor("block", "syy", 0.1,   0.15, 0);
+-dyna.Monitor("block", "syy", 0.15,  0.15, 0);
+-
+-//底部5个点
+-dyna.Monitor("block", "syy", 0,     0.0, 0);
+-dyna.Monitor("block", "syy", 0.05,  0.0, 0);
+-dyna.Monitor("block", "syy", 0.075, 0.0, 0);
+-dyna.Monitor("block", "syy", 0.1,   0.0, 0);
+-dyna.Monitor("block", "syy", 0.15,  0.0, 0);
+-
+-
+-//求解10万步
+-dyna.Solve(100000);
+-
+-print("Solution is OK!");
++// 打印信息
++print("Solution is ok!");
+```

@@ -1,0 +1,152 @@
+--- 案例库-CDyna案例-块体模块案例-扩展案例-含结构面岩体中爆破对应力波的衰减作用-加结构面-结构面爆破-应力波衰减.js (ground_truth)
++++ 案例库-CDyna案例-块体模块案例-扩展案例-含结构面岩体中爆破对应力波的衰减作用-加结构面-结构面爆破-应力波衰减.js (generated)
+@@ -1,95 +1,80 @@
+-//设置当前工作路径为JavaScript脚本文件所在路径
++// 设置当前工作路径为JavaScript脚本文件所在路径
+ setCurDir(getSrcDir());
+ 
+-//打开力学计算开关
++// 清除Mesh模块几何数据
++igeo.clear();
++
++// 清除Mesh模块网格数据
++imeshing.clear();
++
++// 清除BlockDyna模型数据
++dyna.Clear();
++
++// 清除Genvi平台数据
++doc.clearResult();
++
++// 打开力学计算开关
+ dyna.Set("Mechanic_Cal 1");
+ 
+-//设置三个方向的重力加速度均为0
+-dyna.Set("Gravity 0.0 0.0 0.0");
++// 设置三个方向的重力加速度
++dyna.Set("Gravity 0.0 -9.8 0.0");
+ 
+-//打开大变形计算开关
++// 打开大变形计算开关
+ dyna.Set("Large_Displace 1");
+ 
+-//设置计算结果的输出间隔为100步
+-dyna.Set("Output_Interval 100");
++// 设置计算结果的输出间隔
++dyna.Set("Output_Interval 500");
+ 
+-//设置监测信息输出时步为10步
++// 设置监测信息输出时步为10步
+ dyna.Set("Monitor_Iter 10");
+ 
+-//关闭虚质量计算开关
+-dyna.Set("If_Virtural_Mass 0");
++// 自动存储.sav文件，供后续恢复计算及数据处理使用
++dyna.Set("SaveFile_Out 1");
+ 
++// 打开虚质量计算开关
++dyna.Set("If_Virtural_Mass 1");
++
++// 打开接触更新开关
+ dyna.Set("If_Renew_Contact 1");
+ 
+-//打开瑞利阻尼计算开关
+-dyna.Set("If_Cal_Rayleigh 1")
++// 设置接触容差为0
++dyna.Set("Contact_Detect_Tol 0.0");
+ 
+-//从当前文件夹导入Gmsh格式的网格
+-blkdyn.ImportGrid("gid", "surface.msh");
++// 导入计算网格
++var msh1 = imesh.importAnsys("bricks.dat");
++blkdyn.GetMesh(msh1);
+ 
+-//不同组间离散
+-blkdyn.CrtIFace(-1, -1);
++// 将所有的单元面都切割为接触面
++blkdyn.CrtIFace();
+ 
+-//设置接触后，更新网格信息
++// 更新网格的拓扑信息
+ blkdyn.UpdateIFaceMesh();
+ 
+-//指定组1的单元本构为线弹性本构
++// 设置单元的本构模型
+ blkdyn.SetModel("linear");
+ 
+-//指定组2的单元本构为JWL爆源模型本构
+-blkdyn.SetModel("Landau", 1);
++// 指定单元的材料参数
++blkdyn.SetMat(2500, 5e10, 0.25, 1e6, 1e6, 25.0, 10.0, 1, 10);
+ 
+-//指定组1-2的材料参数
+-blkdyn.SetMatByGroupRange(2500, 5e10, 0.25, 15e6, 10e6, 40.0, 10.0, 1, 100);
++// 设置接触面的本构模型
++blkdyn.SetIModel("linear");
+ 
+-//将接触面模型设定为断裂能模型
+-blkdyn.SetIModel("brittleMC");
++// 接触面刚度及强度从单元中自动获取
++blkdyn.SetIStiffByElem(1);
++blkdyn.SetIStrengthByElem();
+ 
++// 指定接触面的断裂能，拉伸断裂能100Pa.m，剪切断裂能1000Pa.m
++blkdyn.SetIFracEnergyByCoord(100, 1000, -1E5, 1E5, -1E5, 1E5, -1E5, 1E5);
+ 
+-//所有软弱夹层的参数
+-blkdyn.SetIMat(5e10, 5e10, 20.0, 1e5, 1e5);
++// 固体底面位移约束
++blkdyn.FixV("xyz", 0.0, "y", -1e-2, 1e-2);
++blkdyn.FixV("xyz", 0.0, "y", 2.11, 2.13);
++blkdyn.FixV("xyz", 0.0, "x", -1e-2, 1e-2);
++blkdyn.FixV("xyz", 0.0, "x", 2.51, 2.53);
+ 
+-////岩块与爆炸气体参数
+-blkdyn.SetIMat(1e13, 1e13, 0, 0,0, 1, 14);
++// 设置监测信息
++dyna.Monitor("block", "ydis", 0.64, 1.007, 0);
++dyna.Monitor("block", "ydis", 1.14, 1.007, 0);
+ 
+-//设置全局的JWL炸药参数，为TNT，材料序号1，装药密度调小10倍
+-var apos = [5.0, 4.8, 0.0];
+-blkdyn.SetLandauSource(1, 115, 5000, 3.1e6, 3.0, 1.3333, 7e9, apos, 0.0, 15e-3);
+-
+-
+-blkdyn.BindLandauSource(1, 1,1);
+-
+-////监测Y方向应力
+-for(var i = 0; i <= 5; i++)
+-{
+-dyna.Monitor("block","syy", 5, 5.0 + i ,0 );
+-}
+-
+-////监测X方向应力
+-for(var i = 0; i <= 5; i++)
+-{
+-dyna.Monitor("block","syy", 5.0 + i, 4.8, 0 );
+-}
+-
+-
+-//将局部阻尼设置为0.0
+-blkdyn.SetLocalDamp(0.0);
+-
+-//将刚度阻尼系数设置为5e-7，质量阻尼系数设置为0.0
+-blkdyn.SetRayleighDamp(1e-6, 0.0);
+-
+-//设置全局计算时步
+-dyna.TimeStepCorrect(0.8);
+-
+-//模型的外边界设定为无反射边界（粘性边界）
+-blkdyn.SetQuietBoundByCoord(-0.001, 0.001,-100,100,-100,100);
+-blkdyn.SetQuietBoundByCoord(9.999, 10.001,-100,100,-100,100);
+-blkdyn.SetQuietBoundByCoord(-100,100,-0.001,0.001,-100,100);
+-blkdyn.SetQuietBoundByCoord(-100,100,9.999, 10.001,-100,100);
+-
+-
+-//动力计算1ms
+-dyna.DynaCycle(1e-2);
+-
+-//打印提示信息
+-print("Solution Finished");
++// 开始计算
++dyna.Solve(5000);

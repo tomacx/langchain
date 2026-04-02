@@ -1,0 +1,15 @@
+{
+  "ok": true,
+  "dataset": "/Users/cxh/Codes/GAIA/2023/validation/metadata.jsonl",
+  "model": "llama3.1:latest",
+  "dry_run": false,
+  "total": 1,
+  "correct": 1,
+  "accuracy": 1.0,
+  "match_type_counts": {
+    "exact": 1
+  },
+  "output_predictions_jsonl": "/Users/cxh/Codes/langchain/physic/tools/agents/results/gaia_offline_inline_smoke3/predictions_20260402_002712.jsonl",
+  "output_submission_jsonl": "/Users/cxh/Codes/langchain/physic/tools/agents/results/gaia_offline_inline_smoke3/submission_20260402_002712.jsonl",
+  "elapsed_s": 7.995
+}

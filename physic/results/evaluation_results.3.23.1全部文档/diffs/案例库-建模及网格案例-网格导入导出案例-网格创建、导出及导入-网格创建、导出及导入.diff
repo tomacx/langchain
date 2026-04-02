@@ -1,0 +1,64 @@
+--- 案例库-建模及网格案例-网格导入导出案例-网格创建、导出及导入-网格创建、导出及导入.js (ground_truth)
++++ 案例库-建模及网格案例-网格导入导出案例-网格创建、导出及导入-网格创建、导出及导入.js (generated)
+@@ -1,14 +1,53 @@
+-//设置当前路径为JS脚本所在路径
++// 设置当前路径为JS脚本所在路径
+ setCurDir(getSrcDir());
+ 
+-//产生几何
+-igeo.genBallV(0,0,0,1,0.2,1);
+-
+-//剖分网格
++// 创建几何体并剖分网格
++igeo.genBallV(0, 0, 0, 1, 0.2, 1);
+ imeshing.genMeshByGmsh(3);
+ 
+-//网格导出
++// 导出网格文件
+ imesh.exportGenvi(imeshing, "Genvi.gvx");
+ 
+-//网格导入
+-imesh.importGenvi("Genvi.gvx");
++// 清除现有网格数据并重新导入网格
++imeshing.clear();
++var omsh = imesh.importGenvi("Genvi.gvx");
++
++// 创建参数化几何体和网格剖分
++var lx = 0.24;
++var ly = 0.053;
++var lz = 0.115;
++var nx = 10;
++var ny = 20;
++
++for (var i = 0; i < nx; i++) {
++    for (var j = 1; j <= ny; j++) {
++        var x1 = lx * i;
++        var x2 = lx / 2 + lx * i;
++        var y1 = ly * (2 * j - 2);
++        var y2 = ly * (2 * j - 1);
++        imeshing.genBrick3D("1", lx, ly, lz, 1, 1, 1, x1, y1, 0);
++        imeshing.genBrick3D("2", lx, ly, lz, 1, 1, 1, x2, y2, 0);
++    }
++}
++
++for (var j = 1; j <= ny; j++) {
++    var y1 = ly * (2 * j - 2);
++    imeshing.genBrick3D("3", lx / 2, ly, lz, 1, 1, 1, 0, ly + y1, 0);
++    imeshing.genBrick3D("4", lx / 2, ly, lz, 1, 1, 1, lx * nx, y1, 0);
++}
++
++// 手动推送网格
++imeshing.commitMesh();
++
++// 创建点和线并拉伸LineLoop集
++var Point1 = igeo.genPoint(0, 0, 0, 0.1);
++var Point2 = igeo.genPoint(3, 0, 0, 0.1);
++var Line1 = igeo.genArc(Point2, Point1, Point1);
++
++// 创建LineLoop
++var aLine1 = [Line1];
++var LineLoop1 = igeo.genLineLoop(aLine1);
++
++// 拉伸LineLoop集
++var aL = [LineLoop1];
++igeo.extrude(aL, 0, 0, 5);

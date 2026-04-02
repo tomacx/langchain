@@ -3,13 +3,13 @@ import os
 import sys
 from pathlib import Path
 import traceback
+import json
 
 # ==========================================
 # 路径配置与核心模块导入
 # ==========================================
-# 将项目根目录加入 sys.path 以便导入 agent.py
 current_dir = Path(__file__).resolve().parent
-project_root = current_dir.parents[1]  # 指向 d:\Codes\langchain
+project_root = current_dir.parents[1]
 if str(project_root) not in sys.path:
     sys.path.append(str(project_root))
 
@@ -48,13 +48,11 @@ def init_agent(db_path: str, collection_name: str, model_name: str, enable_prepr
 # 2. 前端界面与交互
 # ==========================================
 def main():
-    st.set_page_config(page_title="CDEM 智能脚本生成助手", page_icon="🤖", layout="wide")
+    st.set_page_config(page_title="CDEM 统一交互平台", page_icon="🤖", layout="wide")
     
     # --- 侧边栏配置 ---
     with st.sidebar:
         st.header("⚙️ 引擎配置")
-        
-        # 默认路径计算
         default_db_path = str(project_root / "physic" / "tools" / "js_store" / "new_db_cdem")
         
         db_path = st.text_input("向量库路径 (Chroma)", value=default_db_path)
@@ -63,151 +61,186 @@ def main():
         enable_preproc = st.toggle("启用预处理 (任务拆解)", value=True)
         
         st.divider()
-        st.header("🎨 界面配置")
-        user_msg_bg_color = st.color_picker("用户消息背景色", "#ffffff")
-        assistant_msg_bg_color = st.color_picker("助手消息背景色", "#ffffff")
-        
-        st.divider()
-        st.caption("核心架构: AgentConstructionModule")
-        st.caption("向量引擎: Chroma DB")
+        st.caption("核心架构: 多智能体协同")
+        st.caption("上下文记忆: 双路滑动窗口与向量存储")
 
-    # 注入自定义 CSS 以美化页面风格
-    st.markdown(f"""
-    <style>
-        /* 整体背景与字体 */
-        .stApp {{
-            background-color: #f8fafc;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-        }}
-        /* 侧边栏 */
-        [data-testid="stSidebar"] {{
-            background-color: #1e293b;
-        }}
-        [data-testid="stSidebar"] * {{
-            color: #f1f5f9 !important;
-        }}
-        /* 主标题 */
-        h1 {{
-            color: #0f172a;
-            font-weight: 700;
-            text-align: center;
-            padding-bottom: 20px;
-            border-bottom: 2px solid #e2e8f0;
-            margin-bottom: 30px;
-        }}
-        /* 聊天消息气泡样式 */
-        .stChatMessage {{
-            border: 1px solid #e2e8f0;
-            border-radius: 12px;
-            padding: 15px 20px;
-            margin-bottom: 15px;
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
-        }}
-        /* 助手消息背景 */
-        [data-testid="stChatMessage"]:nth-child(even) {{
-            background-color: {assistant_msg_bg_color};
-        }}
-        /* 用户消息高亮 */
-        [data-testid="stChatMessage"]:nth-child(odd) {{
-            background-color: {user_msg_bg_color};
-        }}
-        /* 输入框提示 */
-        .stChatInputContainer textarea {{
-            border-radius: 20px;
-            border: 1px solid #cbd5e1;
-        }}
-        /* Expander 标题 */
-        .streamlit-expanderHeader {{
-            font-weight: 600;
-            color: #334155;
-        }}
-        /* 按钮美化 */
-        .stButton>button {{
-            border-radius: 8px;
-            transition: all 0.3s;
-        }}
-        .stButton>button:hover {{
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-        }}
-    </style>
-    """, unsafe_allow_html=True)
-    
-    st.title("🤖 CDEM 智能脚本生成助手")
+    st.title("🤖 CDEM 软件多智能体统一交互平台")
 
-    # --- 初始化会话状态 ---
+    # 获取 Agent
+    agent_module = init_agent(db_path, collection_name, model_name, enable_preproc)
+    if not agent_module:
+        st.stop()
+
+    # 初始化会话状态
     if "messages" not in st.session_state:
         st.session_state["messages"] = [
-            {"role": "assistant", "content": "您好！我是全新的 CDEM 脚本助手。请描述您的仿真需求（如：建立一个 10x10 的二维模型并划分网格）。", "metrics": None}
+            {"role": "assistant", "content": "您好！我是 CDEM 多智能体助手。请问需要生成脚本、检索知识还是运行仿真？", "metrics": None}
         ]
+    if "current_script" not in st.session_state:
+        st.session_state["current_script"] = "// 在此处编辑或由智能体生成 CDEM 脚本\n"
+    if "simulation_logs" not in st.session_state:
+        st.session_state["simulation_logs"] = []
 
-    # --- 渲染历史消息 ---
-    for msg in st.session_state.messages:
-        with st.chat_message(msg["role"]):
-            st.markdown(msg["content"])
-            # 如果有指标数据，则展示
-            if msg.get("metrics"):
-                with st.expander("📊 生成详情"):
-                    metrics = msg["metrics"]
-                    st.write(f"- **生成耗时**: {metrics.get('duration_s', 0)} 秒")
-                    st.write(f"- **检索文档数**: {metrics.get('retrieved_docs_count', 0)}")
-                    if metrics.get("task_steps"):
-                        st.write("**任务拆解步骤:**")
-                        for i, step in enumerate(metrics["task_steps"], 1):
-                            st.write(f"  {i}. {step}")
+    # 三大核心功能模块 Tab
+    tab1, tab2, tab3 = st.tabs(["💻 脚本生成模块", "📚 CDEM软件问答模块", "🚀 脚本仿真测试模块"])
 
-    # --- 处理用户输入 ---
-    if user_input := st.chat_input("请输入您的需求..."):
-        st.session_state.messages.append({"role": "user", "content": user_input, "metrics": None})
-        with st.chat_message("user"):
-            st.markdown(user_input)
+    # ==========================
+    # Tab 1: 脚本生成模块
+    # ==========================
+    with tab1:
+        col1, col2 = st.columns([1, 1])
+        
+        with col1:
+            st.subheader("💬 需求对话")
+            chat_container = st.container(height=500)
+            with chat_container:
+                for msg in st.session_state.messages:
+                    with st.chat_message(msg["role"]):
+                        st.markdown(msg["content"])
+                        if msg.get("metrics"):
+                            with st.expander("📊 生成详情"):
+                                metrics = msg["metrics"]
+                                st.write(f"- **生成耗时**: {metrics.get('duration_s', 0)} 秒")
+                                st.write(f"- **检索文档数**: {metrics.get('retrieved_docs_count', 0)}")
+                                wf = metrics.get("workflow") or {}
+                                if wf:
+                                    st.write(f"- **工作流选择**: {wf.get('selected', '')} (score={wf.get('score', '')})")
+                                    if wf.get("issue_tags") is not None:
+                                        st.write(f"- **失败信号**: {wf.get('issue_tags')}")
+                                    if wf.get("tool_names") is not None:
+                                        st.write(f"- **工具集合**: {wf.get('tool_names')}")
+                                    if wf.get("candidates"):
+                                        st.write("**候选对比:**")
+                                        st.json(wf.get("candidates"))
+                                    if wf.get("trace"):
+                                        st.write("**优化迭代轨迹:**")
+                                        st.json(wf.get("trace"))
+            
+            if user_input := st.chat_input("描述仿真需求 (如: 建立10x10的二维模型)..."):
+                st.session_state.messages.append({"role": "user", "content": user_input, "metrics": None})
+                with chat_container:
+                    with st.chat_message("user"):
+                        st.markdown(user_input)
+                    with st.chat_message("assistant"):
+                        with st.status("🧠 智能体规划与生成中...", expanded=True) as status:
+                            st.write("1. 检索长时上下文与知识库...")
+                            try:
+                                generated_code, gen_time, retrieved_count = agent_module.generate_code(user_input, verbose=False)
+                                metrics = getattr(agent_module, "last_run_metrics", {})
+                                status.update(label="✅ 脚本生成完成", state="complete", expanded=False)
+                                
+                                if generated_code:
+                                    st.session_state["current_script"] = generated_code
+                                    output_content = f"已生成脚本，耗时 {gen_time:.1f}s，请在右侧编辑器查看与修改。"
+                                else:
+                                    output_content = "⚠️ 未能生成有效代码，请重试。"
+                                    
+                                st.markdown(output_content)
+                                st.session_state.messages.append({
+                                    "role": "assistant", 
+                                    "content": output_content, 
+                                    "metrics": metrics
+                                })
+                                st.rerun()
+                            except Exception as e:
+                                status.update(label="❌ 生成出错", state="error")
+                                st.error(f"运行出错: {str(e)}")
 
-        # --- 助手响应 ---
-        with st.chat_message("assistant"):
-            agent_module = init_agent(db_path, collection_name, model_name, enable_preproc)
-            if not agent_module:
-                st.stop()
+        with col2:
+            st.subheader("📝 可视化脚本编辑器")
+            # 模拟模板库
+            template_choice = st.selectbox("选择模板片段插入", ["-- 无 --", "标准2D模型初始化", "施加重力场", "网格划分"])
+            if template_choice == "标准2D模型初始化":
+                st.session_state["current_script"] += "\nsetCurDir(getSrcDir());\nSolve('2D', 'model_name');"
+            elif template_choice == "施加重力场":
+                st.session_state["current_script"] += "\nsetGravity(0, -9.8, 0);"
+            
+            # 编辑器
+            edited_script = st.text_area("JavaScript Code", value=st.session_state["current_script"], height=450, key="editor")
+            if edited_script != st.session_state["current_script"]:
+                st.session_state["current_script"] = edited_script
+
+            if st.button("同步至仿真测试台", type="primary"):
+                st.success("已同步！请前往【🚀 脚本仿真测试模块】运行。")
+
+    # ==========================
+    # Tab 2: CDEM软件问答模块
+    # ==========================
+    with tab2:
+        st.subheader("📚 知识图谱与技术文档问答")
+        qa_input = st.text_input("请输入您对 CDEM 软件的疑问或 API 查询：")
+        if st.button("查询文档"):
+            if qa_input:
+                with st.spinner("检索向量库中..."):
+                    try:
+                        # 直接调用底层检索或通过 agent 生成回答
+                        docs = agent_module.vectorstore.similarity_search(qa_input, k=4)
+                        if docs:
+                            st.success(f"找到 {len(docs)} 条相关结果：")
+                            for i, doc in enumerate(docs):
+                                with st.expander(f"📄 结果 {i+1} (来源: {doc.metadata.get('source', '未知')})"):
+                                    st.markdown(f"```javascript\n{doc.page_content}\n```")
+                            
+                            # 结果导出模拟
+                            export_data = json.dumps([d.page_content for d in docs], ensure_ascii=False, indent=2)
+                            st.download_button(label="📥 导出检索结果 (JSON)", data=export_data, file_name="cdem_qa_results.json", mime="application/json")
+                        else:
+                            st.info("未找到强相关文档。")
+                    except Exception as e:
+                        st.error(f"检索失败: {e}")
+
+    # ==========================
+    # Tab 3: 脚本仿真测试模块
+    # ==========================
+    with tab3:
+        st.subheader("🚀 在线仿真控制台")
+        col_run1, col_run2 = st.columns([2, 1])
+        
+        with col_run1:
+            st.markdown("**待运行脚本预览**")
+            st.code(st.session_state["current_script"], language="javascript")
+            if st.button("▶️ 一键运行仿真 (Mock)"):
+                st.session_state["simulation_logs"].append(">>> 开始初始化 CDEM 仿真环境...")
+                st.session_state["simulation_logs"].append(">>> 加载脚本内容成功...")
+                st.session_state["simulation_logs"].append(">>> 语法检查通过，开始执行...")
                 
-            with st.status("🧠 智能体正在思考并生成脚本...", expanded=True) as status:
-                st.write("1. 解析用户需求并检索知识库...")
-                try:
-                    # 调用新版 agent.py 中的生成逻辑，关闭 verbose 以隐藏内部重试过程
-                    generated_code, gen_time, retrieved_count = agent_module.generate_code(user_input, verbose=False)
-                    metrics = getattr(agent_module, "last_run_metrics", {})
+                # 简单模拟错误定位
+                if "error" in st.session_state["current_script"].lower():
+                    st.session_state["simulation_logs"].append("❌ [Error] 发现语法错误：未定义的标识符 'error'")
+                else:
+                    st.session_state["simulation_logs"].append("✅ [Success] 网格划分完成: 1200 nodes, 1050 elements")
+                    st.session_state["simulation_logs"].append("✅ [Success] 仿真步进计算结束。耗时: 1.2s")
                     
-                    st.write("2. 代码生成完毕。")
-                    status.update(label="✅ 脚本生成完成", state="complete", expanded=False)
-                except Exception as e:
-                    status.update(label="❌ 生成出错", state="error")
-                    st.error(f"运行出错: {str(e)}")
-                    st.code(traceback.format_exc())
-                    st.stop()
-
-            # --- 组装并展示最终结果 ---
-            if generated_code:
-                output_content = f"```javascript\n{generated_code}\n```"
-            else:
-                output_content = "⚠️ 未能生成有效代码，请重试或补充更多提示细节。"
+                st.session_state["simulation_logs"].append(">>> 仿真任务结束。")
+                
+                # 存入上下文记忆
+                if getattr(agent_module, "memory_manager", None):
+                    agent_module.memory_manager.add_simulation_summary(
+                        result="Simulation completed successfully" if "error" not in st.session_state["current_script"].lower() else "Simulation failed with errors",
+                        metrics={"nodes": 1200, "elements": 1050, "time_s": 1.2}
+                    )
+        
+        with col_run2:
+            st.markdown("**实时日志输出**")
+            log_box = st.container(height=300)
+            with log_box:
+                for log in st.session_state["simulation_logs"]:
+                    if "Error" in log:
+                        st.error(log)
+                    elif "Success" in log:
+                        st.success(log)
+                    else:
+                        st.text(log)
             
-            st.markdown("### 生成的脚本")
-            st.markdown(output_content)
-            
-            # 展示指标
-            if metrics:
-                with st.expander("📊 生成详情", expanded=False):
-                    st.write(f"- **生成耗时**: {metrics.get('duration_s', 0)} 秒")
-                    st.write(f"- **检索文档数**: {metrics.get('retrieved_docs_count', 0)}")
-                    if metrics.get("task_steps"):
-                        st.write("**任务拆解步骤:**")
-                        for i, step in enumerate(metrics["task_steps"], 1):
-                            st.write(f"  {i}. {step}")
-
-            # 保存助手消息
-            st.session_state.messages.append({
-                "role": "assistant", 
-                "content": f"### 生成的脚本\n{output_content}", 
-                "metrics": metrics
-            })
+            if st.button("🗑️ 清空日志"):
+                st.session_state["simulation_logs"] = []
+                st.rerun()
+                
+            st.markdown("**性能指标可视化 (Mock)**")
+            if "Success" in "".join(st.session_state["simulation_logs"]):
+                st.progress(100, text="仿真进度")
+                st.metric(label="最大内存占用", value="245 MB", delta="12 MB")
+                st.metric(label="计算耗时", value="1.2 s", delta="-0.3 s")
 
 if __name__ == "__main__":
     main()

@@ -32,6 +32,12 @@ except Exception:
 
 from langgraph.graph import END, START, StateGraph
 
+import evo_game
+import evo_llm
+import evo_simulation
+import evo_scoring
+import evo_toolbox as evo_tb
+
 
 UtilityVector = Tuple[float, float, float]
 
@@ -136,28 +142,7 @@ def _load_agent_system_prompt() -> str:
 
 
 def _get_llm():
-    provider = os.getenv("CDEM_LLM_PROVIDER", "ollama").lower().strip()
-    model = os.getenv("CDEM_LLM_MODEL", "qwen2.5:14b")
-    streaming = os.getenv("CDEM_STREAMING", "0").lower().strip() in {"1", "true", "yes", "y"}
-    if os.getenv("CDEM_EVO_FAKE_LLM", "0").lower().strip() in {"1", "true", "yes", "y"} or provider == "fake":
-        return _FakeLLM()
-    if provider in {"ollama", "local"}:
-        if ChatOllama is None:
-            raise RuntimeError("缺少 langchain_ollama，无法使用 ollama provider")
-        base_url = os.getenv("CDEM_OLLAMA_BASE_URL", "http://localhost:11434")
-        return ChatOllama(model=model, base_url=base_url, streaming=streaming)
-    if ChatOpenAI is None:
-        raise RuntimeError("缺少 langchain_openai，无法使用 openai-compatible provider")
-    base_url = os.getenv("CDEM_BAILIAN_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1")
-    api_key = (
-        os.getenv("CDEM_BAILIAN_API_KEY")
-        or os.getenv("DASHSCOPE_API_KEY")
-        or os.getenv("OPENAI_API_KEY")
-        or ""
-    )
-    if not api_key:
-        raise RuntimeError("缺少 API KEY：请设置 CDEM_BAILIAN_API_KEY / DASHSCOPE_API_KEY / OPENAI_API_KEY")
-    return ChatOpenAI(model=model, base_url=base_url, api_key=api_key, streaming=streaming)
+    return evo_llm.get_llm()
 
 
 @dataclass
@@ -456,8 +441,8 @@ def node_dispatcher_factory(dispatcher: GameTheoreticDispatcher):
     return node
 
 
-def node_generator_factory(toolbox: EvolutionaryToolbox, llm):
-    system_prompt = _load_agent_system_prompt()
+def node_generator_factory(toolbox: EvolutionaryToolbox, llm, *, simulator: Optional[Any] = None):
+    optimizer = evo_game.MultiObjectiveGameOptimizer(llm=llm, simulator=simulator)
 
     def node(state: AgentState) -> AgentState:
         task = state.get("task", "")
@@ -472,16 +457,21 @@ def node_generator_factory(toolbox: EvolutionaryToolbox, llm):
             except Exception:
                 continue
         tool_context = "\n\n".join(tool_texts).strip()
-        prompt = "\n\n".join(
-            [
-                f"任务：{task}",
-                "可用工具输出（可能不完整，仅供参考）：",
-                tool_context or "(无)",
-                "请生成最终 JavaScript 脚本，只输出一个 ```javascript 代码块```。",
-            ]
-        )
-        msg = llm.invoke([SystemMessage(content=system_prompt), HumanMessage(content=prompt)])
-        content = getattr(msg, "content", "") if msg else ""
+        prev_script = (state.get("script_content") or "").strip()
+        focus = (state.get("update_focus") or "fitness").strip()
+        game_scores = state.get("game_scores")
+        game_breakdown = state.get("game_breakdown")
+        if prev_script and game_scores and game_breakdown:
+            content = optimizer.update_script(
+                task=task,
+                current_script=prev_script,
+                scores=game_scores,
+                breakdown=game_breakdown,
+                focus=focus,
+                tool_context=tool_context,
+            )
+        else:
+            content = optimizer.initial_script(task=task, tool_context=tool_context)
         log = list(state.get("feedback_log", []))
         log.append(f"generator:tools={selected} chars={len(content)}")
         return {
@@ -495,74 +485,82 @@ def node_generator_factory(toolbox: EvolutionaryToolbox, llm):
     return node
 
 
-def _score_script(task: str, js: str) -> Tuple[UtilityVector, Dict[str, Any]]:
-    lines = [ln for ln in js.splitlines() if ln.strip()]
-    length = len(js)
-    f_sim = max(0.0, min(1.0, 1.0 - (length / 8000.0)))
-
-    keywords = [w for w in re.split(r"[\s,;，。]+", task) if len(w) >= 2]
-    kw_hit = 0
-    for w in set(keywords[:20]):
-        if w in js:
-            kw_hit += 1
-    f_fit = max(0.0, min(1.0, kw_hit / max(1.0, min(10.0, float(len(set(keywords[:20])))))))
-
-    phy = 0.0
-    phy_reasons: List[str] = []
-    if "setCurDir(getSrcDir())" in js:
-        phy += 0.2
-    else:
-        phy_reasons.append("missing_setCurDir")
-    if re.search(r"\bdt\b|\btimeStep\b|\btime_step\b", js):
-        phy += 0.2
-    else:
-        phy_reasons.append("missing_timestep_control")
-    if re.search(r"energy|能量", js, re.IGNORECASE):
-        phy += 0.2
-    else:
-        phy_reasons.append("missing_energy_monitor")
-    if re.search(r"conver|收敛|residual|残差", js, re.IGNORECASE):
-        phy += 0.2
-    else:
-        phy_reasons.append("missing_convergence_monitor")
-    if "while(true)" in js.replace(" ", "").lower():
-        phy -= 0.3
-        phy_reasons.append("infinite_loop")
-    f_phy = max(0.0, min(1.0, phy))
-
-    passed = f_phy >= 0.7 and "search_physics_knowledge" not in js
+def _score_script(task: str, js: str, physics_score: Optional[float]) -> Tuple[UtilityVector, Dict[str, Any]]:
+    alpha = float(os.getenv("CDEM_EVO_ALPHA", "0.5"))
+    beta = float(os.getenv("CDEM_EVO_BETA", "0.5"))
+    scores, breakdown = evo_scoring.score_all(query=task, script=js, physics_score=physics_score, alpha=alpha, beta=beta)
+    f_p = float(scores.f_p) if scores.f_p is not None else 0.0
+    target_s = float(os.getenv("CDEM_EVO_TARGET_F_S", "0.75"))
+    target_f = float(os.getenv("CDEM_EVO_TARGET_F_F", "0.75"))
+    target_p = float(os.getenv("CDEM_EVO_TARGET_F_P", "0.70"))
+    passed = (scores.f_s >= target_s) and (scores.f_f >= target_f) and ("search_physics_knowledge" not in js)
+    if scores.f_p is not None:
+        passed = passed and (float(scores.f_p) >= target_p)
     report = {
-        "lines": len(lines),
-        "length": length,
-        "phy_reasons": phy_reasons,
+        "scores": {"f_s": scores.f_s, "f_f": scores.f_f, "f_p": scores.f_p},
+        "breakdown": {"simplicity": breakdown.simplicity, "fitness": breakdown.fitness, "physics": breakdown.physics},
         "passed": passed,
     }
-    return (f_sim, f_fit, f_phy), report
+    return (scores.f_s, scores.f_f, f_p), report
 
 
-def node_validator_factory(toolbox: EvolutionaryToolbox):
+def node_validator_factory(toolbox: EvolutionaryToolbox, *, simulator: Optional[Any] = None):
     def node(state: AgentState) -> AgentState:
         task = state.get("task", "")
         raw = state.get("script_content", "")
-        js = _extract_js_code(raw)
-        u, report = _score_script(task, js)
+        js = evo_game.extract_js_code(raw)
+        phy_score: Optional[float] = None
+        sim_fb: Optional[Dict[str, Any]] = None
+        if simulator is not None:
+            try:
+                raw_fb = simulator.simulate(task=task, script=js, context=None)
+            except Exception as e:
+                raw_fb = {"status": "failed", "error": str(e)}
+            fb = evo_simulation.normalize_simulation_feedback(raw_fb)
+            phy_score = evo_simulation.physical_score_from_feedback(fb)
+            sim_fb = dict(fb)
+
+        u, report = _score_script(task, js, phy_score)
+        if sim_fb is not None:
+            report["simulation_feedback"] = sim_fb
         passed = bool(report.get("passed", False))
         selected = list(state.get("selected_tools", []))
         toolbox.record_call(selected, u, passed)
 
         log = list(state.get("feedback_log", []))
         log.append(f"validator:passed={passed} U={u} report={report}")
+        sc = report.get("scores", {}) or {}
+        bd = report.get("breakdown", {}) or {}
+        game_scores = evo_scoring.ObjectiveScores(
+            f_s=float(sc.get("f_s", 0.0)),
+            f_f=float(sc.get("f_f", 0.0)),
+            f_p=sc.get("f_p", None),
+        )
+        game_breakdown = evo_scoring.ScoreBreakdown(
+            simplicity=bd.get("simplicity", {}) or {},
+            fitness=bd.get("fitness", {}) or {},
+            physics=bd.get("physics", {}) or {},
+        )
+        target_s = float(os.getenv("CDEM_EVO_TARGET_F_S", "0.75"))
+        target_f = float(os.getenv("CDEM_EVO_TARGET_F_F", "0.75"))
+        target_p = float(os.getenv("CDEM_EVO_TARGET_F_P", "0.70"))
+        if game_scores.f_p is not None and float(game_scores.f_p) < target_p:
+            next_focus = "physics"
+        elif game_scores.f_f < target_f:
+            next_focus = "fitness"
+        elif game_scores.f_s < target_s:
+            next_focus = "simplicity"
+        else:
+            next_focus = "fitness"
+
         next_goal = ""
         if not passed:
-            reasons = report.get("phy_reasons", []) or []
-            if "missing_energy_monitor" in reasons:
-                next_goal = "在脚本中加入能量收支/能量守恒监测的模式与模板"
-            elif "missing_convergence_monitor" in reasons:
-                next_goal = "在脚本中加入收敛性/残差/不平衡力监测与终止条件模板"
-            elif "missing_timestep_control" in reasons:
-                next_goal = "在脚本中加入显式积分临界时间步/步长控制与说明模板"
+            if next_focus == "physics":
+                next_goal = "在脚本中加入物理合规性约束、步长/收敛/能量监测与终止条件模板"
+            elif next_focus == "fitness":
+                next_goal = "补齐需求关键功能覆盖与接口调用模板，并纠正参数与流程"
             else:
-                next_goal = "提供更强的物理合规性约束提示与脚本结构模板"
+                next_goal = "对脚本进行去冗余与模块化重构的指导模板，减少重复结构"
         return {
             **state,
             "script_content": js,
@@ -571,6 +569,9 @@ def node_validator_factory(toolbox: EvolutionaryToolbox):
             "validation_report": report,
             "feedback_log": log,
             "architect_goal": next_goal,
+            "update_focus": next_focus,
+            "game_scores": game_scores,
+            "game_breakdown": game_breakdown,
             "tool_registry": toolbox.snapshot_registry(),
         }
 
@@ -586,7 +587,7 @@ def node_architect_factory(toolbox: EvolutionaryToolbox, llm):
             return {**state, "feedback_log": log}
         existing = toolbox.list_tools()
         for n in existing:
-            if goal[:8] in n or _slugify(goal) in n:
+            if goal[:8] in n or evo_tb._slugify(goal) in n:
                 log.append("architect:skip(already_covered)")
                 return {**state, "feedback_log": log}
 
@@ -594,9 +595,9 @@ def node_architect_factory(toolbox: EvolutionaryToolbox, llm):
         if ok:
             log.append(f"architect:added_tool file={path}")
         else:
-            fallback_code = _fallback_tool_code(goal)
-            ok2, err = _basic_syntax_check(fallback_code)
-            ok3, err2 = _static_safety_check(fallback_code) if ok2 else (False, err)
+            fallback_code = evo_tb.fallback_tool_code(goal)
+            ok2, err = evo_tb._basic_syntax_check(fallback_code)
+            ok3, err2 = evo_tb._static_safety_check(fallback_code) if ok2 else (False, err)
             if ok2 and ok3:
                 toolbox.evolved_dir.mkdir(parents=True, exist_ok=True)
                 file_path = toolbox.evolved_dir / f"evolved_fallback_{int(time.time())}.py"
@@ -650,12 +651,12 @@ def _fallback_tool_code(goal: str) -> str:
     )
 
 
-def build_graph(toolbox: EvolutionaryToolbox, llm):
+def build_graph(toolbox: EvolutionaryToolbox, llm, *, simulator: Optional[Any] = None):
     dispatcher = GameTheoreticDispatcher(toolbox)
     graph = StateGraph(AgentState)
     graph.add_node("dispatcher", node_dispatcher_factory(dispatcher))
-    graph.add_node("generator", node_generator_factory(toolbox, llm))
-    graph.add_node("validator", node_validator_factory(toolbox))
+    graph.add_node("generator", node_generator_factory(toolbox, llm, simulator=simulator))
+    graph.add_node("validator", node_validator_factory(toolbox, simulator=simulator))
     graph.add_node("architect", node_architect_factory(toolbox, llm))
 
     graph.add_edge(START, "dispatcher")
@@ -676,15 +677,15 @@ def build_graph(toolbox: EvolutionaryToolbox, llm):
 
 def _init_toolbox() -> EvolutionaryToolbox:
     evolved_dir = Path(__file__).resolve().parent / "evolved_tools"
-    tb = EvolutionaryToolbox(evolved_dir=evolved_dir)
+    tb = evo_tb.EvolutionaryToolbox(evolved_dir=evolved_dir)
     tb.load_from_directory()
     return tb
 
 
-def run_demo(task: str) -> AgentState:
+def run_demo(task: str, *, simulator: Optional[Any] = None) -> AgentState:
     toolbox = _init_toolbox()
     llm = _get_llm()
-    app = build_graph(toolbox, llm)
+    app = build_graph(toolbox, llm, simulator=simulator)
     init: AgentState = {
         "task": task,
         "script_content": "",
@@ -696,9 +697,40 @@ def run_demo(task: str) -> AgentState:
         "validation_passed": False,
         "validation_report": {},
         "architect_goal": "",
+        "update_focus": "fitness",
+        "game_scores": None,
+        "game_breakdown": None,
     }
     out = app.invoke(init)
     return out
+
+
+def run_game(task: str, *, simulator: Optional[Any] = None) -> Dict[str, Any]:
+    toolbox = _init_toolbox()
+    llm = _get_llm()
+    selected = toolbox.list_tools()[: int(os.getenv("CDEM_EVO_TOOL_TOPK", "3"))]
+    tool_texts: List[str] = []
+    for name in selected:
+        t = toolbox.get_tool(name)
+        if not t:
+            continue
+        try:
+            tool_texts.append(f"[{name}] {t.invoke({'task': task})}")
+        except Exception:
+            continue
+    tool_context = "\n\n".join(tool_texts).strip()
+    optimizer = evo_game.MultiObjectiveGameOptimizer(llm=llm, simulator=simulator)
+    result = optimizer.optimize(task=task, tool_context=tool_context)
+    return {
+        "script_content": result.script,
+        "scores": {"f_s": result.scores.f_s, "f_f": result.scores.f_f, "f_p": result.scores.f_p},
+        "breakdown": {
+            "simplicity": result.breakdown.simplicity,
+            "fitness": result.breakdown.fitness,
+            "physics": result.breakdown.physics,
+        },
+        "history_len": len(result.history),
+    }
 
 
 if __name__ == "__main__":
@@ -706,11 +738,21 @@ if __name__ == "__main__":
         "CDEM_EVO_DEMO_TASK",
         "生成一个极端力学冲击载荷下的二维块体 CDEM 仿真脚本，要求包含步长控制、收敛与能量监测。",
     )
-    result = run_demo(demo_task)
-    print("==== Final Utility ====")
-    print(result.get("utility"))
-    print("==== Final Script (JS) ====")
-    print(result.get("script_content", ""))
-    print("==== Feedback Log (tail) ====")
-    for ln in (result.get("feedback_log", []) or [])[-12:]:
-        print(ln)
+    mode = (os.getenv("CDEM_EVO_MODE") or "langgraph").strip().lower()
+    if mode == "game":
+        out = run_game(demo_task)
+        print("==== Final Scores ====")
+        print(out.get("scores"))
+        print("==== Final Script (JS) ====")
+        print(out.get("script_content", ""))
+        print("==== History Len ====")
+        print(out.get("history_len"))
+    else:
+        result = run_demo(demo_task)
+        print("==== Final Utility ====")
+        print(result.get("utility"))
+        print("==== Final Script (JS) ====")
+        print(result.get("script_content", ""))
+        print("==== Feedback Log (tail) ====")
+        for ln in (result.get("feedback_log", []) or [])[-12:]:
+            print(ln)

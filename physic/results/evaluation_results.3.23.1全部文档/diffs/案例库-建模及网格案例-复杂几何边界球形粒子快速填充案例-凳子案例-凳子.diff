@@ -1,0 +1,19 @@
+--- 案例库-建模及网格案例-复杂几何边界球形粒子快速填充案例-凳子案例-凳子.js (ground_truth)
++++ 案例库-建模及网格案例-复杂几何边界球形粒子快速填充案例-凳子案例-凳子.js (generated)
+@@ -1,8 +1,13 @@
+ setCurDir(getSrcDir());
+ 
+-var msh1 = imesh.importGid("dengzi.msh");
++// 导入几何模型文件
++var msh1 = imesh.importGid("example_model.msh");
+ 
++// 添加边界到粒子生成器中
+ pargen.addBound(msh1);
+ 
+-///半径是1m
+-pargen.gen(1.0);
++// 设置优化位置选项
++pargen.setValue("OptiPosOption", 1);
++
++// 对几何边界区域填充半径为2.0m的粒子
++var parmsh = pargen.gen(2.0);

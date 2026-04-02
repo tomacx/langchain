@@ -1,0 +1,129 @@
+--- 案例库-CDyna案例-块体模块案例-扩展案例-蠕变算例-单轴压缩破裂-CreepUCS.js (ground_truth)
++++ 案例库-CDyna案例-块体模块案例-扩展案例-蠕变算例-单轴压缩破裂-CreepUCS.js (generated)
+@@ -1,87 +1,60 @@
++// 设置当前工作路径为JavaScript脚本文件所在路径
+ setCurDir(getSrcDir());
+ 
+-igeo.clear();
+-imeshing.clear();
++// 打开力学计算开关
++dyna.Set("Mechanic_Cal 1");
+ 
+-doc.clearResult();
+-dyna.Clear();
++// 设置3个方向的重力加速度值(均为0)
++dyna.Set("Gravity 0.0 0.0 0.0");
+ 
+-igeo.genRectS(0,0,0,0.1,0.2,0,0.02,1);
++// 关闭大变形计算开关
++dyna.Set("Large_Displace 0");
+ 
+-imeshing.genMeshByGmsh(2);
+-
+-
+-dyna.Set("Creep_Cal 1");
+-
+-dyna.Set("Creep_G_Inherit 1");
+-
+-dyna.Set("Auto_Creep_Time 0");
+-
+-dyna.Set("Elem_Plastic_Cal_Creep 0");
+-
++// 设置计算结果的输出间隔为500步
+ dyna.Set("Output_Interval 500");
+ 
+-dyna.Set("Gravity 0 0 0");
++// 设置监测结果的输出时步为10步
++dyna.Set("Moniter_Iter 10");
+ 
+-dyna.Set("Large_Displace 0");
++// 打开虚质量计算开关
++dyna.Set("If_Virtural_Mass 1");
+ 
+-//将平台网格读入dyna内核
+-blkdyn.GetMesh(imeshing);
++// 设置虚质量时步为0.6
++dyna.Set("Virtural_Step 0.4");
+ 
+-blkdyn.CrtIFace();
+-blkdyn.UpdateIFaceMesh();
++// 允许自动在Result文件夹下输出Save文件
++dyna.Set("SaveFile_Out 1");
+ 
+-blkdyn.SetModel("burger");
++// 设置单元体积膨胀断裂应变及等效剪切断裂应变
++dyna.Set("Block_Soften_Value 0.005 0.01");
+ 
+-blkdyn.SetMat(2000,3e10, 0.3, 3e6, 1e6, 30, 10);
++// 设置单元删除选项
++dyna.Set("Elem_Kill_Option 1 0.01 0.005 1 1");
+ 
+-blkdyn.SetCreepMat(1, 3e15, 3e9, 3e15, 3e9);
++// 打开允许块体变为颗粒的开关
++dyna.Set("If_Allow_Block_To_Particles 1 1");
+ 
+-blkdyn.BindCreepMat(1, 1, 1);
++// 导入Patran格式的网格
++blkdyn.ImportGrid("patran", "rockSample.out");
+ 
++// 设置所有单元为线弹性模型
++blkdyn.SetModel("SoftenMC");
+ 
+-blkdyn.SetIModel("brittleMC");
+-blkdyn.SetIMat(1e12, 1e12, 30, 2e5, 2e5);
++// 设置组1的材料参数，分别为密度，弹性模量，泊松比，粘聚力、抗拉强度、内摩擦角、剪胀角、组号
++blkdyn.SetMatByGroup(2500, 3e10, 0.25, 3e6, 3e6, 30.0, 10.0, 1);
+ 
++// Y方向底部法向约束
++blkdyn.FixV("y", 8e-8, "y", -0.001, 0.001);
+ 
+-blkdyn.FixV("y",0.0, "y", -0.01, 0.001);
+-blkdyn.FixV("y",-2e-9, "y", 0.199,0.201);
++// Y方向顶部施加准静态竖直向下的速度载荷
++blkdyn.FixV("y", -8e-8, "y", 0.199, 0.201);
+ 
++// 设置全部节点的局部阻尼为0.8
++blkdyn.SetLocalDamp(0.8);
+ 
++// 监测典型测点的y方向的应力
++dyna.Monitor("block", "syy", 0.05, 0.2, 0);
++dyna.Monitor("block", "syy", 0.05, 0.1, 0);
+ 
+-dyna.Monitor("block","ydis", 0.00, 0.2, 0);
+-dyna.Monitor("block","ydis", 0.02, 0.2, 0);
+-dyna.Monitor("block","ydis", 0.04, 0.2, 0);
+-dyna.Monitor("block","ydis", 0.06, 0.2, 0);
+-dyna.Monitor("block","ydis", 0.08, 0.2, 0);
+-dyna.Monitor("block","ydis", 0.08, 0.2, 0);
+-dyna.Monitor("block","ydis", 0.10, 0.2, 0);
+-
+-
+-dyna.Monitor("block","syy", 0.00, 0.2, 0);
+-dyna.Monitor("block","syy", 0.02, 0.2, 0);
+-dyna.Monitor("block","syy", 0.04, 0.2, 0);
+-dyna.Monitor("block","syy", 0.06, 0.2, 0);
+-dyna.Monitor("block","syy", 0.08, 0.2, 0);
+-dyna.Monitor("block","syy", 0.08, 0.2, 0);
+-dyna.Monitor("block","syy", 0.10, 0.2, 0);
+-
+-dyna.Monitor("block","ydis", 0.05, 0.05, 0);
+-dyna.Monitor("block","ydis", 0.05, 0.10, 0);
+-dyna.Monitor("block","ydis", 0.05, 0.15, 0);
+-dyna.Monitor("block","ydis", 0.05, 0.20, 0);
+-
+-
+-dyna.Monitor("block","syy", 0.05, 0.05, 0);
+-dyna.Monitor("block","syy", 0.05, 0.10, 0);
+-dyna.Monitor("block","syy", 0.05, 0.15, 0);
+-dyna.Monitor("block","syy", 0.05, 0.20, 0);
+-
+-
+-dyna.Set("Time_Step 36.0")
+-
+-
+-dyna.Solve(50000);
+-
+-
+-
++// 计算120000步
++dyna.Solve(120000);

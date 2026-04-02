@@ -1,0 +1,29 @@
+--- 案例库-CDyna案例-块体模块案例-扩展案例-导入save文件后显示结果-SaveFileInput.js (ground_truth)
++++ 案例库-CDyna案例-块体模块案例-扩展案例-导入save文件后显示结果-SaveFileInput.js (generated)
+@@ -1,22 +1,17 @@
+ setCurDir(getSrcDir());
+ 
+ dyna.Set("Output_Interval 500");
+-
+ dyna.Set("SaveFile_Out 1");
+ 
+ blkdyn.GenBrick3D(5,5,5,10,10,10,1);
+-
+ blkdyn.SetModel("linear");
+-
+ blkdyn.SetMat(2500, 3e10, 0.2, 3e5, 1e5, 35, 15);
+-
+ blkdyn.FixV("xyz", 0.0, "y", -0.001, 0.001);
+ 
+-//dyna.Solve(10000);
++// 导入并显示保存的文件
++dyna.Restore("SaveFileInput.sav");
++dyna.PutStep();
+ 
+-for(var i = 1; i < 20; i++)
+-{
+-var str = "Result\\" + i * 500 + ".sav";
++var str = "Result\\SaveFileInput.sav";
+ dyna.Restore(str);
+ dyna.PutStep();
+-}

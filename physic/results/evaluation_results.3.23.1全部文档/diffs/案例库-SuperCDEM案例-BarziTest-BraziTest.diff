@@ -1,0 +1,96 @@
+--- 案例库-SuperCDEM案例-BarziTest-BraziTest.js (ground_truth)
++++ 案例库-SuperCDEM案例-BarziTest-BraziTest.js (generated)
+@@ -1,52 +1,60 @@
+-//设置当前工作路径为JavaScript脚本文件所在路径
+ setCurDir(getSrcDir());
+ 
+-//计算结果输出间隔为1000步
+ scdem.outputInterval = 1000;
++scdem.monitorIter = 10;
+ 
+-//打开虚质量计算开关
+-scdem.isVirtualMass = 1;
++// 设置虚拟质量参数
++scdem.isVirtualMass = 0;
+ 
+-//虚时步
+-scdem.virtualStep = 0.5;
++// 设置大型位移计算模式
++scdem.set("isLargeDisplace", 1);
+ 
+-scdem.set("isVtk", 1);
++// 设置Rayleigh阻尼系数
++scdem.set("RayleighDamp", 5e-7, 0);
+ 
+-//创建半径为2cm的圆盘
+-var msh = imesh.importGmsh("pan.msh");
++// 裂隙渗流模块参数设置
++scdem.set("Config_FracSeepage", 1);
++scdem.set("FracSeepage_Cal", 1);
++scdem.set("Seepage_Mode", 2); // 流动模式设置为气体
++scdem.set("FS_Solid_Interaction", 1); // 开启裂隙场和固体场耦合计算
++scdem.set("FS_Gas_Index", 4/3); // 气体常数值设置 
++scdem.set("FS_MaxWid", 1e-1);
++scdem.set("FS_MinWid", 0.0); // 最小开度设置为0.0
++scdem.set("FS_Frac_Start_Cal", 1); // 开启破裂才进行气体压力计算
++scdem.set("isJWLBlastGasFlow", 1); // 开启爆生气体流动
++scdem.set("GasFlowModel", 2); // 开启湍流流动模型
++
++// 设置粗糙度和气体方程参数
++scdem.set("CSRoughness", 0.001);
++scdem.set("GasEos", 2); // 采用多方方程进行气体流动计算
++scdem.set("ErosionMassThreshold", 0.01); // 删除炸药单元的临界质量比
++
++// 导入网格文件
++var msh = imesh.importGmsh("plateblast.msh");
+ scdem.getMesh(msh);
+ 
+-//设置单元模型为线弹性模量
++// 设置材料模型和参数
+ scdem.setModel("linear");
+ 
+-//设置单元的材料参数
+-scdem.setMat([2500, 1e10, 0.25, 10e6, 4e6, 40.0, 10.0]);
++scdem.setMat([2500, 5e10, 0.25, 30e6, 15e6, 45.0, 10.0]);
++scdem.setMat(1, [1000, 10e9, 0.2, 1e3, 1e3, 30, 10]); // 炸药材料参数
+ 
+-//设置交界面的模型为断裂模型
+-scdem.setIModel("FracE");
+-scdem.setIMatByElem(50);
+-scdem.setContactFractureEnergy(50,100,1,1);
++// 设置爆源
++var pos = [0.05, 0.05, 0.0025];
++scdem.setJWLBlastSource(1, 931, 2.484e9, 49.46e9, 1.891e6, 3.907, 1.118, 0.333, 5.15e9, 4160, 0.0, 1e-2, pos);
++scdem.bindJWLBlastSource(1, 1, 1);
+ 
+-//最底侧节点法向约束
+-oSel = new SelNodes(scdem);
+-oSel.box(-1e10,-0.0201,-1e10, 1e10,-0.0199,1e10);
+-scdem.setVel(oSel, "y", 0);
++// 设置接触模型和参数
++scdem.setIModel("Linear", 1);
++scdem.setIModel("FracE", 2);
++scdem.setIModel("FracE", 1, 2);
++scdem.setContactFractureEnergy(10,100);
++scdem.setContactFractureEnergy(0, 0 , 1,2);
+ 
+-//最顶侧节点施加2e-9的准静态速度载荷
+-oSel = new SelNodes(scdem);
+-oSel.box(-1e10,0.0199,-1e10, 1e10,0.0201,1e10);
+-scdem.setVel(oSel, "y", -1e-8);
+-
+-//z方向左右两侧固定
+-oSel = new SelNodes(scdem);
+-oSel.box(-1e10,-1e10,-1e10, 1e10,1e10,1e10);
+-scdem.setVel(oSel, "z", 0);
+-
+-//计算10万步
++// 计算
+ scdem.solveGpu(100000);
+ 
+-//释放GPU端内存
++// 释放GPU内存
+ scdem.releaseGpuMem();
+ 
+-//打印提示信息
+ print("Solution Finished");

@@ -1,0 +1,104 @@
+--- 案例库-CDyna案例-块体模块案例-扩展案例-蠕变算例-恒定载荷看蠕变-Creep.js (ground_truth)
++++ 案例库-CDyna案例-块体模块案例-扩展案例-蠕变算例-恒定载荷看蠕变-Creep.js (generated)
+@@ -4,71 +4,47 @@
+ imeshing.clear();
+ 
+ doc.clearResult();
+-dyna.Clear();
++dyna.clear();
+ 
+-igeo.genRectS(0,0,0,1,0.1,0,0.05,1);
++igeo.genRectS(0, 0, 0, 1, 0.1, 0, 0.05, 1);
+ 
+ imeshing.genMeshByGmsh(2);
+ 
++dyna.set("Creep_Cal", 1);
++dyna.set("Creep_G_Inherit", 1);
++dyna.set("Auto_Creep_Time", 0);
++dyna.set("Element_Plastic_Creep", 0);
++dyna.set("Output_Interval", 500);
++dyna.set("Gravity", 0, 0, 0);
++dyna.set("Large_Displacement", 0);
+ 
++blkdyn.getMesh(imeshing);
+ 
+-dyna.Set("Creep_Cal 1");
++blkdyn.setModel("burger");
++blkdyn.setMaterial(2000, 3e9, 0.3, 8e6, 5e6, 30, 10);
+ 
+-dyna.Set("Creep_G_Inherit 1");
++blkdyn.setCreepMaterial(1, 3e12, 3e9, 1e11, 3e9);
++blkdyn.bindCreepMaterial(1, 1, 1);
+ 
+-dyna.Set("Auto_Creep_Time 0");
++blkdyn.fixVelocity("x", 0.0, "x", -0.01, 0.001);
+ 
+-dyna.Set("Elem_Plastic_Cal_Creep 0");
++var values = [1e6, 0, 0];
++var gradient = [0, 0, 0, 0, 0, 0, 0, 0, 0];
+ 
+-dyna.Set("Output_Interval 500");
++blkdyn.applyConditionByCoord("face_force", values, gradient, 0.999, 1.01, -1, 1, -1, 1, false);
+ 
+-dyna.Set("Gravity 0 0 0");
++dyna.monitor("block", "xdis", 0.2, 0, 0);
++dyna.monitor("block", "xdis", 0.4, 0, 0);
++dyna.monitor("block", "xdis", 0.6, 0, 0);
++dyna.monitor("block", "xdis", 0.8, 0, 0);
++dyna.monitor("block", "xdis", 1.0, 0, 0);
+ 
+-dyna.Set("Large_Displace 0");
++dyna.monitor("block", "sxx", 0.2, 0, 0);
++dyna.monitor("block", "sxx", 0.4, 0, 0);
++dyna.monitor("block", "sxx", 0.6, 0, 0);
++dyna.monitor("block", "sxx", 0.8, 0, 0);
++dyna.monitor("block", "sxx", 1.0, 0, 0);
+ 
+-//将平台网格读入dyna内核
+-blkdyn.GetMesh(imeshing);
++dyna.set("Time_Step", 36.0);
+ 
+-blkdyn.SetModel("burger");
+-
+-blkdyn.SetMat(2000,3e9, 0.3, 8e6, 5e6, 30, 10);
+-
+-
+-blkdyn.SetCreepMat(1, 3e12, 3e9, 1e11, 3e9);
+-
+-blkdyn.BindCreepMat(1, 1, 1);
+-
+-
+-
+-blkdyn.FixV("x",0.0, "x", -0.01, 0.001);
+-
+-
+-//设置施加的三个基础值
+-var values = new Array(1e6, 0, 0);
+-
+-//设置9个变化梯度
+-var gradient = new Array(0, 0, 0, 0, 0, 0, 0, 0, 0);
+-
+-///若单元面心位于坐标范围内，则施加面力。
+-blkdyn.ApplyConditionByCoord("face_force", values, gradient, 0.999, 1.01, -1, 1, -1, 1, false);
+-
+-dyna.Monitor("block","xdis", 0.2, 0, 0);
+-dyna.Monitor("block","xdis", 0.4, 0, 0);
+-dyna.Monitor("block","xdis", 0.6, 0, 0);
+-dyna.Monitor("block","xdis", 0.8, 0, 0);
+-dyna.Monitor("block","xdis", 1.0, 0, 0);
+-
+-dyna.Monitor("block","sxx", 0.2, 0, 0);
+-dyna.Monitor("block","sxx", 0.4, 0, 0);
+-dyna.Monitor("block","sxx", 0.6, 0, 0);
+-dyna.Monitor("block","sxx", 0.8, 0, 0);
+-dyna.Monitor("block","sxx", 1.0, 0, 0);
+-
+-
+-dyna.Set("Time_Step 36.0")
+-
+-
+-dyna.Solve(50000);
+-
+-
+-
++dyna.solve(50000);

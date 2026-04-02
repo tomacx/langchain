@@ -1,0 +1,252 @@
+# Failure Analysis: 案例库-CDyna案例-粒子模块案例-扩展案例-PCMM-射流破岩-command.js
+
+## Query
+请编写一个CDyna仿真脚本，实现PCMM-射流破岩-command，并输出必要的结果与监测。
+
+## Generated Code
+```javascript
+// 设置工作路径为脚本文件所在路径
+setCurDir(getSrcDir());
+
+// 清除dyna模块数据
+dyna.Clear();
+
+// 清除平台数据
+doc.ClearResult();
+
+// 设置结果的输出间隔为1000步
+dyna.Set("Output_Interval 1000");
+
+// 关闭虚拟质量开关
+dyna.Set("If_Virtural_Mass 0");
+
+// 打开大变形计算开关
+dyna.Set("Large_Displace 1");
+
+// 设置3个方向的重力加速度为-9.8m/s^2（向下）
+dyna.Set("Gravity 0 -9.8 0");
+
+// 设置颗粒与刚性面接触模型采用全局参数
+dyna.Set("If_Contact_Use_GlobMat 1 2 1e9 1e9 0.0 0.0 0.0");
+
+// 创建规则排布的颗粒，组1，模拟水体
+pdyna.RegularCreateByCoord(1, 1, 0.1, 0.1, 10, 0.1, 10, 0.1, 9.9);
+
+// 导入刚性面（边界）
+rdface.Import("ansys", "bound.dat");
+
+// 设置颗粒材料参数，依次为密度、弹性模量、泊松比、抗拉强度、粘聚力、内摩擦角、局部阻尼、粘性阻尼系数
+pdyna.SetMat(1000, 5e7, 0.25, 0.0, 0.0, 0.0001, 0.01, 0);
+
+// 设置mpm背景网格，3维，单元尺寸为0.5
+mpm.SetBackGrid(3, 0.5, [-0.5, -0.5, -0.5], [62, 42, 22]);
+
+// 设置mpm的本构模型为理想弹塑性模型
+mpm.SetModelByGroup("DP", 1, 2);
+
+// 计算时间步长设置为0.2ms
+dyna.Set("Time_Step 2.0e-4");
+
+// 模拟溃坝过程，计算时间为20秒
+dyna.DynaCycle(20);
+```
+
+## Ground Truth
+```javascript
+setCurDir(getSrcDir());
+
+dyna.Set("Mechanic_Cal 1");
+
+dyna.Set("UnBalance_Ratio 1e-5"); 
+
+dyna.Set("Gravity 0.0 0.0 0.0");
+
+dyna.Set("Large_Displace 1");
+
+dyna.Set("Time_Step 1.0e-4");
+
+dyna.Set("Renew_Interval 100");
+
+dyna.Set("If_Virtural_Mass 0");
+
+dyna.Set("Virtural_Step 0.4");
+
+dyna.Set("Output_Interval 500");
+
+dyna.Set("Particle_Cal_Type 2");
+
+dyna.Set("PCMM_Elem_Tol 5e-5");
+
+// 当颗粒超过一定范围，删除颗粒
+dyna.Set("Particle_Out_Kill 1 -0.101 0.016 -0.012 0.012 -0.1 0.05 0");
+
+
+
+//设置PSEM邻居搜索距离
+dyna.Set("Contact_Detect_Tol 1.0e-7");
+dyna.Set("Renew_Interval 100");
+
+//////////////////////////////////////////////////////颗粒流设置区
+
+//颗粒流文件读入
+pdyna.Import("gid", "0.2mm-15cm-long.msh");
+
+pdyna.SetModel("brittleMC");
+
+pdyna.SetMat(2500,5e9,0.25, 0.1e6,0.5e6,30, 0.05,0.0, 2,2); 
+pdyna.SetMat(1000,2e9,0.25, 0,0,0, 0.05,0.0, 1,1); 
+
+
+// 初始化速度等
+var fvalue = new Array(800, 0.0, 0.0);
+pdyna.InitCondByGroup ("velocity", fvalue, 1,1);
+
+
+// 位移边界条件设置x/y/z/xy/yz/zx/xyz/
+pdyna.FixVByCoord("xy", 0, -100, 100, -10,-0.0098, -100,100);
+pdyna.FixVByCoord("xy", 0, -100, 100, 0.0098, 11, -100,100);
+pdyna.FixVByCoord("xy", 0, 0.0148, 100, -11, 11, -100,100);
+
+
+
+// 颗粒弹簧元设置
+// 连续体的性质，bulk ,shear, visc，组号下限，上限
+pcmm.SetKGVByGroup(2e9, 0, 1e-3, 1,1);
+
+// 指定PSEM的模型，1-线弹性，2-DP模型，3-Mohr-Coulomb模型
+pcmm.SetModelByGroup("MC", 1,2);
+
+
+dyna.Monitor("particle", "pa_xvel", 0, 0.0001, 0);
+dyna.Monitor("particle", "pa_xvel", 0.005, 0.0001, 0);
+dyna.Monitor("particle", "pa_xvel", 0.01, 0.0001, 0);
+dyna.Monitor("particle", "pa_xvel", 0.0012, 0.0001, 0);
+dyna.Monitor("particle", "pa_xvel", 0.0014, 0.0001, 0);
+dyna.Monitor("particle", "pa_xvel", 0.0016, 0.0001, 0);
+dyna.Monitor("particle", "pa_xvel", 0.0018, 0.0001, 0);
+dyna.Monitor("particle", "pa_xvel", 0.0020, 0.0001, 0);
+
+
+
+// 程序自动计算时步
+dyna.TimeStepCorrect();
+
+dyna.Solve(1000000);
+dyna.Save("final.sav");
+```
+
+## Unified Diff
+```diff
+--- 案例库-CDyna案例-粒子模块案例-扩展案例-PCMM-射流破岩-command.js (ground_truth)
++++ 案例库-CDyna案例-粒子模块案例-扩展案例-PCMM-射流破岩-command.js (generated)
+@@ -1,80 +1,44 @@
++// 设置工作路径为脚本文件所在路径
+ setCurDir(getSrcDir());
+ 
+-dyna.Set("Mechanic_Cal 1");
++// 清除dyna模块数据
++dyna.Clear();
+ 
+-dyna.Set("UnBalance_Ratio 1e-5"); 
++// 清除平台数据
++doc.ClearResult();
+ 
+-dyna.Set("Gravity 0.0 0.0 0.0");
++// 设置结果的输出间隔为1000步
++dyna.Set("Output_Interval 1000");
+ 
++// 关闭虚拟质量开关
++dyna.Set("If_Virtural_Mass 0");
++
++// 打开大变形计算开关
+ dyna.Set("Large_Displace 1");
+ 
+-dyna.Set("Time_Step 1.0e-4");
++// 设置3个方向的重力加速度为-9.8m/s^2（向下）
++dyna.Set("Gravity 0 -9.8 0");
+ 
+-dyna.Set("Renew_Interval 100");
++// 设置颗粒与刚性面接触模型采用全局参数
++dyna.Set("If_Contact_Use_GlobMat 1 2 1e9 1e9 0.0 0.0 0.0");
+ 
+-dyna.Set("If_Virtural_Mass 0");
++// 创建规则排布的颗粒，组1，模拟水体
++pdyna.RegularCreateByCoord(1, 1, 0.1, 0.1, 10, 0.1, 10, 0.1, 9.9);
+ 
+-dyna.Set("Virtural_Step 0.4");
++// 导入刚性面（边界）
++rdface.Import("ansys", "bound.dat");
+ 
+-dyna.Set("Output_Interval 500");
++// 设置颗粒材料参数，依次为密度、弹性模量、泊松比、抗拉强度、粘聚力、内摩擦角、局部阻尼、粘性阻尼系数
++pdyna.SetMat(1000, 5e7, 0.25, 0.0, 0.0, 0.0001, 0.01, 0);
+ 
+-dyna.Set("Particle_Cal_Type 2");
++// 设置mpm背景网格，3维，单元尺寸为0.5
++mpm.SetBackGrid(3, 0.5, [-0.5, -0.5, -0.5], [62, 42, 22]);
+ 
+-dyna.Set("PCMM_Elem_Tol 5e-5");
++// 设置mpm的本构模型为理想弹塑性模型
++mpm.SetModelByGroup("DP", 1, 2);
+ 
+-// 当颗粒超过一定范围，删除颗粒
+-dyna.Set("Particle_Out_Kill 1 -0.101 0.016 -0.012 0.012 -0.1 0.05 0");
++// 计算时间步长设置为0.2ms
++dyna.Set("Time_Step 2.0e-4");
+ 
+-
+-
+-//设置PSEM邻居搜索距离
+-dyna.Set("Contact_Detect_Tol 1.0e-7");
+-dyna.Set("Renew_Interval 100");
+-
+-//////////////////////////////////////////////////////颗粒流设置区
+-
+-//颗粒流文件读入
+-pdyna.Import("gid", "0.2mm-15cm-long.msh");
+-
+-pdyna.SetModel("brittleMC");
+-
+-pdyna.SetMat(2500,5e9,0.25, 0.1e6,0.5e6,30, 0.05,0.0, 2,2); 
+-pdyna.SetMat(1000,2e9,0.25, 0,0,0, 0.05,0.0, 1,1); 
+-
+-
+-// 初始化速度等
+-var fvalue = new Array(800, 0.0, 0.0);
+-pdyna.InitCondByGroup ("velocity", fvalue, 1,1);
+-
+-
+-// 位移边界条件设置x/y/z/xy/yz/zx/xyz/
+-pdyna.FixVByCoord("xy", 0, -100, 100, -10,-0.0098, -100,100);
+-pdyna.FixVByCoord("xy", 0, -100, 100, 0.0098, 11, -100,100);
+-pdyna.FixVByCoord("xy", 0, 0.0148, 100, -11, 11, -100,100);
+-
+-
+-
+-// 颗粒弹簧元设置
+-// 连续体的性质，bulk ,shear, visc，组号下限，上限
+-pcmm.SetKGVByGroup(2e9, 0, 1e-3, 1,1);
+-
+-// 指定PSEM的模型，1-线弹性，2-DP模型，3-Mohr-Coulomb模型
+-pcmm.SetModelByGroup("MC", 1,2);
+-
+-
+-dyna.Monitor("particle", "pa_xvel", 0, 0.0001, 0);
+-dyna.Monitor("particle", "pa_xvel", 0.005, 0.0001, 0);
+-dyna.Monitor("particle", "pa_xvel", 0.01, 0.0001, 0);
+-dyna.Monitor("particle", "pa_xvel", 0.0012, 0.0001, 0);
+-dyna.Monitor("particle", "pa_xvel", 0.0014, 0.0001, 0);
+-dyna.Monitor("particle", "pa_xvel", 0.0016, 0.0001, 0);
+-dyna.Monitor("particle", "pa_xvel", 0.0018, 0.0001, 0);
+-dyna.Monitor("particle", "pa_xvel", 0.0020, 0.0001, 0);
+-
+-
+-
+-// 程序自动计算时步
+-dyna.TimeStepCorrect();
+-
+-dyna.Solve(1000000);
+-dyna.Save("final.sav");
++// 模拟溃坝过程，计算时间为20秒
++dyna.DynaCycle(20);
+```

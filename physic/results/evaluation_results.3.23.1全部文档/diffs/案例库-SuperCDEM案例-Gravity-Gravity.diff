@@ -1,0 +1,123 @@
+--- 案例库-SuperCDEM案例-Gravity-Gravity.js (ground_truth)
++++ 案例库-SuperCDEM案例-Gravity-Gravity.js (generated)
+@@ -1,82 +1,57 @@
+-//设置文件路径
++// 设置当前工作路径为JavaScript脚本文件所在路径
+ setCurDir(getSrcDir());
+ 
+-// 设置系统不平衡率为1e-4
+-scdem.set("ubr", 1e-4);
++// 计算结果输出间隔为2000步
++scdem.outputInterval = 2000;
+ 
+-//设置云图更新间隔
+-scdem.set("outputInterval", 100);
++scdem.monitorIter = 100;
+ 
+-//关闭大变形开关
++// 打开虚质量计算开关
++scdem.isVirtualMass = 1;
++
++// 虚时步
++scdem.virtualStep = 0.5;
++
+ scdem.set("isLargeDisplace", 0);
+ 
+-//打开虚质量开关
+-scdem.set("isVirtualMass", 1);
++// 创建半径为2cm的圆盘
++var msh = imesh.importGmsh("pan-300000.msh"); // 可更换文件中不同网格数量的网格文件
++scdem.getMesh(msh);
+ 
+-//设置虚时步
+-scdem.set("virtualStep", 0.8);
++// 设置单元模型为线弹性模量
++scdem.setModel("linear");
+ 
+-scdem.gravity = [0,0,-9.8];
++// 设置单元的材料参数
++scdem.setMat([2700, 60e9, 0.2, 25e6, 15e6, 40,10]);
+ 
+-//导入计算网格
+-var msh1 = imesh.importAnsys("200324tet780.dat");
+-scdem.getMesh(msh1);
++// 设置交界面的模型为断裂模型
++scdem.setIModel("FracE");
++scdem.setContactFractureEnergy(5,50);
++scdem.setIMatByElem(10);
+ 
+-//施加单元材料参数(含单元模型设置)
+-scdem.setModel("linear");
+-oSel = new SelElems(scdem);
+-oSel.box(-0.1,-0.1,-0.1,10.1,10.1,10.1);
+-oMat = [2500, 1e9, 0.25, 1.35e4, 0.68e4, 47, 10];
+-scdem.setMat(oSel, oMat);
++// 最底侧节点法向约束
++oSel = new SelNodes(scdem);
++oSel.box(-1e10,-0.0301,-1e10, 1e10,-0.0299,1e10);
++scdem.setVel(oSel, "y", 0);
+ 
+-//施加界面材料参数(含接触面模型设置)
+-scdem.setIModel("linear");
+-scdem.setIMatByElem(50);
++// 最顶侧节点施加2e-9的准静态速度载荷
++oSel = new SelNodes(scdem);
++oSel.box(-1e10,0.0299,-1e10, 1e10,0.0301,1e10);
++scdem.setVel(oSel, "y", -5e-9);
+ 
+-//施加位移边界条件(固定底部即四周)
++// 区域监控
+ oSel = new SelNodes(scdem);
+-oSel.box(-0.1,-0.1,-0.1,0.1,10.1,10.1);
+-scdem.setVel(oSel, "x", 0);
+-oSel = new SelNodes(scdem);
+-oSel.box(9.9,-0.1,-0.1,10.1,10.1,10.1);
+-scdem.setVel(oSel, "x", 0);
+-oSel = new SelNodes(scdem);
+-oSel.box(-0.1,-0.1,-0.1,10.1,0.1,10.1);
+-scdem.setVel(oSel, "y", 0);
+-oSel = new SelNodes(scdem);
+-oSel.box(-0.1,9.9,-0.1,10.1,10.1,10.1);
+-scdem.setVel(oSel, "y", 0);
+-oSel = new SelNodes(scdem);
+-oSel.box(-0.1,-0.1,-0.1,10.1,10.1,0.1);
+-scdem.setVel(oSel, "z", 0);
++oSel.box(-1e10,0.0299,-1e10, 1e10,0.0301,1e10);
++scdem.regionMonitor("node", "yForce",1,oSel);
+ 
++// 局部阻尼
++scdem.localDamp = 0.8;
+ 
+-//施加监测点
+-scdem.monitor("node", "xAcc", 5,5,5);
+-scdem.monitor("node", "yAcc", 5,5,5);
+-scdem.monitor("node", "zAcc", 5,5,5);
++// 计算步数
++scdem.solveGpu(100000);
+ 
+-scdem.monitor("node", "xVel", 5,5,5);
+-scdem.monitor("node", "yVel", 5,5,5);
+-scdem.monitor("node", "zVel", 5,5,5);
+-
+-scdem.monitor("node", "xDis", 5,5,5);
+-scdem.monitor("node", "yDis", 5,5,5);
+-scdem.monitor("node", "zDis", 5,5,5);
+-
+-scdem.monitor("node", "sxx", 5,5,5);
+-scdem.monitor("node", "syy", 5,5,5);
+-scdem.monitor("node", "szz", 5,5,5);
+-
+-scdem.monitor("node", "exx", 5,5,5);
+-scdem.monitor("node", "eyy", 5,5,5);
+-scdem.monitor("node", "ezz", 5,5,5);
+-
+-//求解至稳定
+-scdem.solveGpu();
+-
+-//释放GPU端内存
++// 释放GPU端内存
+ scdem.releaseGpuMem();
+ 
+-//打印提示信息
++// 打印提示信息
+ print("Solution Finished");

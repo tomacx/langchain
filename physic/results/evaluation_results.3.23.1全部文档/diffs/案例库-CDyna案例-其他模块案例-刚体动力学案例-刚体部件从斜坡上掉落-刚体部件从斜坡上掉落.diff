@@ -1,0 +1,94 @@
+--- 案例库-CDyna案例-其他模块案例-刚体动力学案例-刚体部件从斜坡上掉落-刚体部件从斜坡上掉落.js (ground_truth)
++++ 案例库-CDyna案例-其他模块案例-刚体动力学案例-刚体部件从斜坡上掉落-刚体部件从斜坡上掉落.js (generated)
+@@ -3,63 +3,58 @@
+ dyna.Clear();
+ imeshing.clear();
+ 
++// 设置时间步长和虚拟质量参数
++dyna.Set("Time_Step", 1e-3);
++dyna.Set("If_Virtural_Mass", 0);
+ 
+-dyna.Set("Time_Step 1e-3");
++// 输出间隔设置
++dyna.Set("Output_Interval", 200);
+ 
+-dyna.Set("If_Virtural_Mass 0");
++// 大位移非线性分析
++dyna.Set("Large_Displace", 1);
+ 
+-dyna.Set("Output_Interval 200");
++// 接触更新参数
++dyna.Set("If_Renew_Contact", 1);
++dyna.Set("Renew_Interval", 10);
+ 
+-dyna.Set("Large_Displace 1");
++// 设置接触方案和能量计算选项
++dyna.Set("Block_Rdface_Contact_Scheme", 3);
++dyna.Set("If_Cal_EE_Contact", 1);
+ 
+-dyna.Set("If_Renew_Contact 1");
+-
+-dyna.Set("Renew_Interval 10");
+-
+-dyna.Set("Block_Rdface_Contact_Scheme 3");
+-
+-dyna.Set("If_Cal_EE_Contact 1");
+-
+-
+-imeshing.genBrick3D("1", 10, 1, 10, 20, 2, 20, -5, -2, -5);
+-
++// 创建斜坡网格
++imeshing.genBrick3D("slope", 10, 1, 10, 20, 2, 20, -5, -2, -5);
+ blkdyn.GetMesh(imeshing);
+ 
++// 设置斜坡旋转角度
++blkdyn.RotateGrid(20, [0, 0, 0], [0, 0, 1], 1, 11);
+ 
+-blkdyn.RotateGrid(20, [0,0,0], [0,0,1], 1,11);
+-
+-
+-
+-
++// 创建边界条件
+ blkdyn.CrtBoundIFaceByGroup(1);
+-
+ blkdyn.UpdateIFaceMesh();
+ 
++// 设置材料模型和参数
+ blkdyn.SetModel("linear");
+ blkdyn.SetMat(1500, 1e7, 0.25, 1e6, 1e6, 15, 10);
+ 
++// 设置断裂模型和局部阻尼
+ blkdyn.SetIModel("brittleMC");
+-
+ blkdyn.SetIStiffByElem(10);
+ blkdyn.SetIStrengthByElem(1);
+-
+ blkdyn.SetLocalDamp(0.01);
+ 
++// 固定边界条件
+ blkdyn.FixV("xyz", 0.0, "x", -6, -4.999);
+-blkdyn.FixV("xyz", 0.0, "x", 4.999,6);
++blkdyn.FixV("xyz", 0.0, "x", 4.999, 6);
++blkdyn.FixV("xyz", 0, "x", -100, 100);
+ 
+-blkdyn.FixV("xyz",0,"x",-100,100);
+-
+-rdface.Import("ansys","rdfacepartRota.dat"); ///rdfacepartRota.dat
+-
++// 导入刚性面数据
++rdface.Import("ansys", "rdfacepartRota.dat");
+ rdface.CrtPart("feng");
+ 
+-rdface.SetPartProp(1.172213e+03, [1.474390e-05,1.463637e-01,3.534710e-01], [1.701473e+01,1.582510e+01,1.582546e+01,-1.584523e-03,1.202272e+00,-1.546533e-03 ], "feng");
+-
+-
++// 设置刚性面属性和局部阻尼
++rdface.SetPartProp(1.172213e+03, [1.474390e-05, 1.463637e-01, 3.534710e-01], [1.701473e+01, 1.582510e+01, 1.582546e+01, -1.584523e-03, 1.202272e+00, -1.546533e-03], "feng");
+ rdface.SetPartLocalDamp(0.05, 0.05);
+ 
+-
++// 时间步长校正和求解
+ dyna.TimeStepCorrect(0.1);
+-
+ dyna.Solve(100000);

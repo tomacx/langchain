@@ -1,0 +1,28 @@
+setCurDir(getSrcDir());
+
+// 导入刚性面模型
+rdface.Import("gid","GidGrp.msh");
+
+// 创建颗粒离散元模型
+pdyna.CreateByCoord(4000, 1,2, 0.2, 0.3,0.5, [0.5, 9.5],[ 0.5,9.5], [0.5, 4]);
+
+// 设置颗粒离散元模型参数
+pdyna.SetModel("brittleMC");
+pdyna.SetMat(2500, 5e7, 0.3, 0,0,10, 0, 0.01);
+
+// 根据几何自动创建Part
+var nTotal = rdface.CrtPartAuto("geo");
+
+print(nTotal);
+
+// 设置刚体动力学参数
+rdface.SetPartLocalDamp(0.01, 0.01);
+
+// 添加监测点
+dyna.Monitor("rdface","rg_PartVelZ", 1,0,0);
+dyna.Monitor("rdface","rg_PartDisZ", 1,0,0);
+
+// 设置时间步长和求解参数
+dyna.Set("Time_Step 1e-3");
+dyna.TimeStepCorrect(1.0);
+dyna.Solve(100000);

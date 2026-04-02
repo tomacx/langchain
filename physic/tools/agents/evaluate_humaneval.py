@@ -13,7 +13,11 @@ try:
     from langchain_openai import ChatOpenAI
 except Exception:
     ChatOpenAI = None
-from langchain.agents import AgentExecutor, create_tool_calling_agent
+try:
+    from langchain.agents import AgentExecutor, create_tool_calling_agent
+except Exception:
+    AgentExecutor = None
+    create_tool_calling_agent = None
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 
 try:
@@ -73,7 +77,18 @@ def _build_llm(model_name: str):
     return ChatOpenAI(model_name=model_name, api_key=api_key, base_url=base_url, temperature=0.0)
 
 
-def _build_agent_executor(llm, tools: List[Any], system_prompt: str) -> AgentExecutor:
+class SimpleExecutor:
+    def __init__(self, llm, prompt):
+        self.llm = llm
+        self.prompt = prompt
+    def invoke(self, inputs: Dict[str, Any]):
+        msgs = self.prompt.format_messages(input=inputs.get("input", ""), agent_scratchpad=[])
+        resp = self.llm.invoke(msgs)
+        content = getattr(resp, "content", "") or ""
+        return {"output": content, "messages": msgs}
+
+
+def _build_agent_executor(llm, tools: List[Any], system_prompt: str) -> Any:
     prompt = ChatPromptTemplate.from_messages(
         [
             ("system", system_prompt),
@@ -81,8 +96,10 @@ def _build_agent_executor(llm, tools: List[Any], system_prompt: str) -> AgentExe
             MessagesPlaceholder(variable_name="agent_scratchpad"),
         ]
     )
-    agent_runnable = create_tool_calling_agent(llm=llm, tools=tools, prompt=prompt)
-    return AgentExecutor(agent=agent_runnable, tools=tools, verbose=False)
+    if create_tool_calling_agent and AgentExecutor:
+        agent_runnable = create_tool_calling_agent(llm=llm, tools=tools, prompt=prompt)
+        return AgentExecutor(agent=agent_runnable, tools=tools, verbose=False)
+    return SimpleExecutor(llm=llm, prompt=prompt)
 
 
 def _extract_agent_output(result: Any) -> str:
@@ -132,7 +149,7 @@ def evaluate_humaneval(
         return {"ok": False, "error": "数据集任务列表为空"}
 
     llm = None
-    executor: Optional[AgentExecutor] = None
+    executor: Optional[Any] = None
     if use_agent:
         if not (os.environ.get("CDEM_LLM_PROVIDER") or "").strip():
             os.environ["CDEM_LLM_PROVIDER"] = "ollama"

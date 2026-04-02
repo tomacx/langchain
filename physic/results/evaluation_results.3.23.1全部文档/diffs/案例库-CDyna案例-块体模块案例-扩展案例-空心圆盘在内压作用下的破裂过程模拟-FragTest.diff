@@ -1,0 +1,78 @@
+--- 案例库-CDyna案例-块体模块案例-扩展案例-空心圆盘在内压作用下的破裂过程模拟-FragTest.js (ground_truth)
++++ 案例库-CDyna案例-块体模块案例-扩展案例-空心圆盘在内压作用下的破裂过程模拟-FragTest.js (generated)
+@@ -5,38 +5,51 @@
+ dyna.Clear();
+ doc.clearResult();
+ 
+-var id1 = igeo.genCircle(0,0,0,1,0.05);
+-var id2 = igeo.genCircle(0,0,0,0.2,0.02);
++// 关闭力学计算开关
++dyna.Set("Mechanic_Cal 0");
+ 
+-var id = igeo.genSurface([id1, id2], 1);
++// 包含裂隙渗流模块，开辟相应内存
++dyna.Set("Config_FracSeepage 1");
++
++// 打开裂隙渗流计算开关
++dyna.Set("FracSeepage_Cal 1");
++
++// 设置3个方向的重力加速度
++dyna.Set("Gravity 10 0.0 0.0");
++
++// 设置结果输出时步
++dyna.Set("Output_Interval 2000");
++
++igeo.genRectS(0, 0, 0, 500, 500, 0, 10, 1);
+ 
+ imeshing.genMeshByGmsh(2);
+ 
+-dyna.Set("If_Virtural_Mass 0");
+-dyna.Set("Large_Displace 1");
+-dyna.Set("If_Renew_Contact 1");
+-dyna.Set("Interface_Soften_Value 1e-3 1e-3");
+-dyna.Set("Output_Interval 500");
++fracsp.GetMesh(imeshing);
+ 
+-blkdyn.ImportGrid("gmsh", "GDEM.msh");
++// 设置裂隙渗流参数，依次为密度、体积模量、渗透系数、裂隙初始开度、组号下限及组号上限
++fracsp.SetPropByGroup(1000.0, 1e7, 12e-9, 12e-6, 1, 11);
+ 
+-blkdyn.CrtIFace();
+-blkdyn.UpdateIFaceMesh();
++// 设置特定区域的渗流参数，使用圆柱体定义区域
++fracsp.SetPropByCylinder(1000, 1e7, 12e-37, 12e-20, 150, 180, -1, 150, 180, 1.0, 0, 30);
++fracsp.SetPropByCylinder(1000, 1e7, 12e-37, 12e-20, 450, 350, -1, 450, 350, 1.0, 0, 60);
++fracsp.SetPropByCylinder(1000, 1e7, 12e-37, 12e-20, 310, 250, -1, 310, 250, 1.0, 0, 60);
++fracsp.SetPropByCylinder(1000, 1e7, 12e-37, 12e-20, 250, 400, -1, 250, 400, 1.0, 0, 60);
+ 
+-blkdyn.SetModel("linear");
+-blkdyn.SetMat(2500,3e10, 0.25, 1e7, 1e7, 35, 15);
++// 获取节点ID
++var id1 = fracsp.GetNodeID(50, 250, 0);
++var id2 = fracsp.GetNodeID(450, 250, 0);
+ 
+-blkdyn.SetIModel("SSMC");
+-blkdyn.SetIStiffByElem(1);
+-blkdyn.SetIStrengthByElem();
++// 获取节点坐标值
++var xCoord1 = fracsp.GetNodeValue(id1, "Coord", 1);
++var yCoord1 = fracsp.GetNodeValue(id1, "Coord", 2);
++var zCoord1 = fracsp.GetNodeValue(id1, "Coord", 3);
+ 
+-blkdyn.SetLocalDamp(0.01);
++var xCoord2 = fracsp.GetNodeValue(id2, "Coord", 1);
++var yCoord2 = fracsp.GetNodeValue(id2, "Coord", 2);
++var zCoord2 = fracsp.GetNodeValue(id2, "Coord", 3);
+ 
+-dyna.TimeStepCorrect(0.5);
++// 定义三个方向梯度值
++var fArrayGrad = [0.0, 0.0, 0.0];
+ 
+-blkdyn.ApplyConditionByCylinder("face_force", [0,0, -1e8], [0,0,0,0,0,0,0,0,0], 0,0,-1,0,0,1,0.19, 0.21, true);
+-
+-dyna.Solve(3000);
+-
+-//输出破裂块度信息
+-blkdyn. ExportGradationCurveByGroup (1,1);
++// 模型底部施加1MPa的水压力
++fracsp.ApplyPressure(1e6, xCoord1, yCoord1, zCoord1);

@@ -1,0 +1,66 @@
+//设置当前工作路径为JavaScript脚本文件所在路径
+setCurDir(getSrcDir());
+
+//关闭力学计算开关
+dyna.Set("Mechanic_Cal 0");
+
+//设置三个方向的重力加速度，均为0
+dyna.Set("Gravity 0 0.0 0");
+
+//关闭大变形计算开关
+dyna.Set("Large_Displace 1");
+
+//设置计算结果的输出间隔为1000步
+dyna.Set("Output_Interval 100");
+
+//打开虚质量计算开关
+dyna.Set("If_Virtural_Mass 0");
+
+dyna.Set("If_Cal_Particle 1");
+
+
+//包含孔隙渗流计算模块，开辟相应内存
+dyna.Set("Config_PoreSeepage 1");
+
+//关闭孔隙渗流计算开关
+dyna.Set("PoreSeepage_Cal 1");
+
+
+//导入gid格式的网格文件，孔隙渗流
+blkdyn.ImportGrid("gid","grid.msh");
+
+
+//定义X、Y、Z三个方向的渗透系数
+var arrayK = new Array(1e-6, 1e-6, 1e-6);
+
+//指定坐标控制范围内的孔隙渗流参数，依次为流体密度、体积模量、饱和度、孔隙率、渗透系数、比奥系数
+poresp.SetPropByCoord (1000.0, 1e7, 0.0, 0.01, arrayK, 1.0, -500, 500, -500, 500, -500, 500);
+
+
+var id = blkdyn.GetNodeID(0.5, 0.5, 0);
+
+var xcoord = blkdyn.GetNodeValue(id, "Coord0", 1);
+var ycoord = blkdyn.GetNodeValue(id, "Coord0", 2);
+var zcoord = blkdyn.GetNodeValue(id, "Coord0", 3);
+print("xcoord: ", xcoord, "ycoord: ", ycoord,"zcoord: ", zcoord);
+
+poresp.ApplyConditionByCoord("pp", 1e6, [0,0,0], xcoord - 1e-3, xcoord + 1e-3,  ycoord - 1e-3, ycoord + 1e-3,  zcoord - 1e-3, zcoord + 1e-3, false);
+
+pdyna.Import("gid","particle.msh");
+
+pdyna.SetModel("brittleMC");
+pdyna.SetMat(2500, 3e10, 0.25, 1e5, 1e5, 35, 0.0, 0.1);
+
+//参数意义，耦合模式2，渗透率计算系数，动力粘度、最大渗透系数、最小孔隙率、最后一个参数在模式2下无意义
+dyna.Set("Par_PoreSp_Couple_Option 2 1.0 1e-3 1e-2  1e-2 1.0");
+
+
+dyna.Set("Time_Step 1e-6");
+
+
+//求解4000步
+dyna.Solve(4000);
+
+
+//打印提示信息
+print("Solution Finished");

@@ -1,0 +1,64 @@
+--- 案例库-CDyna案例-冲击波模块案例-流固简单耦合-流固简单耦合.js (ground_truth)
++++ 案例库-CDyna案例-冲击波模块案例-流固简单耦合-流固简单耦合.js (generated)
+@@ -1,40 +1,33 @@
+ setCurDir(getSrcDir());
+ 
++dyna.Clear();
+ 
+-dyna.Set("Output_Interval 100");
+-dyna.Set("If_Virtural_Mass 0");
+-dyna.Set("Gravity 0 0 0");
+-dyna.Set("Large_Displace 1");
+-dyna.Set("If_Renew_Contact 1");
+-dyna.Set("Interface_Soften_Value 3e-3 3e-3");
++// 设置时间步长和输出间隔
++dyna.Set("Time_Step", 1e-5);
++dyna.Set("Output_Interval", 200);
+ 
+-igeo.genRectS(6, 0, 0, 7, 6, 0, 0.2, 1);
+-imeshing.genMeshByGmsh(2);
++// 定义冲击波网格
++skwave.DefMesh(3, [10, 10, 10], [50, 50, 50]);
+ 
+-blkdyn.GetMesh(imeshing);
+-blkdyn.CrtIFace();
+-blkdyn.UpdateIFaceMesh();
++// 设置固体区域
++skwave.SetSolid(1, 4, 6, 4, 6, 4, 6);
+ 
+-blkdyn.SetModel("linear");
+-blkdyn.SetMat(2500, 3e10, 0.25, 6e6, 5e6, 35, 15);
+-blkdyn.SetIModel("SSMC");
+-blkdyn.SetIMat(1e12, 1e12, 35, 6e6, 5e6);
++// 初始化冲击波球体
++skwave.InitBySphere(1.01e5, 1.02, [0, 0, 0], [0, 0, 0], 100.0);
+ 
+-blkdyn.FixV("xyz", 0, "y", -0.01, 0.01);
+-blkdyn.SetLocalDamp(0.01);
++// 设置入流条件
++skwave.SetInflow(1, 1, 6, 130, 1000, 1e7, 3, [5, 5, 10, 3]);
+ 
++// 监测密度和压力变化
++dyna.Monitor("skwave", "sw_dens", 1, 5, 0);
++dyna.Monitor("skwave", "sw_dens", 2, 5, 0);
++dyna.Monitor("skwave", "sw_dens", 3, 5, 0);
+ 
+-skwave.DefMesh(2, [10, 10], [100, 100]);
+-skwave.InheritSolid();
+-skwave.SetSolid(1, -1, 11, -1, 0.1, -1,1);
++dyna.Monitor("skwave", "sw_pp", 1, 5, 0);
++dyna.Monitor("skwave", "sw_pp", 2, 5, 0);
++dyna.Monitor("skwave", "sw_pp", 3, 5, 0);
+ 
+-skwave.InitBySphere(1.01e5, 1.02, [0,0,0], [0,0, 0], 100.0);
+-
+-skwave.InitBySphere(1e9, 100, [0,0,0], [3, 5, 0], 0.5);
+-
+-
+-
+-dyna.Set("Time_Step 2e-6");
+-dyna.DynaCycle(0.1);
++// 进行动力学计算
++dyna.DynaCycle(10);
+ 
+ print("求解完成");

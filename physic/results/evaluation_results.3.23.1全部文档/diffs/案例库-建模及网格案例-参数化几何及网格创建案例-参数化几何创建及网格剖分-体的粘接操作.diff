@@ -1,0 +1,46 @@
+--- 案例库-建模及网格案例-参数化几何及网格创建案例-参数化几何创建及网格剖分-体的粘接操作.js (ground_truth)
++++ 案例库-建模及网格案例-参数化几何及网格创建案例-参数化几何创建及网格剖分-体的粘接操作.js (generated)
+@@ -1,29 +1,33 @@
+-///设置工作目录为脚本文件所在目录
++// 设置工作目录为脚本文件所在目录
+ setCurDir(getSrcDir());
+ 
+-//创建矩形线环
++// 清除之前的几何信息和网格信息
++igeo.clear();
++imeshing.clear();
++
++// 创建矩形线环
+ var LineLoop1 = igeo.genRect(0, 0, 0, 20, 20, 0, 1);
+ 
+-//创建椭圆线环
++// 创建椭圆线环
+ var Point1 = igeo.genPoint(6, 3, 0, 1);
+ var LineLoop2 = igeo.genEllipse(Point1, 3, 2, 0, 0, 0, 1);
+ 
+-//创建圆形线环
+-var LineLoop3 =igeo.genCircle(5, 15, 0, 3, 1); 
++// 创建圆形线环
++var LineLoop3 = igeo.genCircle(5, 15, 0, 3, 1); 
+ 
+-//创建面
++// 创建面，包含矩形、椭圆和圆形线环
+ var aLineLoop1 = [LineLoop1, LineLoop2, LineLoop3];
+ var Surface1 = igeo.genSurface(aLineLoop1, 1);
+ 
+-//面拉伸为体
++// 面拉伸为体
+ var aSurface1 = [Surface1];
+ var Volume1 = igeo.extrude("Surface", aSurface1, 0, 0, 10, 1, 1, 1);
+ 
+-//创建圆柱体
++// 创建圆柱体
+ var Volume2 = igeo.genCylinderV(15, 10, 0, 15, 10, -4, 2, 4, 0.3, 0.3, 2);
+ 
+-//两个体的拉伸
++// 将两个体进行粘接操作
+ var Volume3 = igeo.glue("Volume", Volume2, Volume1);
+ 
+-//划分三维网格
++// 划分三维网格
+ imeshing.genMeshByGmsh(3);

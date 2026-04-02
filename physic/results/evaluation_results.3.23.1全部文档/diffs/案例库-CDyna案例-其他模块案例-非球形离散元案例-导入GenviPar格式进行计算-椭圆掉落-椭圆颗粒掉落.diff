@@ -1,0 +1,33 @@
+--- 案例库-CDyna案例-其他模块案例-非球形离散元案例-导入GenviPar格式进行计算-椭圆掉落-椭圆颗粒掉落.js (ground_truth)
++++ 案例库-CDyna案例-其他模块案例-非球形离散元案例-导入GenviPar格式进行计算-椭圆掉落-椭圆颗粒掉落.js (generated)
+@@ -13,17 +13,8 @@
+ //设置接触容差
+ dyna.Set("Contact_Detect_Tol 5e-3");
+ 
+-//dyna.Set("Bounding_Box 1 1.0");
+-
+-//设置底部刚性面
+-var fCoord = [-15.0,-2.0,0.0,15.0,-2.0,0.0];
++var fCoord = [1,2];
+ rdface.Create (1, 1, 2, fCoord);
+-
+-var fCoord2 = [-15.0,-2.0,0.0,-15.0,8.0,0.0];
+-var fCoord3 = [15.0,-2.0,0.0,15.0,8.0,0.0];
+-rdface.Create (1, 1, 2, fCoord2);
+-rdface.Create (1, 1, 2, fCoord3);
+-
+ 
+ pdyna.ImportPartGenviPar("ellipse.gvpx");
+ 
+@@ -35,11 +26,8 @@
+ //设置颗粒接触模型为考虑应变软化的Mohr-Coulomb模型
+ pdyna.SetModel("brittleMC");
+ 
+-
+ //设置动态计算时步为1e-4秒
+ dyna.Set("Time_Step 2e-4");
+-
+-dyna.Set("Contact_Detect_Tol 5e-3");
+ 
+ pdyna.ExportPartGenviPar("export.gvpx");
+ 

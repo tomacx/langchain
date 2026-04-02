@@ -1,0 +1,228 @@
+# Failure Analysis: 案例库-CDyna案例-块体模块案例-扩展案例-孔隙渗流与应力耦合的Mandel-Cryer问题-Analytical_Solution.js
+
+## Query
+请编写一个CDyna仿真脚本，实现孔隙渗流与应力耦合的Mandel-Cryer问题-Analytical Solution，并输出必要的结果与监测。
+
+## Generated Code
+```javascript
+// 设置当前工作路径为JavaScript脚本文件所在路径
+setCurDir(getSrcDir());
+
+// 关闭力学计算开关
+dyna.Set("Mechanic_Cal 0");
+
+// 包含孔隙渗流计算功能，开辟渗流相关的内存
+dyna.Set("Config_PoreSeepage 1");
+
+// 开启孔隙渗流开关
+dyna.Set("PoreSeepage_Cal 1");
+
+// 设置三个方向的重力加速度
+dyna.Set("Gravity 0.0 -10.0 0.0");
+
+// 将结果输出时步设定为500步
+dyna.Set("Output_Interval 500");
+
+// 监测结果输出时步间隔设定为100步
+dyna.Set("Moniter_Iter 100");
+
+// 计算时步
+dyna.Set("Time_Step 0.001");
+
+// 瞬态可压缩液体渗流
+dyna.Set("Seepage_Mode 1");
+
+// 指定流体类型，这里使用宾汉流模型
+dyna.Set("Liquid_Seepage_Law 2");
+
+// 设置整体模型的最小孔隙开度
+dyna.Set("Pore_Min_Width 1.4e-4");
+
+// 创建一个简单的二维网格
+blkdyn.GenBrick2D(10, 0.2, 50, 1, 1);
+
+// 定义X、Y、Z三个方向的渗透系数
+var arrayK = new Array(1.66667e-7, 1.66667e-7, 1.66667e-7);
+
+// 指定坐标控制范围内的孔隙渗流参数，依次为流体密度、体积模量、饱和度、孔隙率、渗透系数、比奥系数
+poresp.SetPropByGroup(1810.0, 1e6, 0.0, 0.01, arrayK, 1.0, 1);
+
+// 定义梯度
+var fArrayGrad = new Array(0.0, 0.0, 0.0);
+
+// 设定模型四周的水压力边界条件
+poresp.ApplyConditionByCoord("pp", 5e5, fArrayGrad, -0.5, 0.5, -1e5, 1e5, -1e5, 1e5, true);
+
+// 求解指定步数
+dyna.Solve(50000);
+
+// 打印提示信息
+print("Solution Finished");
+```
+
+## Ground Truth
+```javascript
+//前7项
+var x = [6.57119, 36.7075, 86.1158, 155.223, 244.058, 352.628, 480.936, 628.961, 796.766];
+
+//外边界初始压力,kpa
+var p0 = 100.0;
+var E  = 1e6;
+var mu = 0.25;
+
+
+var G  = E / 2.0 / (1.0 + mu);
+var K  = E / 3.0 / (1.0 - 2.0 * mu);
+
+//水的压缩模量
+var Kw = 1e6;
+
+//孔隙率
+var n  = 0.1;
+
+//渗流系数 m2/(Pa*s)
+var pemk = 1.0e-8;
+
+//比奥系数
+var alpha = 1.0;
+
+var BiotM = Kw / n;
+
+var S = 1.0 / BiotM + 3.0 * alpha * alpha / (3.0 * K + 4.0 * G);
+
+
+var cc = pemk / S;
+
+var r0 = 0.1; 
+
+//孔隙弹性应力系数
+var eda = alpha * (1.0 - 2.0 * mu) / 2.0 / (1.0 - mu); 
+
+
+var TimeStep = 25e-3;
+
+for(var i = 1; i <= 20; i++)
+{
+var timeN = i * TimeStep;
+
+var ReleTime = cc * timeN / r0 / r0;
+
+var BaseValue = 0.0;
+for(var j = 0; j < 9; j++)
+{
+var xn_sqrt = Math.sqrt(x[j]);
+BaseValue += 8.0 * eda * (xn_sqrt - Math.sin( xn_sqrt )) / ((x[j] - 12.0 * eda + 16.0 * eda * eda) * Math.sin( xn_sqrt ) ) * Math.exp(-x[j] * ReleTime);
+}
+
+
+
+var P = BaseValue * p0;
+
+
+print(timeN, P);
+
+}
+```
+
+## Unified Diff
+```diff
+--- 案例库-CDyna案例-块体模块案例-扩展案例-孔隙渗流与应力耦合的Mandel-Cryer问题-Analytical_Solution.js (ground_truth)
++++ 案例库-CDyna案例-块体模块案例-扩展案例-孔隙渗流与应力耦合的Mandel-Cryer问题-Analytical_Solution.js (generated)
+@@ -1,60 +1,53 @@
+-//前7项
+-var x = [6.57119, 36.7075, 86.1158, 155.223, 244.058, 352.628, 480.936, 628.961, 796.766];
++// 设置当前工作路径为JavaScript脚本文件所在路径
++setCurDir(getSrcDir());
+ 
+-//外边界初始压力,kpa
+-var p0 = 100.0;
+-var E  = 1e6;
+-var mu = 0.25;
++// 关闭力学计算开关
++dyna.Set("Mechanic_Cal 0");
+ 
++// 包含孔隙渗流计算功能，开辟渗流相关的内存
++dyna.Set("Config_PoreSeepage 1");
+ 
+-var G  = E / 2.0 / (1.0 + mu);
+-var K  = E / 3.0 / (1.0 - 2.0 * mu);
++// 开启孔隙渗流开关
++dyna.Set("PoreSeepage_Cal 1");
+ 
+-//水的压缩模量
+-var Kw = 1e6;
++// 设置三个方向的重力加速度
++dyna.Set("Gravity 0.0 -10.0 0.0");
+ 
+-//孔隙率
+-var n  = 0.1;
++// 将结果输出时步设定为500步
++dyna.Set("Output_Interval 500");
+ 
+-//渗流系数 m2/(Pa*s)
+-var pemk = 1.0e-8;
++// 监测结果输出时步间隔设定为100步
++dyna.Set("Moniter_Iter 100");
+ 
+-//比奥系数
+-var alpha = 1.0;
++// 计算时步
++dyna.Set("Time_Step 0.001");
+ 
+-var BiotM = Kw / n;
++// 瞬态可压缩液体渗流
++dyna.Set("Seepage_Mode 1");
+ 
+-var S = 1.0 / BiotM + 3.0 * alpha * alpha / (3.0 * K + 4.0 * G);
++// 指定流体类型，这里使用宾汉流模型
++dyna.Set("Liquid_Seepage_Law 2");
+ 
++// 设置整体模型的最小孔隙开度
++dyna.Set("Pore_Min_Width 1.4e-4");
+ 
+-var cc = pemk / S;
++// 创建一个简单的二维网格
++blkdyn.GenBrick2D(10, 0.2, 50, 1, 1);
+ 
+-var r0 = 0.1; 
++// 定义X、Y、Z三个方向的渗透系数
++var arrayK = new Array(1.66667e-7, 1.66667e-7, 1.66667e-7);
+ 
+-//孔隙弹性应力系数
+-var eda = alpha * (1.0 - 2.0 * mu) / 2.0 / (1.0 - mu); 
++// 指定坐标控制范围内的孔隙渗流参数，依次为流体密度、体积模量、饱和度、孔隙率、渗透系数、比奥系数
++poresp.SetPropByGroup(1810.0, 1e6, 0.0, 0.01, arrayK, 1.0, 1);
+ 
++// 定义梯度
++var fArrayGrad = new Array(0.0, 0.0, 0.0);
+ 
+-var TimeStep = 25e-3;
++// 设定模型四周的水压力边界条件
++poresp.ApplyConditionByCoord("pp", 5e5, fArrayGrad, -0.5, 0.5, -1e5, 1e5, -1e5, 1e5, true);
+ 
+-for(var i = 1; i <= 20; i++)
+-{
+-var timeN = i * TimeStep;
++// 求解指定步数
++dyna.Solve(50000);
+ 
+-var ReleTime = cc * timeN / r0 / r0;
+-
+-var BaseValue = 0.0;
+-for(var j = 0; j < 9; j++)
+-{
+-var xn_sqrt = Math.sqrt(x[j]);
+-BaseValue += 8.0 * eda * (xn_sqrt - Math.sin( xn_sqrt )) / ((x[j] - 12.0 * eda + 16.0 * eda * eda) * Math.sin( xn_sqrt ) ) * Math.exp(-x[j] * ReleTime);
+-}
+-
+-
+-
+-var P = BaseValue * p0;
+-
+-
+-print(timeN, P);
+-
+-}
++// 打印提示信息
++print("Solution Finished");
+```

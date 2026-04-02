@@ -1,0 +1,46 @@
+--- 案例库-建模及网格案例-参数化几何及网格创建案例-参数化几何创建及网格剖分-导入DXF文件、产生面并划分网格-导入dxf文件、产生面并划分网格.js (ground_truth)
++++ 案例库-建模及网格案例-参数化几何及网格创建案例-参数化几何创建及网格剖分-导入DXF文件、产生面并划分网格-导入dxf文件、产生面并划分网格.js (generated)
+@@ -1,33 +1,24 @@
+ setCurDir(getSrcDir());
+ 
+-
+-for(var i = 1; i <= 5; i++)
+-{
+-
++// 清除之前的几何和网格信息
+ igeo.clear();
+ imeshing.clear();
+ 
++// 导入DXF文件并生成表面
++var filename = "Drawing1.dxf";
++igeo.import("dxf", filename);
+ 
+-var filename = "Drawing" + i + ".dxf";
+-
+-igeo.import("dxf",filename);
+-
+-if(i == 5)
+-{
+-//线段求交
+-igeo.lineInt();
+-}
+-//自动产生面，面至多由15条线组成
++// 自动产生面，最多由15条线组成
+ igeo.genSurfAuto(15);
+ 
+-//休眠2秒
++// 设置休眠时间以确保操作完成
+ sleep(2000);
+ 
+-igeo.setSize("surface",10,1,111111);
++// 设置几何大小
++igeo.setSize("surface", 10, 1, 111111);
+ 
++// 使用Gmsh进行网格划分
+ imeshing.genMeshByGmsh(2);
+ 
+-//休眠3秒
++// 再次设置休眠时间以确保操作完成
+ sleep(5000);
+-
+-}

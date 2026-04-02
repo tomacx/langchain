@@ -1,0 +1,17 @@
+{
+  "ok": true,
+  "dataset": "/Users/cxh/Codes/GAIA/2023/validation/metadata.jsonl",
+  "model": "llama3.1:latest",
+  "dry_run": false,
+  "total": 38,
+  "correct": 5,
+  "accuracy": 0.131579,
+  "match_type_counts": {
+    "mismatch": 33,
+    "contains": 1,
+    "exact": 4
+  },
+  "output_predictions_jsonl": "/Users/cxh/Codes/langchain/physic/tools/agents/results/gaia_offline_full_attach/predictions_20260402_003002.jsonl",
+  "output_submission_jsonl": "/Users/cxh/Codes/langchain/physic/tools/agents/results/gaia_offline_full_attach/submission_20260402_003002.jsonl",
+  "elapsed_s": 300.641
+}

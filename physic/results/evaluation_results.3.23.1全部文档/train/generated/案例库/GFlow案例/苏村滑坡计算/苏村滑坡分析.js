@@ -1,0 +1,29 @@
+setCurDir(getSrcDir());
+
+// 清除现有数据和设置
+gflow.clear();
+
+// 定义计算网格参数并导入地形数据文件sucun.dat
+gflow.defGrid(0, 1332, 0, 1280, 100, 96);
+gflow.importGrid("sucun.dat");
+
+// 设定全局变量如求解时间、Courant系数、输出间隔等
+gflow.setValue("LastTime", 1000.0);
+gflow.setValue("CourantCoeff", 0.2);
+gflow.setValue("OutputInterval", 100);
+
+// 设置滑坡主体参数（椭球体方式）
+gflow.setSlidingBodyByEllipsoid(1100, 870, 40, 100, 50, 0);
+
+// 记录关键位置的厚度变化历史数据
+gflow.hist("Thickness", 605.455, 471.579);
+gflow.hist("Thickness", 753.455, 633.263);
+
+// 导出当前网格配置信息
+gflow.exportGrid();
+
+// 执行GFlow核心计算过程
+gflow.solve();
+
+// 打印解决方案完成提示信息
+print("Solution is OK!");

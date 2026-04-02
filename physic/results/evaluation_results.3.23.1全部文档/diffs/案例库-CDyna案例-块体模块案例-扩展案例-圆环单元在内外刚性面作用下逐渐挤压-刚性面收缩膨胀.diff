@@ -1,0 +1,60 @@
+--- 案例库-CDyna案例-块体模块案例-扩展案例-圆环单元在内外刚性面作用下逐渐挤压-刚性面收缩膨胀.js (ground_truth)
++++ 案例库-CDyna案例-块体模块案例-扩展案例-圆环单元在内外刚性面作用下逐渐挤压-刚性面收缩膨胀.js (generated)
+@@ -1,38 +1,32 @@
+ setCurDir(getSrcDir());
+ 
+-dyna.Set("Large_Displace 1");
++dyna.Set("Large_Displace", 1);
++dyna.Set("Gravity", [0, 0, 0]);
++dyna.Set("If_Renew_Contact", 1);
++dyna.Set("Output_Interval", 200);
++dyna.Set("If_Virtural_Mass", 0);
+ 
+-dyna.Set("Gravity 0 0 0");
+-
+-dyna.Set("If_Renew_Contact 1");
+-
+-dyna.Set("Output_Interval 200");
+-
+-dyna.Set("If_Virtural_Mass 0");
+-
++// 导入圆环单元网格模型
+ blkdyn.ImportGrid("gid","annular.msh");
+ 
+-blkdyn.CrtBoundIFaceByGroup(1);
+-blkdyn.UpdateIFaceMesh();
++// 创建内外刚性面边界条件
++rdface.Import("gid","bound.msh");
+ 
++// 内测刚性面施加向外的径向速度
++rdface.ApplyRadialVelocity(1, 1, [0,0,0], [0,0,1], 0.01, 1, 1);
++
++// 外测刚性面施加向内的径向速度
++rdface.ApplyRadialVelocity(2, 1, [0,0,0], [0,0,1], -0.01, 2, 2);
++
++// 设置模型和材料参数
+ blkdyn.SetModel("MC");
+-blkdyn.SetMat(1900, 3e7, 0.25,1e4, 0.5e4, 20, 5);
++blkdyn.SetMat(1900, 3e7, 0.25, 1e4, 0.5e4, 20, 5);
+ blkdyn.SetIModel("brittleMC");
+-blkdyn.SetIMat(1e8, 1e8, 10,0,0);
++blkdyn.SetIMat(1e8, 1e8, 10, 0, 0);
+ blkdyn.SetLocalDamp(0.01);
+ 
+-rdface.Import("gid","bound.msh");
+-
+-//rdface.ApplyRadialVelocity(IDNo, nType, fOrigin[3], fNormal[3], fVel, GroupLow, GroupUp);
+-
+-////内测刚性面施加向外的径向速度
+-rdface.ApplyRadialVelocity(1, 1, [0,0,0], [0,0,1], 0.01, 1, 1);
+-
+-////外测刚性面施加向内的径向速度
+-rdface.ApplyRadialVelocity(2, 1, [0,0,0], [0,0,1], -0.01, 2, 2);
+-
+-
++// 时间步长修正
+ dyna.TimeStepCorrect(0.8);
+ 
+-
++// 求解
+ dyna.Solve(2000);

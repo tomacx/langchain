@@ -1,0 +1,70 @@
+--- 案例库-CDyna案例-冲击波模块案例-气云燃爆算例-气云爆炸三维模拟案例-气云爆炸及触碰固体边界后反射-气云传爆-3d.js (ground_truth)
++++ 案例库-CDyna案例-冲击波模块案例-气云燃爆算例-气云爆炸三维模拟案例-气云爆炸及触碰固体边界后反射-气云传爆-3d.js (generated)
+@@ -1,35 +1,45 @@
+ setCurDir(getSrcDir());
+ 
+-dyna.Set("Time_Step 2e-4");
+-dyna.Set("Output_Interval 100");
+-dyna.Set("SK_GasModel  2");
+-dyna.Set("SK_ActT 502.0");
+-dyna.Set("SK_HeatQ 0.5196e6");
+-dyna.Set("SK_MolMass 36");
+-dyna.Set("SK_Gama 1.4");
++dyna.Set("Time_Step", 1e-5);
++dyna.Set("Output_Interval", 100);
++dyna.Set("SK_GasModel", 2);
+ 
+-skwave.DefMesh(3, [1000, 500, 500], [100, 50, 50]);
++skwave.DefMesh(2, [20, 10], [200, 100]);
+ 
+-skwave.SetSolid(1, -1e5,  1e5, -100, 20, -1e5, 1e5);
+-skwave.SetSolid(1, 600, 650, -1e5, 350, 150, 350);
++// Define solids
++skwave.SetSolid(1, -1, 21, -1, 2, -1, 1);
++skwave.SetSolid(1, 7, 9, -1, 5, -1, 1);
+ 
+-skwave.SetGasCloudBySphere(1, [400, 250, 250], 200);
++// Define gas cloud
++skwave.SetGasCloud(1, -1, 7, -1, 11, -1, 1);
+ 
++// Initialize by sphere
++skwave.InitBySphere(8.321e4, 1.21, [0, 0, 0], [0, 0, 0], 100.0);
+ 
+-skwave.InitBySphere(8.321e4, 1.201, [0,0,0], [0,0, 0], 10000.0);
+-skwave.SetFirePos(400, 250, 250, 20, 1.945, 4.162E2,  6.27E5);
++// Set fire position
++skwave.SetFirePos(3, 5, 0, 0.5, 1.945, 4.162E2, 6.27E5);
+ 
+-for(var i = 1; i < 10; i++)
+-{
+-dyna.Monitor("skwave","sw_dens", 100 * i, 250, 0);
+-}
++// Monitor points for density
++dyna.Monitor("skwave", "sw_dens", 5, 5, 0);
++dyna.Monitor("skwave", "sw_dens", 10, 5, 0);
++dyna.Monitor("skwave", "sw_dens", 15, 5, 0);
+ 
+-for(var i = 1; i < 10; i++)
+-{
+-dyna.Monitor("skwave","sw_pp", 100 * i, 250, 0);
+-}
++// Monitor points for pressure
++dyna.Monitor("skwave", "sw_pp", 5, 5, 0);
++dyna.Monitor("skwave", "sw_pp", 10, 5, 0);
++dyna.Monitor("skwave", "sw_pp", 15, 5, 0);
+ 
++// Monitor points for temperature
++dyna.Monitor("skwave", "sw_temp", 5, 5, 0);
++dyna.Monitor("skwave", "sw_temp", 10, 5, 0);
++dyna.Monitor("skwave", "sw_temp", 15, 5, 0);
+ 
+-dyna.DynaCycle(10);
++// Monitor points for gas type
++dyna.Monitor("skwave", "sw_gastype", 5, 5, 0);
++dyna.Monitor("skwave", "sw_gastype", 10, 5, 0);
++dyna.Monitor("skwave", "sw_gastype", 15, 5, 0);
++
++// Run simulation
++dyna.DynaCycle(1e-1);
+ 
+ print("求解完成");

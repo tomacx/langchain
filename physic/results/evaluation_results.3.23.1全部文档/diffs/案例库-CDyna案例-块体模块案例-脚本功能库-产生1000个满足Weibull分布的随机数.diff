@@ -1,0 +1,64 @@
+--- 案例库-CDyna案例-块体模块案例-脚本功能库-产生1000个满足Weibull分布的随机数.js (ground_truth)
++++ 案例库-CDyna案例-块体模块案例-脚本功能库-产生1000个满足Weibull分布的随机数.js (generated)
+@@ -1,6 +1,57 @@
++// 设置当前工作路径为JavaScript脚本文件所在路径
+ setCurDir(getSrcDir());
+ 
+-for(var i = 0; i < 1000; i++)
+-{
+-print(dyna.GenRandomValue("weibull",2.0,2.0));
+-}
++// 打开力学计算开关
++dyna.Set("Mechanic_Cal 1");
++
++// 关闭大变形计算开关
++dyna.Set("Large_Displace 0");
++
++// 设置计算结果的输出间隔为500步
++dyna.Set("Output_Interval 500");
++
++// 设置监测结果的输出时步为10步
++dyna.Set("Moniter_Iter 10");
++
++// 关闭虚质量计算开关
++dyna.Set("If_Virtural_Mass 0");
++
++// 创建长2m，高1m的二维矩形单元
++blkdyn.GenBrick2D(2.0,1.0,40,20,1);
++
++// 设置所有单元为线弹性模型
++blkdyn.SetModel("linear");
++
++// 设置组1的材料参数，分别为密度，弹性模量，泊松比，粘聚力、抗拉强度、内摩擦角、剪胀角、组号
++blkdyn.SetMatByGroup(2000, 1e10, 0.2, 3e6, 1e6, 30.0, 10.0, 1);
++
++// X方向右侧法向约束
++blkdyn.FixV("x", 0.0, "x", 1.99, 2.01);
++
++// 设置全部节点的局部阻尼为0.0
++blkdyn.SetLocalDamp(0.0);
++
++// 打开瑞利阻尼计算开关
++dyna.Set("If_Cal_Rayleigh 1");
++
++// 设所有单元的刚度阻尼为1e-5，质量阻尼为0
++blkdyn.SetRayleighDamp(1e-5, 0.0);
++
++// 创建颗粒
++pdyna.RegularCreateByCoord(1,1,0.02,-0.16,2.16, -0.16,1.16, 0.0, 0);
++
++// 设置材料参数，依次为density, young, poisson, tension, cohesion, friction, localdamp, viscdamp
++pdyna.SetMat(2000,1e7,0.35, 1e-3, 1e-3, 0.0, 0.8,0);
++
++// 创建mpm背景网格
++mpm.SetBackGrid(2,0.06, [-0.3,-0.3,0], [40, 20, 0]);
++
++// mpm模型切换为理想弹塑性模型
++mpm.SetModelByGroup("Fluid",1,2);
++
++mpm.SetKGVByGroup(5e6, 0.0, 1e-3, 1,11);
++
++dyna.Set("MPM_Fluid_Tension 1e2");
++
++// 开始求解
++dyna.Solve();

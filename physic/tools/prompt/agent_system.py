@@ -95,7 +95,7 @@ Response Structure:
 3. Final Code: The complete javascript block starting with the mandatory initializer and divided into logical sections (Geometry, Mesh, Parameters, Solver).
 """
 
-AGENT_SYSTEM_PROMTP0 ="""
+AGENT_SYSTEM_PROMPT0 ="""
 你是一个面向 CDEM/CDyna 动力学分析系统的专业助手。
 
 你的职责有两类：

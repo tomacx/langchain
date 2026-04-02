@@ -1,0 +1,73 @@
+--- 案例库-SuperCDEM案例-3DSingleHoleBlast-SingleHole.js (ground_truth)
++++ 案例库-SuperCDEM案例-3DSingleHoleBlast-SingleHole.js (generated)
+@@ -1,32 +1,49 @@
+ setCurDir(getSrcDir());
+ 
+-scdem.outputInterval = 5000;
+-scdem.monitorIter = 100;
+-scdem.isVirtualMass = 0;
++scdem.outputInterval = 1000;
++scdem.set("isLargeDisplace", 1);
++scdem.set("RayleighDamp", 5e-7, 0);
+ 
+-scdem.set("isLargeDisplace", 1);
+-scdem.set("RayleighDamp", 3.3e-7, 0);
+-
+-scdem.set("isVtk", 1);
+-
+-var msh = imesh.importGmsh("singleHole_1.5mm.msh");//可更换文件中不同网格数量的网格文件
++var msh = imesh.importGmsh("3DBlast-20w.msh");
+ scdem.getMesh(msh);
+ 
+-scdem.setModel("Linear");
+-scdem.setMat([2660, 54e9, 0.16, 6e6, 6e6, 53,10]);
++scdem.setModel("linear");
++scdem.setMat([2700, 70e9, 0.24, 28.3e6, 17.9e6, 55,10]);
+ 
+ scdem.setIModel("FracE");
+-scdem.setContactFractureEnergy(10,20);
+-scdem.setIMatByElem(50);
++scdem.setIMatByElem(10);
++scdem.setContactFractureEnergy(50,100);
+ 
+-//边界条件
++// 动态边界
++var oSel = new SelElemFaces(scdem);
++oSel.sphere(1.5, 1.5, 1.6, 0.044, 0.046);
++scdem.applyDynaBoundaryFromFileBySel("faceforce", true, -1, 0, 0, oSel, "BlastLoad.txt");
+ 
+-//动态边界
+-var oSel = new SelElemFaces(scdem);
+-oSel.cylinder(0, 0, 0, 0, 0 ,0.15, 0, 3.226e-3);
+-scdem.applyDynaBoundaryFromFileBySel("faceforce",true,-1,0,0,oSel,"BlastLoad-fit-10us.txt");
++// 四周 + 底部无反射边界
++oSel = new SelElemFaces(scdem);
++oSel.box(-100,-100,-0.001,100,100,0.001);
++scdem.applyNonReflectionBySel(oSel);
+ 
+-scdem.timeStep= 1e-9;
+-scdem.dynaSolveGpu(100e-6);
++oSel = new SelElemFaces(scdem);
++oSel.box(-100,-0.001,-100,100,0.001,100);
++scdem.applyNonReflectionBySel(oSel);
+ 
+-print("finish");
++oSel = new SelElemFaces(scdem);
++oSel.box(-100,2.99,-100,100,3.01,100);
++scdem.applyNonReflectionBySel(oSel);
++
++oSel = new SelElemFaces(scdem);
++oSel.box(-0.001,-100,-100,0.001,100,100);
++scdem.applyNonReflectionBySel(oSel);
++
++oSel = new SelElemFaces(scdem);
++oSel.box(2.99,-100,-100,3.01,100,100);
++scdem.applyNonReflectionBySel(oSel);
++
++scdem.timeStep= 1e-7;
++scdem.dynaSolveGpu(0.004);
++
++// 释放GPU端内存
++scdem.releaseGpuMem();
++
++print("finish!");

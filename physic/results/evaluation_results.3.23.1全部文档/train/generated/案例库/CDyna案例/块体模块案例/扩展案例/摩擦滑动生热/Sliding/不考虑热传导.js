@@ -1,0 +1,70 @@
+setCurDir(getSrcDir());
+
+// 清除之前的计算结果
+dyna.Clear();
+doc.clearResult();
+
+// 设置重力加速度值
+dyna.Set("Gravity 9.8 -9.8 0.0");
+
+// 打开大变形开关
+dyna.Set("Large_Displace 1");
+
+// 设置云图输出间隔为500步
+dyna.Set("Output_Interval 500");
+
+// 设置监测信息提取间隔为10步
+dyna.Set("Monitor_Iter 10");
+
+// 关闭虚质量计算开关
+dyna.Set("Virtual_Mass 0");
+
+// 包含热传导模块，开辟相应内存
+dyna.Set("Config_Heat 1");
+
+// 打开热传导计算开关
+dyna.Set("Heat_Cal 1");
+
+// 设置摩擦滑动生热参数
+dyna.Set("PlaSlipHeat_TransCal_Option 1 0.6");
+
+// 导入网格文件
+blkdyn.ImportGrid("gid", "slidbody.msh");
+
+// 创建接触面并更新网格
+blkdyn.CrtIFaceByCoord(-1e5, 1e5, 0.099, 0.101, -1e5, 1e5);
+blkdyn.UpdateIFaceMesh();
+
+// 设置材料模型为线弹性
+blkdyn.SetModel("linear");
+
+// 设置材料参数，依次为密度、杨氏模量、泊松比、抗拉强度、抗压强度、摩擦系数、粘聚力
+blkdyn.SetMat(2500, 3e8, 0.22, 8e6, 5e6, 35, 10);
+
+// 设置接触模型为脆性MC
+blkdyn.SetIModel("brittleMC");
+
+// 设置接触材料参数，依次为法向刚度、切向刚度、摩擦系数、粘聚力、初始开裂角
+blkdyn.SetIMat(1e9, 1e9, 20.0, 0 ,0);
+
+// 设置局部阻尼比
+blkdyn.SetLocalDamp(0.01);
+
+// 固定模型在y方向上的位移
+blkdyn.FixV("xyz", 0.0, "y", -0.001, 0.001);
+
+// 设置热传导材料参数，依次为固体密度、初始温度、热传导系数、比热容、体膨胀系数
+heatcd.SetPropByGroup (2500.0, 25.0, 3.125, 1000, 3e-5, 1);
+heatcd.SetPropByGroup (2500.0, 25.0, 3.125, 1000, 3e-5, 2);
+
+// 设置时间步长
+dyna.TimeStepCorrect(0.5);
+
+// 监测指定位置的位移和应力
+dyna.Monitor("block", "xdis", 0.15, 0.15, 0);
+dyna.Monitor("block", "sxx",  0.15, 0.15, 0);
+
+// 进行动力学计算
+dyna.DynaCycle(10);
+
+print("**********************求解完毕**********************");

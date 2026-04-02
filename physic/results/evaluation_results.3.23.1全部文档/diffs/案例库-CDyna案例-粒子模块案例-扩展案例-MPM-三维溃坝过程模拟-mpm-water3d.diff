@@ -1,0 +1,117 @@
+--- 案例库-CDyna案例-粒子模块案例-扩展案例-MPM-三维溃坝过程模拟-mpm-water3d.js (ground_truth)
++++ 案例库-CDyna案例-粒子模块案例-扩展案例-MPM-三维溃坝过程模拟-mpm-water3d.js (generated)
+@@ -1,45 +1,86 @@
+-//设置工作路径为脚本文件所在路径
+-SetCurDir(GetSrcDir());
++setCurDir(getSrcDir());
+ 
+-//清除dyna模块数据
++// 清除之前的计算数据
++geo.Clear();
++mesh.Clear();
+ dyna.Clear();
+-
+-//清除平台数据
+ doc.ClearResult();
+ 
+-//设置输出间隔为1000步
++var acoord = new Array(6);
++
++var size = 1.0;
++acoord[0] = [0,0,0,  size];
++acoord[1] = [40,0,0,  size];
++acoord[2] = [40,25,0,  size];
++acoord[3] = [20,25,0,  size];
++acoord[4] = [10,10,0,  size];
++acoord[5] = [0,10,0,  size];
++
++igeo.genPloygenS(acoord,1);
++
++imeshing.genMeshByGmsh(2);
++
+ dyna.Set("Output_Interval 1000");
+ 
+-//关闭虚拟质量开关
+-dyna.Set("If_Virtural_Mass 0");
++dyna.Set("Gravity 0 -9.8 0");
+ 
+-//设置计算时间步为0.2ms
+-dyna.Set("Time_Step 2.0e-4");
++// 包含孔隙渗流计算功能，开辟渗流相关的内存
++dyna.Set("Config_PoreSeepage 1");
+ 
+-//设置颗粒计算模式为mpm模式
+-dyna.Set("Particle_Cal_Type 4");
++// 开启孔隙渗流开关
++dyna.Set("PoreSeepage_Cal 0");
+ 
+-//设置颗粒与刚性面接触模型采用全局参数
+-dyna.Set("If_Contact_Use_GlobMat 1 2 1e9 1e9  0.0 0.0 0.0");
++blkdyn.GetMesh(imeshing);
+ 
+-//创建规则颗粒
+-pdyna. RegularCreateByCoord (1, 2, 0.1, 0.1,10,0.1,10,0.1,9.9);
++blkdyn.SetModel("linear");
++blkdyn.SetMat(2200,1e9,0.3,2e4,2e4,25,15);
+ 
+-//导入刚性面
+-rdface.Import("ansys","bound.dat");
++// 定义X、Y、Z三个方向的渗透系数
++var arrayK = new Array(1e-10, 1e-10, 1e-10);
+ 
+-//设置颗粒与刚性面的接触模型为脆断模型
+-pdyna.SetModel("brittleMC");
++// 指定坐标控制范围内的孔隙渗流参数，依次为流体密度、体积模量、饱和度、孔隙率、渗透系数、比奥系数
++poresp.SetPropByCoord (1000.0, 1e6, 0.0, 0.3, arrayK, 1.0, -500, 500, -500, 500, -500, 500);
+ 
+-//设置颗粒材料参数，依次为density, young, poisson, tension, cohesion, friction, localdamp, viscdamp
+-pdyna.SetMat(2200, 5e7,0.25, 0.0, 0.0,0.0001,0.01,0);
++blkdyn.FixV("x",0,"x",-0.001,0.001);
++blkdyn.FixV("x",0,"x",39.99,41);
++blkdyn.FixV("y",0,"y",-0.001,0.001);
+ 
+-//设置mpm背景网格
+-mpm.SetBackGrid(3,0.5, [-0.5,-0.5,-0.5], [62, 42, 22]);
++dyna.Monitor("block","xdis",10,10,0);
++dyna.Monitor("block","xdis",14.2,16.3,0);
++dyna.Monitor("block","xdis",20,25,0);
+ 
+-//设置mpm的本构模型
+-mpm.SetModelByGroup("DP",1,2);
++dyna.Solve();
+ 
+-//计算20秒
+-dyna.DynaCycle(20);
++// 设置软化参数
++dyna.Set("Block_Soften_Value 3e-3 9e-3");
++blkdyn.SetModel("SoftenMC");
+ 
++dyna.Solve();
++
++// 初始化条件
++blkdyn.InitConditionByGroup("displace", [0,0,0], [0,0,0,0,0,0,0,0,0], 1,1);
++
++// 开启孔隙渗流计算
++dyna.Set("PoreSeepage_Cal 1");
++
++// 设置比奥系数计算开关
++dyna.Set("If_Biot_Cal 1");
++
++// 设置当前时间为0
++dyna.Set("Time_Now 0");
++
++// 时间步长校正
++dyna.TimeStepCorrect(1.0);
++
++// 设置峰值降雨强度 50mm/（12小时）
++var peakRainIntensity = 50 / (12 * 3600); // 转换为m/s
++
++// 模拟降雨过程
++for (var t = 0; t <= 12*3600; t += dyna.GetTimeStep()) {
++    var rainRate = peakRainIntensity * Math.sin(Math.PI * t / (12*3600));
++    poresp.SetPropByCoord(1000.0, 1e6, rainRate, 0.3, arrayK, 1.0, -500, 500, -500, 500, -500, 500);
++    dyna.Solve();
++}
++
++// 结束模拟
++dyna.Set("PoreSeepage_Cal 0");

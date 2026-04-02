@@ -1,0 +1,34 @@
+--- 案例库-建模及网格案例-参数化几何及网格创建案例-参数化几何创建及网格剖分-体的镜像复制.js (ground_truth)
++++ 案例库-建模及网格案例-参数化几何及网格创建案例-参数化几何创建及网格剖分-体的镜像复制.js (generated)
+@@ -1,22 +1,15 @@
+ ///设置工作目录为脚本文件所在目录
+ setCurDir(getSrcDir());
+ 
+-///创建体
+-var Volume1 = igeo.genCylinderV(0, 0, 0, 0, 5, 0, 0, 5, 0, 1, 1);
+-var Volume2 = igeo.genCylinderV(0, 5, 0, 0, 10, 0, 0, 5, 0, 1, 2);
+-var Volume3 = igeo.genCylinderV(0, 10, 0, 0, 15, 0, 0, 4, 0, 0.5, 3);
++//清除几何信息和网格信息
++igeo.clear();
++imeshing.clear();
+ 
+-var Volume4 = igeo.genEllipSoidV(20, 0, 0, 5, 3, 2, 0.5, 4, 0, 0, 0);
++//创建矩形面
++var id = igeo.genRectS(0, 0, 0, 1, 1, 0, 0.1, 1);
+ 
+-var Volume5 = igeo.genBrickV(40, 0, 0, 45, 10, 5, 1, 5);
+-var Volume6 = igeo.genBrickV(45, 0, 0, 60, 10, 5, 1, 6);
+-var Volume7 = igeo.genBrickV(60, 0, 0, 70, 15, 8, 1.5, 7);
++//设置二维网格划分方式为Frontal
++imeshing.setValue("MeshType2D", 6);
+ 
+-///对体进行镜像复制
+-var aVolume1 = [Volume1, Volume2, Volume3, Volume4, Volume5, Volume6, Volume7];
+-var Ope1 = igeo.mirrorCopy("Volume", aVolume1, -20, 0, 0, 0, 0, 50, -20, 10, 0);
+-
+-///划分网格
+-imeshing.genMeshByGmsh(3);
+-
+-print("Finished");
++//借助Gmsh进行网格剖分
++imeshing.genMeshByGmsh(2);
