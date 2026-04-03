@@ -1,0 +1,11 @@
+setCurDir(getSrcDir());
+dyna.Clear();
+dyna.Set("Gravity 0 0 -9.8");
+blkdyn.GenBrick3D(5, 5, 3, 50, 50, 30, 1);
+blkdyn.SetMatByStratum("arrange.txt");
+blkdyn.FixV("z", 0.0, -0.01, 0.01);
+dyna.Monitor("block", "szz");
+dyna.Monitor("block", "dzz");
+dyna.Solve();
+dyna.Plot("Elem", "Young");
+dyna.Plot("Elem", "DzZ");

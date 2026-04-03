@@ -1,0 +1,716 @@
+{
+  "metadata": {
+    "title": "训练集验证报告",
+    "total_cases": 10,
+    "evaluation_date": "2026-04-03T11:08:37.019330",
+    "model": "qwen3.5:latest"
+  },
+  "overall_metrics": {
+    "avg_similarity": 0.7274,
+    "avg_quality": 8.5,
+    "avg_functionality": 7.71,
+    "avg_generation_time": 219.15
+  },
+  "results": [
+    {
+      "test_id": "T001",
+      "filename": "案例库-CDyna案例-粒子模块案例-基本案例-CircleFallFrag-CircleFallFrag.js",
+      "category": "CDyna案例",
+      "query": "请编写一个CDyna仿真脚本，实现基本案例-CircleFallFrag-CircleFallFrag，并输出必要的结果与监测。",
+      "generated_code": "setCurDir(getSrcDir());\n\n// 清除计算核心和结果数据\ndyna.Clear();\ndoc.clearResult();\n\n// 设置输出间隔为500步\ndyna.Set(\"Output_Interval 500\");\n\n// 关闭虚拟质量开关\ndyna.Set(\"If_Virtural_Mass 0\");\n\n// 设置重力加速度 (标准重力)\ndyna.Set(\"Gravity 0.0 -9.8 0.0\");\n\n// 设置接触容差\ndyna.Set(\"Contact_Detect_Tol 5e-3\");\n\n// 设置边界框\ndyna.Set(\"Bounding_Box 1 1.0\");\n\n// 创建底部刚性面 (-4.0,-2.0,0.0) 到 (4.0,-2.0,0.0)\nvar fCoord = new Array();\nfCoord[0] = new Array(-4.0, -2.0, 0.0);\nfCoord[1] = new Array(4.0, -2.0, 0.0);\nrdface.Create(1, 1, 2, fCoord);\n\n// 导入颗粒几何模型\npdyna.Import(\"gid\", \"D2mCircel.msh\");\n\n// 设置颗粒接触模型为考虑应变软化的 Mohr-Coulomb 模型\npdyna.SetModel(\"SSMC\");\n\n// 设置颗粒材料参数: 密度、弹性模量、泊松比、抗拉强度、粘聚力、内摩擦角、局部阻尼、粘性阻尼系数\npdyna.SetMat(2500, 1e8, 0.25, 1e6, 5e6, 30, 0.0, 0.1);\n\n// 设置动态计算时步\ndyna.Set(\"Time_Step 5e-5\");\n\n// 将接触容差设为0 (找到初始接触后)\ndyna.Set(\"Contact_Detect_Tol 0.0\");\n\n// 添加监测点\nvar monitorPoint = new Array(0, 0, 0);\ndyna.Monitor(monitorPoint);\n\n// 计算3万步\ndyna.Solve(10000);\n\n// 输出监测数据\ndyna.OutputMonitorData();\n\n// 输出结果\ndyna.OutputModelResult();",
+      "generation_time": 257.3899269104004,
+      "similarity_score": 0.7835,
+      "code_quality_score": 9.0,
+      "execution_score": 7.0,
+      "functionality_score": 8.0175,
+      "retrieved_docs_count": 14,
+      "retrieval_quality": "good",
+      "diff_unified": "--- 案例库-CDyna案例-粒子模块案例-基本案例-CircleFallFrag-CircleFallFrag.js (ground_truth)\n+++ 案例库-CDyna案例-粒子模块案例-基本案例-CircleFallFrag-CircleFallFrag.js (generated)\n@@ -1,46 +1,54 @@\n-//设置当前路径为JavaScript脚本所在的路径\n setCurDir(getSrcDir());\n \n-//清除GDEM-Pdyna计算核心中的内存数据\n+// 清除计算核心和结果数据\n dyna.Clear();\n-\n-//清除GDEM-Env中的结果数据\n doc.clearResult();\n \n-//设置结果的输出间隔为500步\n+// 设置输出间隔为500步\n dyna.Set(\"Output_Interval 500\");\n \n-//关闭虚拟质量开关\n+// 关闭虚拟质量开关\n dyna.Set(\"If_Virtural_Mass 0\");\n \n-//设置重力加速度\n+// 设置重力加速度 (标准重力)\n dyna.Set(\"Gravity 0.0 -9.8 0.0\");\n \n-//设置接触容差\n+// 设置接触容差\n dyna.Set(\"Contact_Detect_Tol 5e-3\");\n \n+// 设置边界框\n dyna.Set(\"Bounding_Box 1 1.0\");\n \n-//设置底部刚性面\n+// 创建底部刚性面 (-4.0,-2.0,0.0) 到 (4.0,-2.0,0.0)\n var fCoord = new Array();\n-fCoord[0]=new Array(-4.0,-2.0,0.0);\n-fCoord[1]=new Array(4.0,-2.0,0.0);\n-rdface.Create (1, 1, 2, fCoord);\n+fCoord[0] = new Array(-4.0, -2.0, 0.0);\n+fCoord[1] = new Array(4.0, -2.0, 0.0);\n+rdface.Create(1, 1, 2, fCoord);\n \n-//导入gid格式的颗粒\n-pdyna.Import(\"gid\",\"D2mCircel.msh\");\n+// 导入颗粒几何模型\n+pdyna.Import(\"gid\", \"D2mCircel.msh\");\n \n-//设置颗粒接触模型为考虑应变软化的Mohr-Coulomb模型\n+// 设置颗粒接触模型为考虑应变软化的 Mohr-Coulomb 模型\n pdyna.SetModel(\"SSMC\");\n \n-//设置颗粒的材料参数，依次为密度、弹性模量、泊松比、抗拉强度、粘聚力、内摩擦角、局部阻尼、粘性阻尼系数（临界阻尼比）\n+// 设置颗粒材料参数: 密度、弹性模量、泊松比、抗拉强度、粘聚力、内摩擦角、局部阻尼、粘性阻尼系数\n pdyna.SetMat(2500, 1e8, 0.25, 1e6, 5e6, 30, 0.0, 0.1);\n \n-//设置动态计算时步为1e-4秒\n+// 设置动态计算时步\n dyna.Set(\"Time_Step 5e-5\");\n \n-//设置接触容差为0（找到初始接触后，将后续接触容差设为0）\n+// 将接触容差设为0 (找到初始接触后)\n dyna.Set(\"Contact_Detect_Tol 0.0\");\n \n-//计算3万步\n+// 添加监测点\n+var monitorPoint = new Array(0, 0, 0);\n+dyna.Monitor(monitorPoint);\n+\n+// 计算3万步\n dyna.Solve(10000);\n+\n+// 输出监测数据\n+dyna.OutputMonitorData();\n+\n+// 输出结果\n+dyna.OutputModelResult();",
+      "diff_file": "D:\\Codes\\langchain\\physic\\tools\\agents\\results\\evaluation_results.evo_langgraph\\diffs\\案例库-CDyna案例-粒子模块案例-基本案例-CircleFallFrag-CircleFallFrag.diff",
+      "dataset_split": "train",
+      "saved_generated_script": "D:\\Codes\\langchain\\physic\\tools\\agents\\results\\evaluation_results.evo_langgraph\\train\\generated\\案例库-CDyna案例-粒子模块案例-基本案例-CircleFallFrag-CircleFallFrag.js",
+      "saved_ground_truth_script": "D:\\Codes\\langchain\\physic\\tools\\agents\\results\\evaluation_results.evo_langgraph\\train\\ground_truth\\案例库-CDyna案例-粒子模块案例-基本案例-CircleFallFrag-CircleFallFrag.js",
+      "task_steps": [],
+      "error_message": "",
+      "notes": "",
+      "evaluation_time": "2026-04-03T10:36:22.754035",
+      "last_run_metrics": {
+        "evo_scores": {
+          "f_s": 1.0,
+          "f_f": 0.0317617322771962,
+          "f_p": null
+        },
+        "evo_breakdown": {
+          "simplicity": {
+            "R": 0,
+            "L": 38
+          },
+          "fitness": {
+            "Sim": 0.013523464554392389,
+            "Cov": 0.05,
+            "terms": [
+              "cdyna",
+              "circlefallfrag",
+              "一个",
+              "与监",
+              "个仿",
+              "仿真",
+              "例并",
+              "写一",
+              "出必",
+              "基本",
+              "实现",
+              "并输",
+              "必要",
+              "本实",
+              "本案",
+              "果与",
+              "案例",
+              "现基",
+              "的结",
+              "监测"
+            ],
+            "hit": 1,
+            "total": 20
+          },
+          "physics": {
+            "available": false
+          }
+        },
+        "evo_history_len": 7,
+        "retrieved_count": 14,
+        "ground_truth_encoding": "utf-8"
+      }
+    },
+    {
+      "test_id": "T002",
+      "filename": "案例库-CDyna案例-其他模块案例-非球形离散元案例-导入GenviPar格式进行计算-椭球掉落-椭球颗粒掉落.js",
+      "category": "CDyna案例",
+      "query": "请编写一个CDyna仿真脚本，实现导入GenviPar格式进行计算-椭球掉落-椭球颗粒掉落，并输出必要的结果与监测。",
+      "generated_code": "setCurDir(getSrcDir());\n\n// 仿真环境配置\ndyna.Set(\"Output_Interval 1000\");\ndyna.Set(\"If_Virtural_Mass 0\");\ndyna.Set(\"Gravity 0.0 0.0 -9.8\");\ndyna.Set(\"Contact_Detect_Tol 5e-3\");\ndyna.Set(\"GiD_Out 1\");\ndyna.Set(\"Time_Step 2e-4\");\n\n// 创建底部刚性面\nrdface.Create(1, 1, 2, [-100.0, -100.0, -10.0, 100.0, 100.0, -10.0]);\n\n// 导入GenviPar格式椭球颗粒\npdyna.ImportPartGenviPar(\"ellipsoid.gvpx\");\n\n// 设置材料参数\npdyna.SetPartMat(2500, 1e9, 0.25, 0, 0, 30, 0.01, 0.1, 0.1);\n\n// 设置接触模型\npdyna.SetModel(\"brittleMC\");\n\n// 执行计算\ndyna.Solve(50000);",
+      "generation_time": 346.3800904750824,
+      "similarity_score": 0.7253,
+      "code_quality_score": 8.0,
+      "execution_score": 7.0,
+      "functionality_score": 7.4265,
+      "retrieved_docs_count": 14,
+      "retrieval_quality": "good",
+      "diff_unified": "--- 案例库-CDyna案例-其他模块案例-非球形离散元案例-导入GenviPar格式进行计算-椭球掉落-椭球颗粒掉落.js (ground_truth)\n+++ 案例库-CDyna案例-其他模块案例-非球形离散元案例-导入GenviPar格式进行计算-椭球掉落-椭球颗粒掉落.js (generated)\n@@ -1,42 +1,24 @@\n-//设置当前路径为JavaScript脚本所在的路径\n setCurDir(getSrcDir());\n \n-//设置结果的输出间隔为500步\n+// 仿真环境配置\n dyna.Set(\"Output_Interval 1000\");\n+dyna.Set(\"If_Virtural_Mass 0\");\n+dyna.Set(\"Gravity 0.0 0.0 -9.8\");\n+dyna.Set(\"Contact_Detect_Tol 5e-3\");\n+dyna.Set(\"GiD_Out 1\");\n+dyna.Set(\"Time_Step 2e-4\");\n \n-//关闭虚拟质量开关\n-dyna.Set(\"If_Virtural_Mass 0\");\n+// 创建底部刚性面\n+rdface.Create(1, 1, 2, [-100.0, -100.0, -10.0, 100.0, 100.0, -10.0]);\n \n-//设置重力加速度\n-dyna.Set(\"Gravity 0.0 0.0 -9.8\");\n-\n-//设置接触容差\n-dyna.Set(\"Contact_Detect_Tol 5e-3\");\n-\n-dyna.Set(\"GiD_Out 1\");\n-\n-//dyna.Set(\"Bounding_Box 1 1.0\");\n-\n-//设置底部刚性面\n-rdface.Import(\"gid\", \"20m-20m-bound.msh\");\n-\n-\n+// 导入GenviPar格式椭球颗粒\n pdyna.ImportPartGenviPar(\"ellipsoid.gvpx\");\n \n-\n-\n-\n-//设置颗粒的材料参数，依次为密度、弹性模量、泊松比、抗拉强度、粘聚力、内摩擦角、局部阻尼、粘性阻尼系数（临界阻尼比）\n+// 设置材料参数\n pdyna.SetPartMat(2500, 1e9, 0.25, 0, 0, 30, 0.01, 0.1, 0.1);\n \n-//设置颗粒接触模型为考虑应变软化的Mohr-Coulomb模型\n+// 设置接触模型\n pdyna.SetModel(\"brittleMC\");\n \n-\n-//设置动态计算时步为1e-4秒\n-dyna.Set(\"Time_Step 2e-4\");\n-\n-dyna.Set(\"Contact_Detect_Tol 5e-3\");\n-\n-//计算3万步\n-dyna.Solve(100000);\n+// 执行计算\n+dyna.Solve(50000);",
+      "diff_file": "D:\\Codes\\langchain\\physic\\tools\\agents\\results\\evaluation_results.evo_langgraph\\diffs\\案例库-CDyna案例-其他模块案例-非球形离散元案例-导入GenviPar格式进行计算-椭球掉落-椭球颗粒掉落.diff",
+      "dataset_split": "train",
+      "saved_generated_script": "D:\\Codes\\langchain\\physic\\tools\\agents\\results\\evaluation_results.evo_langgraph\\train\\generated\\案例库-CDyna案例-其他模块案例-非球形离散元案例-导入GenviPar格式进行计算-椭球掉落-椭球颗粒掉落.js",
+      "saved_ground_truth_script": "D:\\Codes\\langchain\\physic\\tools\\agents\\results\\evaluation_results.evo_langgraph\\train\\ground_truth\\案例库-CDyna案例-其他模块案例-非球形离散元案例-导入GenviPar格式进行计算-椭球掉落-椭球颗粒掉落.js",
+      "task_steps": [],
+      "error_message": "",
+      "notes": "",
+      "evaluation_time": "2026-04-03T10:42:09.169845",
+      "last_run_metrics": {
+        "evo_scores": {
+          "f_s": 1.0,
+          "f_f": 0.14511254819052358,
+          "f_p": null
+        },
+        "evo_breakdown": {
+          "simplicity": {
+            "R": 0,
+            "L": 18
+          },
+          "fitness": {
+            "Sim": 0.09022509638104714,
+            "Cov": 0.2,
+            "terms": [
+              "cdyna",
+              "genvipar",
+              "一个",
+              "与监",
+              "个仿",
+              "仿真",
+              "入格",
+              "写一",
+              "出必",
+              "实现",
+              "导入",
+              "并输",
+              "式进",
+              "必要",
+              "掉落",
+              "本实",
+              "果与",
+              "格式",
+              "椭球",
+              "现导"
+            ],
+            "hit": 4,
+            "total": 20
+          },
+          "physics": {
+            "available": false
+          }
+        },
+        "evo_history_len": 7,
+        "retrieved_count": 14,
+        "ground_truth_encoding": "gb18030"
+      }
+    },
+    {
+      "test_id": "T003",
+      "filename": "案例库-CDyna案例-块体模块案例-扩展案例-裂隙渗流及孔隙渗流动态边界条件的施加-孔隙渗流-多种方式加动态边界条件-DynaPoreSeepage.js",
+      "category": "CDyna案例",
+      "query": "请编写一个CDyna仿真脚本，实现孔隙渗流-多种方式加动态边界条件-DynaPoreSeepage，并输出必要的结果与监测。",
+      "generated_code": "setCurDir(getSrcDir());\n\ndyna.Clear();\ndoc.clearResult();\n\n// 关闭力学计算，专注孔隙渗流\ndyna.Set(\"Mechanic_Cal 0\");\n\n// 包含孔隙渗流计算功能\ndyna.Set(\"Config_PoreSeepage 1\");\n\n// 开启孔隙渗流计算\ndyna.Set(\"PoreSeepage_Cal 1\");\n\n// 设置重力加速度\ndyna.Set(\"Gravity 0.0 0.0 -9.8\");\n\n// 设置结果输出时步\ndyna.Set(\"Output_Interval 500\");\n\n// 导入网格\nblkdyn.ImportGrid(\"Gid\", \"pore-model.msh\");\n\n// 定义X、Y、Z三个方向的渗透系数 (m/s)\nvar arrayK = new Array(1e-8, 1e-8, 1e-8);\n\n// 指定坐标控制范围内的孔隙渗流参数\n// 依次：流体密度(kg/m^3)、体积模量(Pa)、饱和度(0-1)、孔隙率、渗透系数数组、比奥系数\n// 范围：X、Y、Z坐标范围\nporesp.SetPropByCoord (1000.0, 1e6, 0.0, 0.3, arrayK, 1.0, -250, 250, -250, 250, -250, 250);\n\n// 设置初始压力分布\nvar initPressure = new Array();\ninitPressure[0] = [0, 100000];    // X=0处压力\ninitPressure[1] = [100, 150000];  // X=100处压力\ninitPressure[2] = [200, 200000];  // X=200处压力\ninitPressure[3] = [300, 250000];  // X=300处压力\n\n// 通过坐标初始化压力边界\nfor (var i = 0; i < initPressure.length; i++) {\n    poresp.InitConditionByCoord(initPressure[i].pop(), 0, initPressure[i][0], initPressure[i][1]);\n}\n\n// 定义梯度场\nvar fArrayGrad = [0.0, 0.0, 0.0];\n\n// 方式1：通过圆柱施加动态压力及流量边界\n// 参数：名称，压力数组，梯度，半径，高度，起点，终点\nporesp.ApplyDynaConditionByCylinder(\"pump1\", initPressure, fArrayGrad, 0.5, 0.5, -1, 0.5, 0.5, 1, 0.19, 0.21, true);\n\n// 方式2：通过球体施加动态边界条件\n// 参数：名称，压力数组，梯度，半径，起点\nporesp.ApplyDynaConditionBySphere(\"inject1\", initPressure, fArrayGrad, 0.5, 0.5, 0, 0.19, 0.21, true);\n\n// 方式3：通过坐标范围施加边界条件\nporesp.ApplyDynaConditionByCoord(\"boundary1\", initPressure, fArrayGrad, 4.99, 5.01, 4.99, 5.01, -1, 1, false);\n\n// 方式4：通过法向施加动态边界条件\nporesp.ApplyDynaBoundCondition(\"surface1\", initPressure, fArrayGrad, 0, 0, 1, 0.1);\n\n// 设置监测变量\n// fpp: 流体压力\n// magfvel: 流体速度模量\n// discharge: 流量\ndyna.Monitor(\"block\", \"fpp\", 5, 5, 0);\ndyna.Monitor(\"block\", \"magfvel\", 5, 5, 0);\ndyna.Monitor(\"block\", \"discharge\", 5, 5, 0);\n\n// 自动计算时步\ndyna.TimeStepCorrect();\n\n// 设置时间步长\ndyna.Set(\"Time_Step 0.005\");\n\n// 求解\ndyna.Solve(100000);\n\n// 打印完成信息\nprint(\"Solution Finished\");",
+      "generation_time": 406.2162449359894,
+      "similarity_score": 0.6452,
+      "code_quality_score": 9.0,
+      "execution_score": 9.0,
+      "functionality_score": 7.726,
+      "retrieved_docs_count": 14,
+      "retrieval_quality": "good",
+      "diff_unified": "--- 案例库-CDyna案例-块体模块案例-扩展案例-裂隙渗流及孔隙渗流动态边界条件的施加-孔隙渗流-多种方式加动态边界条件-DynaPoreSeepage.js (ground_truth)\n+++ 案例库-CDyna案例-块体模块案例-扩展案例-裂隙渗流及孔隙渗流动态边界条件的施加-孔隙渗流-多种方式加动态边界条件-DynaPoreSeepage.js (generated)\n@@ -1,62 +1,79 @@\n-//设置当前工作路径为JavaScript脚本文件所在路径\n setCurDir(getSrcDir());\n \n dyna.Clear();\n doc.clearResult();\n \n-//关闭力学计算开关\n+// 关闭力学计算，专注孔隙渗流\n dyna.Set(\"Mechanic_Cal 0\");\n \n-//包含孔隙渗流计算功能，开辟渗流相关的内存\n+// 包含孔隙渗流计算功能\n dyna.Set(\"Config_PoreSeepage 1\");\n \n-//开启孔隙渗流开关\n+// 开启孔隙渗流计算\n dyna.Set(\"PoreSeepage_Cal 1\");\n \n+// 设置重力加速度\n+dyna.Set(\"Gravity 0.0 0.0 -9.8\");\n \n-//设置3个方向的重力加速度\n-dyna.Set(\"Gravity 0.0 0.0 0.0\");\n-\n-//设置结果输出时步\n+// 设置结果输出时步\n dyna.Set(\"Output_Interval 500\");\n \n+// 导入网格\n+blkdyn.ImportGrid(\"Gid\", \"pore-model.msh\");\n \n-blkdyn.ImportGrid(\"Gid\",\"pore-seepage.msh\");\n-\n-\n-//定义X、Y、Z三个方向的渗透系数\n+// 定义X、Y、Z三个方向的渗透系数 (m/s)\n var arrayK = new Array(1e-8, 1e-8, 1e-8);\n \n-//指定坐标控制范围内的孔隙渗流参数，依次为流体密度、体积模量、饱和度、孔隙率、渗透系数、比奥系数\n-poresp.SetPropByCoord (1000.0, 1e6, 0.0, 0.3, arrayK, 1.0, -500, 500, -500, 500, -500, 500);\n+// 指定坐标控制范围内的孔隙渗流参数\n+// 依次：流体密度(kg/m^3)、体积模量(Pa)、饱和度(0-1)、孔隙率、渗透系数数组、比奥系数\n+// 范围：X、Y、Z坐标范围\n+poresp.SetPropByCoord (1000.0, 1e6, 0.0, 0.3, arrayK, 1.0, -250, 250, -250, 250, -250, 250);\n \n+// 设置初始压力分布\n+var initPressure = new Array();\n+initPressure[0] = [0, 100000];    // X=0处压力\n+initPressure[1] = [100, 150000];  // X=100处压力\n+initPressure[2] = [200, 200000];  // X=200处压力\n+initPressure[3] = [300, 250000];  // X=300处压力\n \n+// 通过坐标初始化压力边界\n+for (var i = 0; i < initPressure.length; i++) {\n+    poresp.InitConditionByCoord(initPressure[i].pop(), 0, initPressure[i][0], initPressure[i][1]);\n+}\n \n+// 定义梯度场\n var fArrayGrad = [0.0, 0.0, 0.0];\n-var aValue = new Array();\n-aValue[0] = [0,0];\n-aValue[1] = [50,1e4];\n-aValue[2] = [100,3e4];\n-aValue[3] = [150,5e4];\n-aValue[4] = [200,4e4];\n-aValue[5] = [300,3e4];\n \n-//poresp.ApplyDynaConditionByCylinder(\"pp\",aValue, fArrayGrad, 0.5, 0.5 , -1, 0.5, 0.5, 1, 0.19, 0.21, true);\n+// 方式1：通过圆柱施加动态压力及流量边界\n+// 参数：名称，压力数组，梯度，半径，高度，起点，终点\n+poresp.ApplyDynaConditionByCylinder(\"pump1\", initPressure, fArrayGrad, 0.5, 0.5, -1, 0.5, 0.5, 1, 0.19, 0.21, true);\n \n-poresp.ApplyDynaConditionBySphere(\"pp\",aValue, fArrayGrad, 0.5, 0.5 ,0, 0.19, 0.21, true);\n+// 方式2：通过球体施加动态边界条件\n+// 参数：名称，压力数组，梯度，半径，起点\n+poresp.ApplyDynaConditionBySphere(\"inject1\", initPressure, fArrayGrad, 0.5, 0.5, 0, 0.19, 0.21, true);\n \n+// 方式3：通过坐标范围施加边界条件\n+poresp.ApplyDynaConditionByCoord(\"boundary1\", initPressure, fArrayGrad, 4.99, 5.01, 4.99, 5.01, -1, 1, false);\n \n-dyna.Monitor(\"block\", \"fpp\", 5,5,0);\n-dyna.Monitor(\"block\", \"magfvel\", 5,5,0);\n-dyna.Monitor(\"block\", \"discharge\", 5,5,0);\n+// 方式4：通过法向施加动态边界条件\n+poresp.ApplyDynaBoundCondition(\"surface1\", initPressure, fArrayGrad, 0, 0, 1, 0.1);\n \n-//自动计算时步\n+// 设置监测变量\n+// fpp: 流体压力\n+// magfvel: 流体速度模量\n+// discharge: 流量\n+dyna.Monitor(\"block\", \"fpp\", 5, 5, 0);\n+dyna.Monitor(\"block\", \"magfvel\", 5, 5, 0);\n+dyna.Monitor(\"block\", \"discharge\", 5, 5, 0);\n+\n+// 自动计算时步\n dyna.TimeStepCorrect();\n \n+// 设置时间步长\n dyna.Set(\"Time_Step 0.005\");\n \n-//求解10万步\n+// 求解\n dyna.Solve(100000);\n \n-//打印提示信息\n+// 打印完成信息\n print(\"Solution Finished\");",
+      "diff_file": "D:\\Codes\\langchain\\physic\\tools\\agents\\results\\evaluation_results.evo_langgraph\\diffs\\案例库-CDyna案例-块体模块案例-扩展案例-裂隙渗流及孔隙渗流动态边界条件的施加-孔隙渗流-多种方式加动态边界条件-DynaPoreSeepage.diff",
+      "dataset_split": "train",
+      "saved_generated_script": "D:\\Codes\\langchain\\physic\\tools\\agents\\results\\evaluation_results.evo_langgraph\\train\\generated\\案例库-CDyna案例-块体模块案例-扩展案例-裂隙渗流及孔隙渗流动态边界条件的施加-孔隙渗流-多种方式加动态边界条件-DynaPoreSeepage.js",
+      "saved_ground_truth_script": "D:\\Codes\\langchain\\physic\\tools\\agents\\results\\evaluation_results.evo_langgraph\\train\\ground_truth\\案例库-CDyna案例-块体模块案例-扩展案例-裂隙渗流及孔隙渗流动态边界条件的施加-孔隙渗流-多种方式加动态边界条件-DynaPoreSeepage.js",
+      "task_steps": [],
+      "error_message": "",
+      "notes": "",
+      "evaluation_time": "2026-04-03T10:48:55.398103",
+      "last_run_metrics": {
+        "evo_scores": {
+          "f_s": 1.0,
+          "f_f": 0.14328472120052965,
+          "f_p": null
+        },
+        "evo_breakdown": {
+          "simplicity": {
+            "R": 0,
+            "L": 58
+          },
+          "fitness": {
+            "Sim": 0.03656944240105929,
+            "Cov": 0.25,
+            "terms": [
+              "cdyna",
+              "dynaporeseepage",
+              "一个",
+              "与监",
+              "个仿",
+              "件并",
+              "仿真",
+              "写一",
+              "出必",
+              "加动",
+              "动态",
+              "多种",
+              "孔隙",
+              "实现",
+              "并输",
+              "式加",
+              "必要",
+              "态边",
+              "方式",
+              "本实"
+            ],
+            "hit": 5,
+            "total": 20
+          },
+          "physics": {
+            "available": false
+          }
+        },
+        "evo_history_len": 4,
+        "retrieved_count": 14,
+        "ground_truth_encoding": "utf-8"
+      }
+    },
+    {
+      "test_id": "T004",
+      "filename": "案例库-CDyna案例-块体模块案例-扩展案例-预应力施加及锁定-计算方案2.js",
+      "category": "CDyna案例",
+      "query": "请编写一个CDyna仿真脚本，实现扩展案例-预应力施加及锁定-计算方案2，并输出必要的结果与监测。",
+      "generated_code": "setCurDir(getSrcDir());\n\n// 清除环境\nigeo.clear();\nimeshing.clear();\ndyna.Clear();\ndoc.clearResult();\n\n// 创建混凝土块体\nvar id1 = igeo.genBrickV(0, 0, 0, 1.0, 0.3, 0.3, 0.05, 1);\n\n// 创建圆柱形锚孔\nvar id2 = igeo.genCylinderV(-0.1, 0.15, 0.15, 0, 0.15, 0.15, 0.0, 0.1, 0.02, 0.02, 2);\n\n// 几何绑定\nigeo.glue(\"volume\", id1, id2);\n\n// 网格划分\nimeshing.genMeshByGmsh(3);\n\n// 设置块体计算开关\ndyna.Set(\"If_Cal_Bar 1\");\n\n// 设置输出间隔\ndyna.Set(\"Output_Interval 500\");\n\n// 关闭重力\ndyna.Set(\"Gravity 0 0 0\");\n\n// 导入网格\nblkdyn.GetMesh(imeshing);\n\n// 创建接触面\nblkdyn.CrtIFace(1, 2);\n\n// 更新接触面网格\nblkdyn.UpdateIFaceMesh();\n\n// 设置模型为线弹性\nblkdyn.SetModel(\"linear\");\n\n// 设置混凝土材料参数（组1）\nblkdyn.SetMat(2500, 3e10, 0.25, 1e6, 5e6, 35, 10, 1);\n\n// 设置锚索材料参数（组2）\nblkdyn.SetMat(2000, 1e10, 0.25, 1e6, 5e6, 35, 10, 2);\n\n// 设置块体失效模型\nblkdyn.SetIModel(\"brittleMC\");\n\n// 设置材料失效参数\nblkdyn.SetIMat(1e12, 1e12, 10.0, 0.0, 0.0);\n\n// 固定底部约束\nblkdyn.FixV(\"xyz\", 0.0, \"x\", 0.999, 1.01);\n\n// 创建第1根锚索\nvar fArrayCoord1 = [-0.095, 0.15, 0.15];\nvar fArrayCoord2 = [0.8, 0.15, 0.15];\nbar.CreateByCoord(\"cable\", fArrayCoord1, fArrayCoord2, 30);\n\n// 设置锚索失效模型\nbar.SetModelByID(\"failure\", 1, 100);\n\n// 定义锚索材料参数（锚固段）\nvar BarProp1 = [1e-2, 7800.0, 1e10, 0.25, 235e6, 235e6, 1e6, 35, 1e9, 0.4, 0.0];\n\n// 定义锚索材料参数（自由段）\nvar BarProp2 = [1e-2, 7800.0, 1e10, 0.25, 235e6, 235e6, 0.0, 0.0, 1e9, 0.4, 0.0];\n\n// 指定自由段锚索材料（节点1-10）\nbar.SetPropByID(BarProp2, 1, 10, 1, 23);\n\n// 指定锚固段锚索材料（节点24-30）\nbar.SetPropByID(BarProp1, 1, 10, 24, 30);\n\n// 方案2：在钢筋上施加x方向拉力1kN\nbar.ApplyForceByID([-1e3, 0.0, 0.0], 1, 11, 1, 1);\n\n// 设置监测点\ndyna.Monitor(\"bar\", \"a_normal_force\", 0, 0.15, 0.15);\ndyna.Monitor(\"bar\", \"a_normal_force\", 0.2, 0.15, 0.15);\n\n// 计算前初始化\ndyna.BeforeCal();\n\n// 求解循环\nfor (var i = 0; i < 10000; i++) {\n    // 计算单元变形力\n    blkdyn.CalBlockForce();\n\n    // 计算节点运动\n    var unbal = blkdyn.CalNodeMovement();\n\n    // 输出监测信息\n    dyna.OutputMonitorData();\n\n    // 每隔100步推送信息\n    if (i != 0 && i % 100 == 0) {\n        print(\"计算步数：\" + i);\n        print(\"不平衡率：\" + unbal);\n\n        // 推送结果信息至GDEM-Env\n        dyna.PutStep(1, i, 0.1);\n    }\n\n    // 核心求解\n    blkdyn.Solver();\n\n    // 释放预应力（第500步后）\n    if (i >= 500) {\n        bar.ApplyForceByID([0, 0, 0], 1, 11, 1, 1);\n    }\n\n    // 增强粘接（第600步后）\n    if (i >= 600) {\n        dyna.Set(\"Contact_Stiffness 10\");\n        blkdyn.UpdateIFaceMesh();\n    }\n}",
+      "generation_time": 61.26916480064392,
+      "similarity_score": 0.7551,
+      "code_quality_score": 9.0,
+      "execution_score": 9.0,
+      "functionality_score": 8.275500000000001,
+      "retrieved_docs_count": 12,
+      "retrieval_quality": "good",
+      "diff_unified": "--- 案例库-CDyna案例-块体模块案例-扩展案例-预应力施加及锁定-计算方案2.js (ground_truth)\n+++ 案例库-CDyna案例-块体模块案例-扩展案例-预应力施加及锁定-计算方案2.js (generated)\n@@ -1,80 +1,120 @@\n-//先在钢筋上加载荷，拉拔（不反压混凝土），然后扯掉拉力，将钢筋第一个节点与混凝土粘接强度增强\n-\n setCurDir(getSrcDir());\n \n+// 清除环境\n igeo.clear();\n imeshing.clear();\n dyna.Clear();\n doc.clearResult();\n \n+// 创建混凝土块体\n+var id1 = igeo.genBrickV(0, 0, 0, 1.0, 0.3, 0.3, 0.05, 1);\n \n-var id1 = igeo.genBrickV(0,0,0,1.0,0.3, 0.3, 0.05, 1);\n+// 创建圆柱形锚孔\n+var id2 = igeo.genCylinderV(-0.1, 0.15, 0.15, 0, 0.15, 0.15, 0.0, 0.1, 0.02, 0.02, 2);\n \n-var id2 = igeo.genCylinderV(-0.1,0.15,0.15,0,0.15,0.15,0.0, 0.1, 0.02, 0.02, 2);\n+// 几何绑定\n+igeo.glue(\"volume\", id1, id2);\n \n-igeo.glue(\"volume\",id1, id2);\n-\n+// 网格划分\n imeshing.genMeshByGmsh(3);\n \n+// 设置块体计算开关\n dyna.Set(\"If_Cal_Bar 1\");\n \n+// 设置输出间隔\n dyna.Set(\"Output_Interval 500\");\n \n+// 关闭重力\n dyna.Set(\"Gravity 0 0 0\");\n \n+// 导入网格\n blkdyn.GetMesh(imeshing);\n \n-blkdyn.CrtIFace(1,2);\n+// 创建接触面\n+blkdyn.CrtIFace(1, 2);\n \n+// 更新接触面网格\n blkdyn.UpdateIFaceMesh();\n \n+// 设置模型为线弹性\n blkdyn.SetModel(\"linear\");\n \n-blkdyn.SetMat(2500,3e10,0.25,10e6, 5e6,35,10,1);\n+// 设置混凝土材料参数（组1）\n+blkdyn.SetMat(2500, 3e10, 0.25, 1e6, 5e6, 35, 10, 1);\n \n-blkdyn.SetMat(2000,1e10,0.25,10e6, 5e6,35,10,2);\n+// 设置锚索材料参数（组2）\n+blkdyn.SetMat(2000, 1e10, 0.25, 1e6, 5e6, 35, 10, 2);\n \n+// 设置块体失效模型\n blkdyn.SetIModel(\"brittleMC\");\n \n+// 设置材料失效参数\n blkdyn.SetIMat(1e12, 1e12, 10.0, 0.0, 0.0);\n \n+// 固定底部约束\n blkdyn.FixV(\"xyz\", 0.0, \"x\", 0.999, 1.01);\n \n-//创建第1根锚索\n-var fArrayCoord1 = [-0.095,0.15, 0.15];\n-var fArrayCoord2 = [0.8,0.15,0.15];\n+// 创建第1根锚索\n+var fArrayCoord1 = [-0.095, 0.15, 0.15];\n+var fArrayCoord2 = [0.8, 0.15, 0.15];\n bar.CreateByCoord(\"cable\", fArrayCoord1, fArrayCoord2, 30);\n \n-\n-//设置所有锚索的力学模型为可破坏模型\n+// 设置锚索失效模型\n bar.SetModelByID(\"failure\", 1, 100);\n \n-//定义两种锚索材料\n+// 定义锚索材料参数（锚固段）\n var BarProp1 = [1e-2, 7800.0, 1e10, 0.25, 235e6, 235e6, 1e6, 35, 1e9, 0.4, 0.0];\n+\n+// 定义锚索材料参数（自由段）\n var BarProp2 = [1e-2, 7800.0, 1e10, 0.25, 235e6, 235e6, 0.0, 0.0, 1e9, 0.4, 0.0];\n \n-//指定自由段的锚索材料\n+// 指定自由段锚索材料（节点1-10）\n bar.SetPropByID(BarProp2, 1, 10, 1, 23);\n \n-//指定锚固段的锚索材料\n+// 指定锚固段锚索材料（节点24-30）\n bar.SetPropByID(BarProp1, 1, 10, 24, 30);\n \n-//施加x方向力，为1kN。\n-bar.ApplyForceByID([-1e3, 0.0, 0.0], 1,11,1,1);\n+// 方案2：在钢筋上施加x方向拉力1kN\n+bar.ApplyForceByID([-1e3, 0.0, 0.0], 1, 11, 1, 1);\n \n+// 设置监测点\n+dyna.Monitor(\"bar\", \"a_normal_force\", 0, 0.15, 0.15);\n+dyna.Monitor(\"bar\", \"a_normal_force\", 0.2, 0.15, 0.15);\n \n-dyna.Monitor(\"bar\",\"a_normal_force\",  0, 0.15, 0.15);\n-dyna.Monitor(\"bar\",\"a_normal_force\",  0.2, 0.15, 0.15);\n-dyna.Monitor(\"bar\",\"a_normal_force\",  0.4, 0.15, 0.15);\n-dyna.Monitor(\"bar\",\"a_normal_force\",  0.6, 0.15, 0.15);\n-dyna.Monitor(\"bar\",\"a_normal_force\",  0.8, 0.15, 0.15);\n+// 计算前初始化\n+dyna.BeforeCal();\n \n-dyna.Solve(5000);\n+// 求解循环\n+for (var i = 0; i < 10000; i++) {\n+    // 计算单元变形力\n+    blkdyn.CalBlockForce();\n \n-//反向施加1Kn力，抵消。\n-bar.ApplyForceByID([1e3, 0.0, 0.0], 1,11,1,1);\n+    // 计算节点运动\n+    var unbal = blkdyn.CalNodeMovement();\n \n-//第一点强度增高\n-bar.SetPropByID(BarProp1, 1, 10, 1, 1);\n+    // 输出监测信息\n+    dyna.OutputMonitorData();\n \n-dyna.Solve(5000);\n+    // 每隔100步推送信息\n+    if (i != 0 && i % 100 == 0) {\n+        print(\"计算步数：\" + i);\n+        print(\"不平衡率：\" + unbal);\n+\n+        // 推送结果信息至GDEM-Env\n+        dyna.PutStep(1, i, 0.1);\n+    }\n+\n+    // 核心求解\n+    blkdyn.Solver();\n+\n+    // 释放预应力（第500步后）\n+    if (i >= 500) {\n+        bar.ApplyForceByID([0, 0, 0], 1, 11, 1, 1);\n+    }\n+\n+    // 增强粘接（第600步后）\n+    if (i >= 600) {\n+        dyna.Set(\"Contact_Stiffness 10\");\n+        blkdyn.UpdateIFaceMesh();\n+    }\n+}",
+      "diff_file": "D:\\Codes\\langchain\\physic\\tools\\agents\\results\\evaluation_results.evo_langgraph\\diffs\\案例库-CDyna案例-块体模块案例-扩展案例-预应力施加及锁定-计算方案2.diff",
+      "dataset_split": "train",
+      "saved_generated_script": "D:\\Codes\\langchain\\physic\\tools\\agents\\results\\evaluation_results.evo_langgraph\\train\\generated\\案例库-CDyna案例-块体模块案例-扩展案例-预应力施加及锁定-计算方案2.js",
+      "saved_ground_truth_script": "D:\\Codes\\langchain\\physic\\tools\\agents\\results\\evaluation_results.evo_langgraph\\train\\ground_truth\\案例库-CDyna案例-块体模块案例-扩展案例-预应力施加及锁定-计算方案2.js",
+      "task_steps": [],
+      "error_message": "",
+      "notes": "",
+      "evaluation_time": "2026-04-03T10:49:56.681704",
+      "last_run_metrics": {
+        "evo_scores": {
+          "f_s": 0.9534883720930233,
+          "f_f": 0.08151423215430911,
+          "f_p": null
+        },
+        "evo_breakdown": {
+          "simplicity": {
+            "R": 4,
+            "L": 86
+          },
+          "fitness": {
+            "Sim": 0.013028464308618223,
+            "Cov": 0.15,
+            "terms": [
+              "cdyna",
+              "一个",
+              "与监",
+              "个仿",
+              "仿真",
+              "例预",
+              "写一",
+              "出必",
+              "力施",
+              "加及",
+              "及锁",
+              "定计",
+              "实现",
+              "展案",
+              "并输",
+              "应力",
+              "必要",
+              "扩展",
+              "方案",
+              "施加"
+            ],
+            "hit": 3,
+            "total": 20
+          },
+          "physics": {
+            "available": false
+          }
+        },
+        "evo_history_len": 4,
+        "retrieved_count": 12,
+        "ground_truth_encoding": "utf-8"
+      }
+    },
+    {
+      "test_id": "T005",
+      "filename": "案例库-CDyna案例-块体模块案例-扩展案例-金子塔型单元掉落碰撞-pyramidFall.js",
+      "category": "CDyna案例",
+      "query": "请编写一个CDyna仿真脚本，实现扩展案例-金子塔型单元掉落碰撞-pyramidFall，并输出必要的结果与监测。",
+      "generated_code": "setCurDir(getSrcDir());\n\n// 全局设置\ndyna.Set(\"Output_Interval 500\");\ndyna.Set(\"Large_Displace 1\");\ndyna.Set(\"If_Renew_Contact 1\");\ndyna.Set(\"If_Cal_EE_Contact 1\");\ndyna.Set(\"Contact_Detect_Tol 1e-2\");\ndyna.Set(\"Renew_Interval 10\");\ndyna.Set(\"Gravity 0.0 -9.8 0.0\");\n\n// 创建底部刚性接触面\nvar fBotCoord = new Array();\nfBotCoord[0] = new Array(-10.0, 0.0, 0.0);\nfBotCoord[1] = new Array(10.0, 0.0, 0.0);\nfBotCoord[2] = new Array(10.0, 10.0, 0.0);\nfBotCoord[3] = new Array(-10.0, 10.0, 0.0);\nrdface.Create(1, 1, 2, fBotCoord);\n\n// 创建金字塔顶部面\nvar fPyramidTop = new Array();\nfPyramidTop[0] = new Array(-3.0, -0.1, 10.0);\nfPyramidTop[1] = new Array(3.0, -0.1, 10.0);\nfPyramidTop[2] = new Array(3.0, -0.1, 8.0);\nfPyramidTop[3] = new Array(-3.0, -0.1, 8.0);\nrdface.Create(2, 10, 4, fPyramidTop);\n\n// 创建金字塔侧面\nvar fPyramidSide1 = new Array();\nfPyramidSide1[0] = new Array(-3.0, -0.1, 10.0);\nfPyramidSide1[1] = new Array(3.0, -0.1, 10.0);\nfPyramidSide1[2] = new Array(3.0, -0.1, 8.0);\nrdface.Create(1, 1, 2, fPyramidSide1);\n\nvar fPyramidSide2 = new Array();\nfPyramidSide2[0] = new Array(3.0, -0.1, 10.0);\nfPyramidSide2[1] = new Array(3.0, -0.1, 8.0);\nfPyramidSide2[2] = new Array(-3.0, -0.1, 8.0);\nrdface.Create(1, 1, 2, fPyramidSide2);\n\nvar fPyramidSide3 = new Array();\nfPyramidSide3[0] = new Array(-3.0, -0.1, 8.0);\nfPyramidSide3[1] = new Array(-3.0, -0.1, 10.0);\nfPyramidSide3[2] = new Array(-10.0, 5.0, 10.0);\nfPyramidSide3[3] = new Array(-10.0, 5.0, 8.0);\nrdface.Create(1, 1, 2, fPyramidSide3);\n\nvar fPyramidSide4 = new Array();\nfPyramidSide4[0] = new Array(-10.0, 5.0, 10.0);\nfPyramidSide4[1] = new Array(-10.0, 5.0, 8.0);\nfPyramidSide4[2] = new Array(3.0, -0.1, 8.0);\nfPyramidSide4[3] = new Array(3.0, -0.1, 10.0);\nrdface.Create(1, 1, 2, fPyramidSide4);\n\n// 创建IFace\nblkdyn.CrtIFace();\nblkdyn.UpdateIFaceMesh();\n\n// 模型与材料设置\nblkdyn.SetModel(\"linear\");\nblkdyn.SetMat(2500, 3e9, 0.25, 3e3, 1e3, 10, 10);\nblkdyn.SetIModel(\"brittleMC\");\nblkdyn.SetIStiffByElem(0.5);\nblkdyn.SetIStrengthByElem();\n\n// 局部阻尼\nblkdyn.SetLocalDamp(0.01);\n\n// 固定底面\nblkdyn.FixV(\"z\", 0, \"z\", 0.0);\n\n// 导出监测数据\nvar monitor = new Array();\nmonitor[0] = new Array(\"Elem_ID\", \"Elem_Velocity\");\nmonitor[1] = new Array(\"Elem_ID\", \"Elem_Acceleration\");\nmonitor[2] = new Array(\"Elem_ID\", \"Elem_Force\");\n\n// 求解\ndyna.Solve(30000);",
+      "generation_time": 502.2645447254181,
+      "similarity_score": 0.6418,
+      "code_quality_score": 9.0,
+      "execution_score": 7.0,
+      "functionality_score": 7.309,
+      "retrieved_docs_count": 14,
+      "retrieval_quality": "good",
+      "diff_unified": "--- 案例库-CDyna案例-块体模块案例-扩展案例-金子塔型单元掉落碰撞-pyramidFall.js (ground_truth)\n+++ 案例库-CDyna案例-块体模块案例-扩展案例-金子塔型单元掉落碰撞-pyramidFall.js (generated)\n@@ -1,33 +1,79 @@\n setCurDir(getSrcDir());\n \n+// 全局设置\n dyna.Set(\"Output_Interval 500\");\n dyna.Set(\"Large_Displace 1\");\n dyna.Set(\"If_Renew_Contact 1\");\n dyna.Set(\"If_Cal_EE_Contact 1\");\n dyna.Set(\"Contact_Detect_Tol 1e-2\");\n+dyna.Set(\"Renew_Interval 10\");\n+dyna.Set(\"Gravity 0.0 -9.8 0.0\");\n \n-dyna.Set(\"Renew_Interval 10\");\n+// 创建底部刚性接触面\n+var fBotCoord = new Array();\n+fBotCoord[0] = new Array(-10.0, 0.0, 0.0);\n+fBotCoord[1] = new Array(10.0, 0.0, 0.0);\n+fBotCoord[2] = new Array(10.0, 10.0, 0.0);\n+fBotCoord[3] = new Array(-10.0, 10.0, 0.0);\n+rdface.Create(1, 1, 2, fBotCoord);\n \n-var fCoord=new Array();\n-fCoord[0]=new Array(-5, -0.1, -5);\n-fCoord[1]=new Array(6, -0.1, -5);\n-fCoord[2]=new Array(6, -0.1, 6);\n-fCoord[3]=new Array(-5, -0.1, 6);\n-rdface.Create (2, 10, 4, fCoord);\n+// 创建金字塔顶部面\n+var fPyramidTop = new Array();\n+fPyramidTop[0] = new Array(-3.0, -0.1, 10.0);\n+fPyramidTop[1] = new Array(3.0, -0.1, 10.0);\n+fPyramidTop[2] = new Array(3.0, -0.1, 8.0);\n+fPyramidTop[3] = new Array(-3.0, -0.1, 8.0);\n+rdface.Create(2, 10, 4, fPyramidTop);\n \n+// 创建金字塔侧面\n+var fPyramidSide1 = new Array();\n+fPyramidSide1[0] = new Array(-3.0, -0.1, 10.0);\n+fPyramidSide1[1] = new Array(3.0, -0.1, 10.0);\n+fPyramidSide1[2] = new Array(3.0, -0.1, 8.0);\n+rdface.Create(1, 1, 2, fPyramidSide1);\n \n-blkdyn.ImportGrid(\"ansys\",\"3col.dat\");\n+var fPyramidSide2 = new Array();\n+fPyramidSide2[0] = new Array(3.0, -0.1, 10.0);\n+fPyramidSide2[1] = new Array(3.0, -0.1, 8.0);\n+fPyramidSide2[2] = new Array(-3.0, -0.1, 8.0);\n+rdface.Create(1, 1, 2, fPyramidSide2);\n \n+var fPyramidSide3 = new Array();\n+fPyramidSide3[0] = new Array(-3.0, -0.1, 8.0);\n+fPyramidSide3[1] = new Array(-3.0, -0.1, 10.0);\n+fPyramidSide3[2] = new Array(-10.0, 5.0, 10.0);\n+fPyramidSide3[3] = new Array(-10.0, 5.0, 8.0);\n+rdface.Create(1, 1, 2, fPyramidSide3);\n+\n+var fPyramidSide4 = new Array();\n+fPyramidSide4[0] = new Array(-10.0, 5.0, 10.0);\n+fPyramidSide4[1] = new Array(-10.0, 5.0, 8.0);\n+fPyramidSide4[2] = new Array(3.0, -0.1, 8.0);\n+fPyramidSide4[3] = new Array(3.0, -0.1, 10.0);\n+rdface.Create(1, 1, 2, fPyramidSide4);\n+\n+// 创建IFace\n blkdyn.CrtIFace();\n blkdyn.UpdateIFaceMesh();\n \n-\n+// 模型与材料设置\n blkdyn.SetModel(\"linear\");\n-blkdyn.SetMat(2500,3e9, 0.25, 3e3, 1e3, 10, 10);\n+blkdyn.SetMat(2500, 3e9, 0.25, 3e3, 1e3, 10, 10);\n blkdyn.SetIModel(\"brittleMC\");\n blkdyn.SetIStiffByElem(0.5);\n blkdyn.SetIStrengthByElem();\n \n-blkdyn.SetLocalDamp(0.01)\n+// 局部阻尼\n+blkdyn.SetLocalDamp(0.01);\n \n+// 固定底面\n+blkdyn.FixV(\"z\", 0, \"z\", 0.0);\n+\n+// 导出监测数据\n+var monitor = new Array();\n+monitor[0] = new Array(\"Elem_ID\", \"Elem_Velocity\");\n+monitor[1] = new Array(\"Elem_ID\", \"Elem_Acceleration\");\n+monitor[2] = new Array(\"Elem_ID\", \"Elem_Force\");\n+\n+// 求解\n dyna.Solve(30000);",
+      "diff_file": "D:\\Codes\\langchain\\physic\\tools\\agents\\results\\evaluation_results.evo_langgraph\\diffs\\案例库-CDyna案例-块体模块案例-扩展案例-金子塔型单元掉落碰撞-pyramidFall.diff",
+      "dataset_split": "train",
+      "saved_generated_script": "D:\\Codes\\langchain\\physic\\tools\\agents\\results\\evaluation_results.evo_langgraph\\train\\generated\\案例库-CDyna案例-块体模块案例-扩展案例-金子塔型单元掉落碰撞-pyramidFall.js",
+      "saved_ground_truth_script": "D:\\Codes\\langchain\\physic\\tools\\agents\\results\\evaluation_results.evo_langgraph\\train\\ground_truth\\案例库-CDyna案例-块体模块案例-扩展案例-金子塔型单元掉落碰撞-pyramidFall.js",
+      "task_steps": [],
+      "error_message": "",
+      "notes": "",
+      "evaluation_time": "2026-04-03T10:58:18.958788",
+      "last_run_metrics": {
+        "evo_scores": {
+          "f_s": 1.0,
+          "f_f": 0.0033467581825401328,
+          "f_p": null
+        },
+        "evo_breakdown": {
+          "simplicity": {
+            "R": 0,
+            "L": 66
+          },
+          "fitness": {
+            "Sim": 0.0066935163650802655,
+            "Cov": 0.0,
+            "terms": [
+              "cdyna",
+              "pyramidfall",
+              "一个",
+              "与监",
+              "个仿",
+              "仿真",
+              "例金",
+              "元掉",
+              "写一",
+              "出必",
+              "单元",
+              "型单",
+              "塔型",
+              "子塔",
+              "实现",
+              "展案",
+              "并输",
+              "必要",
+              "扩展",
+              "掉落"
+            ],
+            "hit": 0,
+            "total": 20
+          },
+          "physics": {
+            "available": false
+          }
+        },
+        "evo_history_len": 7,
+        "retrieved_count": 14,
+        "ground_truth_encoding": "utf-8"
+      }
+    },
+    {
+      "test_id": "T006",
+      "filename": "案例库-CDyna案例-块体模块案例-扩展案例-圆环单元在内外刚性面作用下逐渐挤压-刚性面收缩膨胀.js",
+      "category": "CDyna案例",
+      "query": "请编写一个CDyna仿真脚本，实现扩展案例-圆环单元在内外刚性面作用下逐渐挤压-刚性面收缩膨胀，并输出必要的结果与监测。",
+      "generated_code": "setCurDir(getSrcDir());\n\n// 全局仿真设置\ndyna.Set(\"Large_Displace 1\");\ndyna.Set(\"Gravity 0 0 0\");\ndyna.Set(\"If_Renew_Contact 1\");\ndyna.Set(\"Output_Interval 200\");\ndyna.Set(\"If_Virtural_Mass 0\");\n\n// 导入圆环几何并建立接触面\nblkdyn.ImportGrid(\"gid\",\"annular.msh\");\nblkdyn.CrtBoundIFaceByGroup(1);\nblkdyn.UpdateIFaceMesh();\n\n// 设置块体材料参数（密度，弹性模量，泊松比，粘聚力，抗拉强度，内摩擦角，剪胀角）\nblkdyn.SetModel(\"MC\");\nblkdyn.SetMat(2000, 3e7, 0.25, 1e4, 0.5e4, 20, 5);\n\n// 设置脆性断裂本构与内聚力参数\nblkdyn.SetIModel(\"brittleMC\");\nblkdyn.SetIMat(1e8, 1e8, 10, 0, 0);\n\n// 设置局部阻尼\nblkdyn.SetLocalDamp(0.01);\n\n// 导入刚性面边界\nrdface.Import(\"gid\",\"bound.msh\");\n\n// 施加径向速度：内刚性面膨胀，外刚性面收缩\nrdface.ApplyRadialVelocity(1, 1, [0,0,0], [0,0,1], 0.01, 1, 1);\nrdface.ApplyRadialVelocity(2, 1, [0,0,0], [0,0,1], -0.01, 2, 2);\n\n// 时间步长控制\ndyna.TimeStepCorrect(0.8);\n\n// 输出结果：块度分布曲线、应力、应变、速度\nblkdyn.ExportGradationCurveByGroup(1, 1);\nblkdyn.ExportElemResult(\"Stress\", 1);\nblkdyn.ExportElemResult(\"Strain\", 1);\nblkdyn.ExportElemResult(\"Vel\", 1);\n\n// 求解计算\ndyna.Solve(2000);",
+      "generation_time": 266.290992975235,
+      "similarity_score": 0.8704,
+      "code_quality_score": 9.0,
+      "execution_score": 7.0,
+      "functionality_score": 8.452,
+      "retrieved_docs_count": 12,
+      "retrieval_quality": "excellent",
+      "diff_unified": "--- 案例库-CDyna案例-块体模块案例-扩展案例-圆环单元在内外刚性面作用下逐渐挤压-刚性面收缩膨胀.js (ground_truth)\n+++ 案例库-CDyna案例-块体模块案例-扩展案例-圆环单元在内外刚性面作用下逐渐挤压-刚性面收缩膨胀.js (generated)\n@@ -1,38 +1,43 @@\n setCurDir(getSrcDir());\n \n+// 全局仿真设置\n dyna.Set(\"Large_Displace 1\");\n-\n dyna.Set(\"Gravity 0 0 0\");\n-\n dyna.Set(\"If_Renew_Contact 1\");\n-\n dyna.Set(\"Output_Interval 200\");\n-\n dyna.Set(\"If_Virtural_Mass 0\");\n \n+// 导入圆环几何并建立接触面\n blkdyn.ImportGrid(\"gid\",\"annular.msh\");\n-\n blkdyn.CrtBoundIFaceByGroup(1);\n blkdyn.UpdateIFaceMesh();\n \n+// 设置块体材料参数（密度，弹性模量，泊松比，粘聚力，抗拉强度，内摩擦角，剪胀角）\n blkdyn.SetModel(\"MC\");\n-blkdyn.SetMat(1900, 3e7, 0.25,1e4, 0.5e4, 20, 5);\n+blkdyn.SetMat(2000, 3e7, 0.25, 1e4, 0.5e4, 20, 5);\n+\n+// 设置脆性断裂本构与内聚力参数\n blkdyn.SetIModel(\"brittleMC\");\n-blkdyn.SetIMat(1e8, 1e8, 10,0,0);\n+blkdyn.SetIMat(1e8, 1e8, 10, 0, 0);\n+\n+// 设置局部阻尼\n blkdyn.SetLocalDamp(0.01);\n \n+// 导入刚性面边界\n rdface.Import(\"gid\",\"bound.msh\");\n \n-//rdface.ApplyRadialVelocity(IDNo, nType, fOrigin[3], fNormal[3], fVel, GroupLow, GroupUp);\n-\n-////内测刚性面施加向外的径向速度\n+// 施加径向速度：内刚性面膨胀，外刚性面收缩\n rdface.ApplyRadialVelocity(1, 1, [0,0,0], [0,0,1], 0.01, 1, 1);\n-\n-////外测刚性面施加向内的径向速度\n rdface.ApplyRadialVelocity(2, 1, [0,0,0], [0,0,1], -0.01, 2, 2);\n \n-\n+// 时间步长控制\n dyna.TimeStepCorrect(0.8);\n \n+// 输出结果：块度分布曲线、应力、应变、速度\n+blkdyn.ExportGradationCurveByGroup(1, 1);\n+blkdyn.ExportElemResult(\"Stress\", 1);\n+blkdyn.ExportElemResult(\"Strain\", 1);\n+blkdyn.ExportElemResult(\"Vel\", 1);\n \n+// 求解计算\n dyna.Solve(2000);",
+      "diff_file": "D:\\Codes\\langchain\\physic\\tools\\agents\\results\\evaluation_results.evo_langgraph\\diffs\\案例库-CDyna案例-块体模块案例-扩展案例-圆环单元在内外刚性面作用下逐渐挤压-刚性面收缩膨胀.diff",
+      "dataset_split": "train",
+      "saved_generated_script": "D:\\Codes\\langchain\\physic\\tools\\agents\\results\\evaluation_results.evo_langgraph\\train\\generated\\案例库-CDyna案例-块体模块案例-扩展案例-圆环单元在内外刚性面作用下逐渐挤压-刚性面收缩膨胀.js",
+      "saved_ground_truth_script": "D:\\Codes\\langchain\\physic\\tools\\agents\\results\\evaluation_results.evo_langgraph\\train\\ground_truth\\案例库-CDyna案例-块体模块案例-扩展案例-圆环单元在内外刚性面作用下逐渐挤压-刚性面收缩膨胀.js",
+      "task_steps": [],
+      "error_message": "",
+      "notes": "",
+      "evaluation_time": "2026-04-03T11:02:45.262283",
+      "last_run_metrics": {
+        "evo_scores": {
+          "f_s": 1.0,
+          "f_f": 0.12192508839907684,
+          "f_p": null
+        },
+        "evo_breakdown": {
+          "simplicity": {
+            "R": 0,
+            "L": 33
+          },
+          "fitness": {
+            "Sim": 0.04385017679815367,
+            "Cov": 0.2,
+            "terms": [
+              "cdyna",
+              "一个",
+              "下逐",
+              "与监",
+              "个仿",
+              "仿真",
+              "作用",
+              "例圆",
+              "元在",
+              "内外",
+              "写一",
+              "出必",
+              "刚性",
+              "单元",
+              "压刚",
+              "圆环",
+              "在内",
+              "外刚",
+              "实现",
+              "展案"
+            ],
+            "hit": 4,
+            "total": 20
+          },
+          "physics": {
+            "available": false
+          }
+        },
+        "evo_history_len": 7,
+        "retrieved_count": 12,
+        "ground_truth_encoding": "utf-8"
+      }
+    },
+    {
+      "test_id": "T007",
+      "filename": "案例库-SuperCDEM案例-Gravity-Gravity.js",
+      "category": "SuperCDEM案例",
+      "query": "请编写一个SuperCDEM仿真脚本，实现Gravity-Gravity，并输出必要的结果与监测。",
+      "generated_code": "setCurDir(getSrcDir());\n\n// 设置求解器参数\nscdem.set(\"ubr\", 1e-4);\nscdem.outputInterval = 100;\nscdem.set(\"isLargeDisplace\", 0);\nscdem.set(\"isVirtualMass\", 1);\nscdem.set(\"virtualStep\", 0.8);\n\n// 设置重力矢量 (X, Y, Z)\nscdem.gravity = [0, 0, -9.8];\n\n// 导入网格 (使用示例网格文件)\nvar msh = imesh.importGmsh(\"gravity_test.msh\");\nscdem.getMesh(msh);\n\n// 设置单元模型为线弹性模型\nscdem.setModel(\"linear\");\n\n// 选择所有单元并设置材料参数 (密度, 杨氏模量, 泊松比, 屈服强度, 硬化模量, 失效指数, 失效应力)\noSel = new SelElems(scdem);\noSel.all();\noMat = [2500, 1e9, 0.25, 2e7, 1e6, 10, 0.5];\nscdem.setMat(oSel, oMat);\n\n// 设置界面模型为线性接触模型\nscdem.setIModel(\"linear\");\nscdem.setIMatByElem(50);\n\n// 施加位移边界条件 (固定底部四周)\noSel = new SelNodes(scdem);\noSel.box(-0.1, -0.1, -0.1, 0.1, 50.1, 50.1);\nscdem.setVel(oSel, \"x\", 0);\noSel = new SelNodes(scdem);\noSel.box(-0.1, 9.9, -0.1, 0.1, 50.1, 50.1);\nscdem.setVel(oSel, \"y\", 0);\noSel = new SelNodes(scdem);\noSel.box(-0.1, -0.1, -0.1, 50.1, 0.1, 50.1);\nscdem.setVel(oSel, \"y\", 0);\noSel = new SelNodes(scdem);\noSel.box(-0.1, 9.9, -0.1, 50.1, 50.1, 0.1);\nscdem.setVel(oSel, \"z\", 0);\n\n// 施加位移边界条件 (固定底部)\noSel = new SelNodes(scdem);\noSel.box(-0.1, 9.9, -0.1, 50.1, 50.1, -0.001);\nscdem.setVel(oSel, \"y\", 0);\n\n// 设置监测点 (中心节点 (25, 25, 25))\nscdem.monitor(\"node\", \"xDis\", 25, 25, 25);\nscdem.monitor(\"node\", \"yDis\", 25, 25, 25);\nscdem.monitor(\"node\", \"zDis\", 25, 25, 25);\nscdem.monitor(\"node\", \"xVel\", 25, 25, 25);\nscdem.monitor(\"node\", \"yVel\", 25, 25, 25);\nscdem.monitor(\"node\", \"zVel\", 25, 25, 25);\nscdem.monitor(\"node\", \"xAcc\", 25, 25, 25);\nscdem.monitor(\"node\", \"yAcc\", 25, 25, 25);\nscdem.monitor(\"node\", \"zAcc\", 25, 25, 25);\n\n// 求解 (求解 10000 步)\nscdem.solveGpu(10000);\n\n// 释放 GPU 内存\nscdem.releaseGpuMem();\n\n// 打印完成信息\nprint(\"Solution Finished\");",
+      "generation_time": 78.82979488372803,
+      "similarity_score": 0.666,
+      "code_quality_score": 9.0,
+      "execution_score": 7.0,
+      "functionality_score": 7.43,
+      "retrieved_docs_count": 14,
+      "retrieval_quality": "good",
+      "diff_unified": "--- 案例库-SuperCDEM案例-Gravity-Gravity.js (ground_truth)\n+++ 案例库-SuperCDEM案例-Gravity-Gravity.js (generated)\n@@ -1,82 +1,67 @@\n-//设置文件路径\n setCurDir(getSrcDir());\n \n-// 设置系统不平衡率为1e-4\n+// 设置求解器参数\n scdem.set(\"ubr\", 1e-4);\n-\n-//设置云图更新间隔\n-scdem.set(\"outputInterval\", 100);\n-\n-//关闭大变形开关\n+scdem.outputInterval = 100;\n scdem.set(\"isLargeDisplace\", 0);\n-\n-//打开虚质量开关\n scdem.set(\"isVirtualMass\", 1);\n-\n-//设置虚时步\n scdem.set(\"virtualStep\", 0.8);\n \n-scdem.gravity = [0,0,-9.8];\n+// 设置重力矢量 (X, Y, Z)\n+scdem.gravity = [0, 0, -9.8];\n \n-//导入计算网格\n-var msh1 = imesh.importAnsys(\"200324tet780.dat\");\n-scdem.getMesh(msh1);\n+// 导入网格 (使用示例网格文件)\n+var msh = imesh.importGmsh(\"gravity_test.msh\");\n+scdem.getMesh(msh);\n \n-//施加单元材料参数(含单元模型设置)\n+// 设置单元模型为线弹性模型\n scdem.setModel(\"linear\");\n+\n+// 选择所有单元并设置材料参数 (密度, 杨氏模量, 泊松比, 屈服强度, 硬化模量, 失效指数, 失效应力)\n oSel = new SelElems(scdem);\n-oSel.box(-0.1,-0.1,-0.1,10.1,10.1,10.1);\n-oMat = [2500, 1e9, 0.25, 1.35e4, 0.68e4, 47, 10];\n+oSel.all();\n+oMat = [2500, 1e9, 0.25, 2e7, 1e6, 10, 0.5];\n scdem.setMat(oSel, oMat);\n \n-//施加界面材料参数(含接触面模型设置)\n+// 设置界面模型为线性接触模型\n scdem.setIModel(\"linear\");\n scdem.setIMatByElem(50);\n \n-//施加位移边界条件(固定底部即四周)\n+// 施加位移边界条件 (固定底部四周)\n oSel = new SelNodes(scdem);\n-oSel.box(-0.1,-0.1,-0.1,0.1,10.1,10.1);\n+oSel.box(-0.1, -0.1, -0.1, 0.1, 50.1, 50.1);\n scdem.setVel(oSel, \"x\", 0);\n oSel = new SelNodes(scdem);\n-oSel.box(9.9,-0.1,-0.1,10.1,10.1,10.1);\n-scdem.setVel(oSel, \"x\", 0);\n-oSel = new SelNodes(scdem);\n-oSel.box(-0.1,-0.1,-0.1,10.1,0.1,10.1);\n+oSel.box(-0.1, 9.9, -0.1, 0.1, 50.1, 50.1);\n scdem.setVel(oSel, \"y\", 0);\n oSel = new SelNodes(scdem);\n-oSel.box(-0.1,9.9,-0.1,10.1,10.1,10.1);\n+oSel.box(-0.1, -0.1, -0.1, 50.1, 0.1, 50.1);\n scdem.setVel(oSel, \"y\", 0);\n oSel = new SelNodes(scdem);\n-oSel.box(-0.1,-0.1,-0.1,10.1,10.1,0.1);\n+oSel.box(-0.1, 9.9, -0.1, 50.1, 50.1, 0.1);\n scdem.setVel(oSel, \"z\", 0);\n \n+// 施加位移边界条件 (固定底部)\n+oSel = new SelNodes(scdem);\n+oSel.box(-0.1, 9.9, -0.1, 50.1, 50.1, -0.001);\n+scdem.setVel(oSel, \"y\", 0);\n \n-//施加监测点\n-scdem.monitor(\"node\", \"xAcc\", 5,5,5);\n-scdem.monitor(\"node\", \"yAcc\", 5,5,5);\n-scdem.monitor(\"node\", \"zAcc\", 5,5,5);\n+// 设置监测点 (中心节点 (25, 25, 25))\n+scdem.monitor(\"node\", \"xDis\", 25, 25, 25);\n+scdem.monitor(\"node\", \"yDis\", 25, 25, 25);\n+scdem.monitor(\"node\", \"zDis\", 25, 25, 25);\n+scdem.monitor(\"node\", \"xVel\", 25, 25, 25);\n+scdem.monitor(\"node\", \"yVel\", 25, 25, 25);\n+scdem.monitor(\"node\", \"zVel\", 25, 25, 25);\n+scdem.monitor(\"node\", \"xAcc\", 25, 25, 25);\n+scdem.monitor(\"node\", \"yAcc\", 25, 25, 25);\n+scdem.monitor(\"node\", \"zAcc\", 25, 25, 25);\n \n-scdem.monitor(\"node\", \"xVel\", 5,5,5);\n-scdem.monitor(\"node\", \"yVel\", 5,5,5);\n-scdem.monitor(\"node\", \"zVel\", 5,5,5);\n+// 求解 (求解 10000 步)\n+scdem.solveGpu(10000);\n \n-scdem.monitor(\"node\", \"xDis\", 5,5,5);\n-scdem.monitor(\"node\", \"yDis\", 5,5,5);\n-scdem.monitor(\"node\", \"zDis\", 5,5,5);\n-\n-scdem.monitor(\"node\", \"sxx\", 5,5,5);\n-scdem.monitor(\"node\", \"syy\", 5,5,5);\n-scdem.monitor(\"node\", \"szz\", 5,5,5);\n-\n-scdem.monitor(\"node\", \"exx\", 5,5,5);\n-scdem.monitor(\"node\", \"eyy\", 5,5,5);\n-scdem.monitor(\"node\", \"ezz\", 5,5,5);\n-\n-//求解至稳定\n-scdem.solveGpu();\n-\n-//释放GPU端内存\n+// 释放 GPU 内存\n scdem.releaseGpuMem();\n \n-//打印提示信息\n+// 打印完成信息\n print(\"Solution Finished\");",
+      "diff_file": "D:\\Codes\\langchain\\physic\\tools\\agents\\results\\evaluation_results.evo_langgraph\\diffs\\案例库-SuperCDEM案例-Gravity-Gravity.diff",
+      "dataset_split": "train",
+      "saved_generated_script": "D:\\Codes\\langchain\\physic\\tools\\agents\\results\\evaluation_results.evo_langgraph\\train\\generated\\案例库-SuperCDEM案例-Gravity-Gravity.js",
+      "saved_ground_truth_script": "D:\\Codes\\langchain\\physic\\tools\\agents\\results\\evaluation_results.evo_langgraph\\train\\ground_truth\\案例库-SuperCDEM案例-Gravity-Gravity.js",
+      "task_steps": [],
+      "error_message": "",
+      "notes": "",
+      "evaluation_time": "2026-04-03T11:04:04.105090",
+      "last_run_metrics": {
+        "evo_scores": {
+          "f_s": 0.8909090909090909,
+          "f_f": 0.05772655203831177,
+          "f_p": null
+        },
+        "evo_breakdown": {
+          "simplicity": {
+            "R": 6,
+            "L": 55
+          },
+          "fitness": {
+            "Sim": 0.015453104076623533,
+            "Cov": 0.1,
+            "terms": [
+              "gravity",
+              "supercdem",
+              "一个",
+              "与监",
+              "个仿",
+              "仿真",
+              "写一",
+              "出必",
+              "实现",
+              "并输",
+              "必要",
+              "本实",
+              "果与",
+              "现并",
+              "的结",
+              "监测",
+              "真脚",
+              "结果",
+              "编写",
+              "脚本"
+            ],
+            "hit": 2,
+            "total": 20
+          },
+          "physics": {
+            "available": false
+          }
+        },
+        "evo_history_len": 4,
+        "retrieved_count": 14,
+        "ground_truth_encoding": "utf-8"
+      }
+    },
+    {
+      "test_id": "T008",
+      "filename": "案例库-CDyna案例-块体模块案例-扩展案例-冲击地压对煤矿巷道的影响-Case3-地应力较低-外部施加冲击载荷-加入锚杆-3-RockBurst-blot.js",
+      "category": "CDyna案例",
+      "query": "请编写一个CDyna仿真脚本，实现3-RockBurst-blot，并输出必要的结果与监测。",
+      "generated_code": "setCurDir(getSrcDir());\n\n// 清除所有模块数据\nigeo.clear();\nimeshing.clear();\ndyna.Clear();\ndoc.clearResult();\n\n// 全局计算设置\ndyna.Set(\"Mechanic_Cal 1\");\ndyna.Set(\"Gravity 0.0 0.0 0.0\");\ndyna.Set(\"Large_Displace 1\");\ndyna.Set(\"Output_Interval 500\");\ndyna.Set(\"Monitor_Iter 10\");\ndyna.Set(\"If_Virtural_Mass 1\");\ndyna.Set(\"If_Renew_Contact 1\");\ndyna.Set(\"Contact_Detect_Tol 0.0\");\n\n// 打开杆件计算开关\ndyna.Set(\"If_Cal_Bar 1\");\ndyna.Set(\"Bar_Out 1\");\n\n// 巷道几何建模\nvar loopid1 = igeo.genRect(0, 0, 0, 20, 20, 0, 1.0);\nvar loopid2 = igeo.genRect(8, 8.5, 0, 12, 11.5, 0, 0.2);\nigeo.genSurface([loopid1, loopid2], 1);\nigeo.genSurface([loopid2], 2);\n\n// 生成网格\nimeshing.genMeshByGmsh(2);\n\n// 网格导入BlockDyna\nblkdyn.GetMesh(imeshing);\n\n// 创建接触面\nblkdyn.CrtIFace();\nblkdyn.UpdateIFaceMesh();\n\n// 单元本构设置\nblkdyn.SetModel(\"linear\");\nblkdyn.SetIModel(\"linear\");\n\n// 锚杆材料参数设置（11个分量）\nvar barvars = new Array(0.01, 7850, 2e11, 0.3, 150e6, 150e6, 1e8, 10.0, 1e10, 0.05, 0.0);\nbar.SetPropByGroup(barvars, 1, 10);\n\n// 岩石材料参数设置\nblkdyn.SetMat(2300, 1e10, 0.25, 5e6, 5e6, 35.0, 15.0);\n\n// 锚杆接触面参数设置\nblkdyn.SetIMat(1e11, 1e11, 35.0, 1e8, 1e8);\n\n// 接触面断裂能设置\nblkdyn.SetIFracEnergyByGroupInterface(0.0, 0.0, 1, 1);\n\n// 设置锚杆单元参数\nvar barGroup = [1, 10];\nbar.SetPropByCoord(barvars, 1, 10);\n\n// 边界条件设置\nblkdyn.SetFreeFieldBound3DColumn();\n\n// 施加冲击波载荷（炸药质量，爆心坐标，起爆时间，声速，衰减指数，坐标范围）\nblkdyn.ApplyShockWaveByCoord(10.0, [5.0, 5.0, 0.0], 0.01, 340.0, 1.2, 20.0, 20.0, -1, 21.0, 0.0, 21.0);\n\n// 设置地应力\nblkdyn.SetStress([2e6, 2e6, 1e6]);\n\n// 设置监测点\nvar monitorPoints = new Array([0, 1, 0], [10, 10, 0], [0, 10, 0], [10, 0, 0], [15, 5, 0], [5, 5, 0]);\nfor (var i = 0; i < monitorPoints.length; i++) {\n    dyna.Monitor(\"bloc\", monitorPoints[i][0], monitorPoints[i][1], monitorPoints[i][2]);\n}\n\n// 求解器设置\ndyna.Set(\"SOLVER 1\");\ndyna.Set(\"NumTimeStep 1e-7\");\n\n// 运行计算\ndyna.Run();",
+      "generation_time": 88.03476572036743,
+      "similarity_score": 0.3916,
+      "code_quality_score": 9.0,
+      "execution_score": 9.0,
+      "functionality_score": 6.457999999999999,
+      "retrieved_docs_count": 14,
+      "retrieval_quality": "excellent",
+      "diff_unified": "--- 案例库-CDyna案例-块体模块案例-扩展案例-冲击地压对煤矿巷道的影响-Case3-地应力较低-外部施加冲击载荷-加入锚杆-3-RockBurst-blot.js (ground_truth)\n+++ 案例库-CDyna案例-块体模块案例-扩展案例-冲击地压对煤矿巷道的影响-Case3-地应力较低-外部施加冲击载荷-加入锚杆-3-RockBurst-blot.js (generated)\n@@ -1,228 +1,80 @@\n-//设置当前工作路径为JavaScript脚本文件所在路径\n setCurDir(getSrcDir());\n \n-//清除Mesh模块几何数据\n+// 清除所有模块数据\n igeo.clear();\n-\n-//清除Mesh模块网格数据\n imeshing.clear();\n-\n-//清除BlockDyna模型数据\n dyna.Clear();\n-\n-//清除Genvi平台数据\n doc.clearResult();\n \n-//打开力学计算开关\n+// 全局计算设置\n dyna.Set(\"Mechanic_Cal 1\");\n-\n-//设置三个方向的重力加速度均为0\n dyna.Set(\"Gravity 0.0 0.0 0.0\");\n-\n-//打开大变形计算开关\n dyna.Set(\"Large_Displace 1\");\n-\n-//设置计算结果的输出间隔为500步\n dyna.Set(\"Output_Interval 500\");\n-\n-//设置监测信息输出时步为10步\n dyna.Set(\"Monitor_Iter 10\");\n-\n-//关闭虚质量计算开关\n dyna.Set(\"If_Virtural_Mass 1\");\n-\n-//打开接触更新开关\n dyna.Set(\"If_Renew_Contact 1\");\n-\n-//设置接触容差为0\n dyna.Set(\"Contact_Detect_Tol 0.0\");\n \n-\n-//打开杆件计算开关\n+// 打开杆件计算开关\n dyna.Set(\"If_Cal_Bar 1\");\n-\n-//打开杆件结果文件输出开关\n dyna.Set(\"Bar_Out 1\");\n \n-//////////////////////////////////////////////////////////////////几何建模及网格划分\n+// 巷道几何建模\n+var loopid1 = igeo.genRect(0, 0, 0, 20, 20, 0, 1.0);\n+var loopid2 = igeo.genRect(8, 8.5, 0, 12, 11.5, 0, 0.2);\n+igeo.genSurface([loopid1, loopid2], 1);\n+igeo.genSurface([loopid2], 2);\n \n-//创建矩形环1\n-var loopid1= igeo.genRect(0,0,0, 20, 20, 0, 1.0);\n-//创建矩形环2\n-var loopid2 = igeo.genRect(8,8.5,0, 12, 11.5, 0, 0.2);\n-\n-//创建外边界的面（含矩形空洞）\n-igeo.genSurface([loopid1, loopid2], 1);\n-//创建矩形巷道，填实\n-igeo.genSurface([ loopid2], 2);\n-\n-//产生二维网格\n+// 生成网格\n imeshing.genMeshByGmsh(2);\n \n-//////////////////////////////////////////////////////////////////几何建模及网格划分\n-\n-\n-//BlockDyna从平台下载网格\n+// 网格导入BlockDyna\n blkdyn.GetMesh(imeshing);\n \n-//对两侧单元均为组1的公共面进行切割，设置为接触面\n+// 创建接触面\n blkdyn.CrtIFace();\n-\n-//设置接触后，更新网格信息\n blkdyn.UpdateIFaceMesh();\n \n-//指定组1的单元本构为线弹性本构\n+// 单元本构设置\n blkdyn.SetModel(\"linear\");\n+blkdyn.SetIModel(\"linear\");\n \n-//指定材料参数\n+// 锚杆材料参数设置（11个分量）\n+var barvars = new Array(0.01, 7850, 2e11, 0.3, 150e6, 150e6, 1e8, 10.0, 1e10, 0.05, 0.0);\n+bar.SetPropByGroup(barvars, 1, 10);\n+\n+// 岩石材料参数设置\n blkdyn.SetMat(2300, 1e10, 0.25, 5e6, 5e6, 35.0, 15.0);\n \n+// 锚杆接触面参数设置\n+blkdyn.SetIMat(1e11, 1e11, 35.0, 1e8, 1e8);\n \n-//将接触面模型设定为线弹性模型\n-blkdyn.SetIModel(\"linear\");\n+// 接触面断裂能设置\n+blkdyn.SetIFracEnergyByGroupInterface(0.0, 0.0, 1, 1);\n \n-//虚拟接触面刚度及强度从单元中自动获取\n-blkdyn.SetIStiffByElem(1);\n-blkdyn.SetIStrengthByElem();\n+// 设置锚杆单元参数\n+var barGroup = [1, 10];\n+bar.SetPropByCoord(barvars, 1, 10);\n \n+// 边界条件设置\n+blkdyn.SetFreeFieldBound3DColumn();\n \n-//设置初始应力场\n-//定义三个方向基础值，该这三个值可以改变初始应力场\n-var values = new Array(-5e6, -10e6, -5e6); \n-//定义变化梯度 \n-var gradient = new Array(0, 0, 0, 0, 0, 0, 0, 0, 0); \n-//将控制范围内的位移清零 \n-blkdyn.InitConditionByCoord(\"stress\", values, gradient, -1e5, 1e5, -1e5, 1e5, -1e5, 1e5); \n+// 施加冲击波载荷（炸药质量，爆心坐标，起爆时间，声速，衰减指数，坐标范围）\n+blkdyn.ApplyShockWaveByCoord(10.0, [5.0, 5.0, 0.0], 0.01, 340.0, 1.2, 20.0, 20.0, -1, 21.0, 0.0, 21.0);\n \n+// 设置地应力\n+blkdyn.SetStress([2e6, 2e6, 1e6]);\n \n-//固体四周法向位移\n-blkdyn.FixV(\"x\", 0.0, \"x\", -1e-3, 1e-3);\n-blkdyn.FixV(\"x\", 0.0, \"x\", 19.999, 21);\n-blkdyn.FixV(\"y\", 0.0, \"y\", -1e-3, 1e-3);\n-blkdyn.FixV(\"y\", 0.0, \"y\", 19.999, 21);\n+// 设置监测点\n+var monitorPoints = new Array([0, 1, 0], [10, 10, 0], [0, 10, 0], [10, 0, 0], [15, 5, 0], [5, 5, 0]);\n+for (var i = 0; i < monitorPoints.length; i++) {\n+    dyna.Monitor(\"bloc\", monitorPoints[i][0], monitorPoints[i][1], monitorPoints[i][2]);\n+}\n \n+// 求解器设置\n+dyna.Set(\"SOLVER 1\");\n+dyna.Set(\"NumTimeStep 1e-7\");\n \n-//将局部阻尼设置为0.8\n-blkdyn.SetLocalDamp(0.8);\n-\n-\n-//设置监测点\n-dyna.Monitor(\"gvalue\",\"gv_spring_crack_ratio\");\n-\n-\n-\n-\n-//创建第1根锚索\n-var fArrayCoord1 = [9,11.51,0];\n-var fArrayCoord2 = [9,18,0];\n-bar.CreateByCoord(\"blot\", fArrayCoord1, fArrayCoord2, 20);\n-\n-//创建第2根锚索\n-var fArrayCoord1 = [10,11.51,0];\n-var fArrayCoord2 = [10,18,0];\n-bar.CreateByCoord(\"blot\", fArrayCoord1, fArrayCoord2, 20);\n-\n-//创建第3根锚索\n-var fArrayCoord1 = [11,11.51,0];\n-var fArrayCoord2 = [11,18,0];\n-bar.CreateByCoord(\"blot\", fArrayCoord1, fArrayCoord2, 20);\n-\n-\n-\n-//设置所有锚索的力学模型为可破坏模型\n-bar.SetModelByID(\"failure\", 1, 100);\n-\n-//定义锚杆参数，截面直径3cm，抗拉强度500MPa，与围岩耦合粘聚力5Mpa、耦合摩擦角35°。\n-var BarProp1 = [3e-2, 7800.0, 1e10, 0.25, 500e6, 500e6, 5e6, 35, 5e9, 0.8, 0.0];\n-\n-//指定锚固段的锚索材料,1-10号锚杆，1-21段\n-bar.SetPropByID(BarProp1, 1, 10, 1, 21);\n-\n-//求解至稳定\n-dyna.Solve();\n-\n-\n-//设置接触面的拉伸断裂应变及剪切断裂应变\n-dyna.Set(\"Interface_Soften_Value 1e-3 5e-3\");\n-\n-//将接触面模型设定为应变软化的mc模型\n-blkdyn.SetIModel(\"SSMC\");\n-\n-\n-//开挖组2，矩形巷道，计算稳定\n-blkdyn.SetModel(\"none\",2);\n-\n-\n-//求解至稳定\n-dyna.Solve();\n-\n-\n-//初始化位移场\n-\n-//定义三个方向基础值 \n-var values = new Array(0, 0, 0); \n-//定义变化梯度 \n-var gradient = new Array(0, 0, 0, 0, 0, 0, 0, 0, 0); \n-//将控制范围内的位移清零 \n-blkdyn.InitConditionByCoord(\"displace\", values, gradient, -1e5, 1e5, -1e5, 1e5, -1e5, 1e5); \n-\n-\n-\n-//解除四周法向位移\n-blkdyn.FreeV(\"x\", \"x\", -1e-3, 1e-3);\n-blkdyn.FreeV(\"x\", \"x\", 19.999, 21);\n-blkdyn.FreeV(\"y\", \"y\", -1e-3, 1e-3);\n-blkdyn.FreeV(\"y\", \"y\", 19.999, 21);\n-\n-\n-//设置静态无反射边界条件\n-blkdyn.SetQuietBoundByCoord(-1e-3, 1e-3, -1e5, 1e5, -1e5, 1e5);\n-blkdyn.SetQuietBoundByCoord(19.999, 21, -1e5, 1e5, -1e5, 1e5);\n-\n-blkdyn.SetQuietBoundByCoord(-1e5, 1e5, -1e-3, 1e-3, -1e5, 1e5);\n-blkdyn.SetQuietBoundByCoord(-1e5, 1e5, 19.999, 21, -1e5, 1e5);\n-\n-\n-//*****************施加动态边界条件，面力边界\n-var coeff=new Array(10e6, -60e6, 0)\n-//x方向下限及上限\n-var x= new Array(-1, 21)\n-//y方向下限及上限\n-var y= new Array(19.99, 21)\n-//z方向下限及上限\n-var z= new Array(-1.0,1.0)\n-//设定动态速度边界\n-blkdyn.ApplyDynaSinVarByCoord (\"face_force\",false,coeff, 0.0, 1.0, 0.01 ,0,0,0.005, x, y, z);\n-\n-\n-\n-//关闭虚拟质量开关\n-dyna.Set(\"If_Virtural_Mass 0\");\n-\n-//设置当前时间为0\n-dyna.Set(\"Time_Now 0\");\n-\n-\n-//设置计算时步为3e-6，小时间步，为了看清楚应力的传播\n-dyna.Set(\"Time_Step 3e-6\");\n-\n-//设置局部阻尼为0.0\n-blkdyn.SetLocalDamp(0.0);\n-\n-\n-//打开瑞利阻尼计算开关\n-dyna.Set(\"If_Cal_Rayleigh 1\");\n-blkdyn.SetRayleighDamp(2e-7, 0.0);\n-\n-\n-//动力计算20ms\n-dyna.DynaCycle(2e-2);\n-\n-//设置大时间步，观察破裂演化\n-dyna.Set(\"Time_Step 2e-5\");\n-\n-//计算0.2s\n-dyna.DynaCycle(2e-1);\n-\n-//求解结束\n-print(\"Solution Finished\");\n+// 运行计算\n+dyna.Run();",
+      "diff_file": "D:\\Codes\\langchain\\physic\\tools\\agents\\results\\evaluation_results.evo_langgraph\\diffs\\案例库-CDyna案例-块体模块案例-扩展案例-冲击地压对煤矿巷道的影响-Case3-地应力较低-外部施加冲击载荷-加入锚杆-3-RockBurst-blot.diff",
+      "dataset_split": "train",
+      "saved_generated_script": "D:\\Codes\\langchain\\physic\\tools\\agents\\results\\evaluation_results.evo_langgraph\\train\\generated\\案例库-CDyna案例-块体模块案例-扩展案例-冲击地压对煤矿巷道的影响-Case3-地应力较低-外部施加冲击载荷-加入锚杆-3-RockBurst-blot.js",
+      "saved_ground_truth_script": "D:\\Codes\\langchain\\physic\\tools\\agents\\results\\evaluation_results.evo_langgraph\\train\\ground_truth\\案例库-CDyna案例-块体模块案例-扩展案例-冲击地压对煤矿巷道的影响-Case3-地应力较低-外部施加冲击载荷-加入锚杆-3-RockBurst-blot.js",
+      "task_steps": [],
+      "error_message": "",
+      "notes": "",
+      "evaluation_time": "2026-04-03T11:05:32.158870",
+      "last_run_metrics": {
+        "evo_scores": {
+          "f_s": 1.0,
+          "f_f": 0.02819671211356113,
+          "f_p": null
+        },
+        "evo_breakdown": {
+          "simplicity": {
+            "R": 0,
+            "L": 61
+          },
+          "fitness": {
+            "Sim": 0.006393424227122258,
+            "Cov": 0.05,
+            "terms": [
+              "blot",
+              "cdyna",
+              "rockburst",
+              "一个",
+              "与监",
+              "个仿",
+              "仿真",
+              "写一",
+              "出必",
+              "实现",
+              "并输",
+              "必要",
+              "本实",
+              "果与",
+              "现并",
+              "的结",
+              "监测",
+              "真脚",
+              "结果",
+              "编写"
+            ],
+            "hit": 1,
+            "total": 20
+          },
+          "physics": {
+            "available": false
+          }
+        },
+        "evo_history_len": 4,
+        "retrieved_count": 14,
+        "ground_truth_encoding": "utf-8"
+      }
+    },
+    {
+      "test_id": "T009",
+      "filename": "案例库-CDyna案例-块体模块案例-扩展案例-三块体碰撞-ThreeBC.js",
+      "category": "CDyna案例",
+      "query": "请编写一个CDyna仿真脚本，实现扩展案例-三块体碰撞-ThreeBC，并输出必要的结果与监测。",
+      "generated_code": "setCurDir(getSrcDir());\n\n// 设置基本仿真参数\ndyna.Set(\"Mechanic_Cal 1\");\ndyna.Set(\"UnBalance_Ratio 1e-5\");\ndyna.Set(\"Gravity 0 -9.8 0\");\ndyna.Set(\"Large_Displace 1\");\ndyna.Set(\"Output_Interval 500\");\ndyna.Set(\"Moniter_Iter 100\");\ndyna.Set(\"If_Virtural_Mass 0\");\ndyna.Set(\"Virtural_Step 0.6\");\ndyna.Set(\"Renew_Interval 100\");\ndyna.Set(\"Contact_Detect_Tol 1e-3\");\ndyna.Set(\"If_Renew_Contact 1\");\ndyna.Set(\"If_Cal_EE_Contact 1\");\ndyna.Set(\"Time_Step 2e-4\");\n\n// 导入三块体碰撞网格\nblkdyn.ImportGrid(\"ansys\", \"ThreeBContact.dat\");\n\n// 创建和更新接触面\nblkdyn.CrtIFace();\nblkdyn.UpdateIFaceMesh();\n\n// 设置单元模型为本构类型\nblkdyn.SetModel(\"linear\");\n\n// 设置三块体的材料参数（密度、弹性模量、泊松比、粘聚力、抗拉强度、内摩擦角、剪胀角）\nblkdyn.SetMatByGroup(2500, 1e9, 0.3, 6e4, 3e4, 25.0, 10.0, 1);\nblkdyn.SetMatByGroup(2500, 1e9, 0.3, 6e4, 3e4, 25.0, 10.0, 2);\nblkdyn.SetMatByGroup(2500, 1e9, 0.3, 6e4, 3e4, 25.0, 10.0, 3);\n\n// 设置界面接触材料参数（法向刚度、切向刚度、内摩擦角、粘聚力、抗拉强度）\nblkdyn.SetIMat(1e10, 1e10, 3.0, 0.0, 0.0);\n\n// 设置接触面本构为脆性断裂Mohr-Coulomb模型\nblkdyn.SetIModel(\"brittleMC\");\n\n// 设置底部边界固定\nvar x = new Array(-1e10, 1e10);\nvar y = new Array(-1e10, 1e10);\nvar z = new Array(-1e10, 1e10);\n\nblkdyn.FixVByCoord(\"xyz\", 0.0, -1e10, 1e10, -1e10, 0.01, -1e10, 1e10);\n\n// 设置局部阻尼\nblkdyn.SetLocalDamp(0.01);\n\n// 设置监测点（监测三块体在碰撞过程中的位移响应）\ndyna.Monitor(\"block\", \"xdis\", 0, 10, 0);\ndyna.Monitor(\"block\", \"xdis\", 12.5, 15, 0);\ndyna.Monitor(\"block\", \"xdis\", 15, 20, 0);\ndyna.Monitor(\"gvalue\", \"gv_spring_crack_ratio\");\n\n// 求解\ndyna.Solve(20000);\n\nprint(\"Solution Finished\");",
+      "generation_time": 95.82363152503967,
+      "similarity_score": 0.9498,
+      "code_quality_score": 9.0,
+      "execution_score": 7.0,
+      "functionality_score": 8.849,
+      "retrieved_docs_count": 14,
+      "retrieval_quality": "excellent",
+      "diff_unified": "--- 案例库-CDyna案例-块体模块案例-扩展案例-三块体碰撞-ThreeBC.js (ground_truth)\n+++ 案例库-CDyna案例-块体模块案例-扩展案例-三块体碰撞-ThreeBC.js (generated)\n@@ -1,72 +1,58 @@\n setCurDir(getSrcDir());\n \n-\n+// 设置基本仿真参数\n dyna.Set(\"Mechanic_Cal 1\");\n-\n-\n dyna.Set(\"UnBalance_Ratio 1e-5\");\n dyna.Set(\"Gravity 0 -9.8 0\");\n+dyna.Set(\"Large_Displace 1\");\n+dyna.Set(\"Output_Interval 500\");\n+dyna.Set(\"Moniter_Iter 100\");\n+dyna.Set(\"If_Virtural_Mass 0\");\n+dyna.Set(\"Virtural_Step 0.6\");\n+dyna.Set(\"Renew_Interval 100\");\n+dyna.Set(\"Contact_Detect_Tol 1e-3\");\n+dyna.Set(\"If_Renew_Contact 1\");\n+dyna.Set(\"If_Cal_EE_Contact 1\");\n+dyna.Set(\"Time_Step 2e-4\");\n \n-dyna.Set(\"Large_Displace 1\");\n-\n-dyna.Set(\"Output_Interval 500\");\n-\n-\n-\n-dyna.Set(\"Moniter_Iter 100\");\n-\n-dyna.Set(\"If_Virtural_Mass 0\");\n-\n-dyna.Set(\"Virtural_Step 0.6\");\n-\n-dyna.Set(\"Renew_Interval 100\");\n-\n-dyna.Set(\"Contact_Detect_Tol 1e-3\");\n-\n-dyna.Set(\"If_Renew_Contact 1\");\n-\n-dyna.Set(\"If_Cal_EE_Contact 1\");\n-\n-\n-\n+// 导入三块体碰撞网格\n blkdyn.ImportGrid(\"ansys\", \"ThreeBContact.dat\");\n \n+// 创建和更新接触面\n+blkdyn.CrtIFace();\n+blkdyn.UpdateIFaceMesh();\n \n+// 设置单元模型为本构类型\n+blkdyn.SetModel(\"linear\");\n \n+// 设置三块体的材料参数（密度、弹性模量、泊松比、粘聚力、抗拉强度、内摩擦角、剪胀角）\n+blkdyn.SetMatByGroup(2500, 1e9, 0.3, 6e4, 3e4, 25.0, 10.0, 1);\n+blkdyn.SetMatByGroup(2500, 1e9, 0.3, 6e4, 3e4, 25.0, 10.0, 2);\n+blkdyn.SetMatByGroup(2500, 1e9, 0.3, 6e4, 3e4, 25.0, 10.0, 3);\n+\n+// 设置界面接触材料参数（法向刚度、切向刚度、内摩擦角、粘聚力、抗拉强度）\n+blkdyn.SetIMat(1e10, 1e10, 3.0, 0.0, 0.0);\n+\n+// 设置接触面本构为脆性断裂Mohr-Coulomb模型\n+blkdyn.SetIModel(\"brittleMC\");\n+\n+// 设置底部边界固定\n var x = new Array(-1e10, 1e10);\n var y = new Array(-1e10, 1e10);\n var z = new Array(-1e10, 1e10);\n \n-\n-\n-blkdyn.CrtIFace();\n-blkdyn.UpdateIFaceMesh();\n-\n-blkdyn.SetModel(\"linear\");\n-\n-blkdyn.SetMatByGroup(2500, 1e9, 0.3, 6e4, 3e4, 25.0, 10.0, 1);\n-blkdyn.SetMatByGroup(2500, 1e9, 0.3, 6e4, 3e4, 25.0, 10.0, 2);\n-blkdyn.SetMatByGroup(2500, 1e9, 0.3, 6e4, 3e4, 25.0, 10.0, 3);\n-\n-blkdyn.SetIMat(1e10, 1e10, 3.0, 0.0, 0.0);\n-\n-\n blkdyn.FixVByCoord(\"xyz\", 0.0, -1e10, 1e10, -1e10, 0.01, -1e10, 1e10);\n \n+// 设置局部阻尼\n blkdyn.SetLocalDamp(0.01);\n \n-dyna.Monitor(\"block\", \"xdis\", 0, 10, 0);\t\n+// 设置监测点（监测三块体在碰撞过程中的位移响应）\n+dyna.Monitor(\"block\", \"xdis\", 0, 10, 0);\n dyna.Monitor(\"block\", \"xdis\", 12.5, 15, 0);\n dyna.Monitor(\"block\", \"xdis\", 15, 20, 0);\n dyna.Monitor(\"gvalue\", \"gv_spring_crack_ratio\");\n \n-\n-dyna.Set(\"Time_Step 2e-4\");\n-\n-blkdyn.SetIModel(\"brittleMC\");\n-\n+// 求解\n dyna.Solve(20000);\n \n-\n-\n print(\"Solution Finished\");",
+      "diff_file": "D:\\Codes\\langchain\\physic\\tools\\agents\\results\\evaluation_results.evo_langgraph\\diffs\\案例库-CDyna案例-块体模块案例-扩展案例-三块体碰撞-ThreeBC.diff",
+      "dataset_split": "train",
+      "saved_generated_script": "D:\\Codes\\langchain\\physic\\tools\\agents\\results\\evaluation_results.evo_langgraph\\train\\generated\\案例库-CDyna案例-块体模块案例-扩展案例-三块体碰撞-ThreeBC.js",
+      "saved_ground_truth_script": "D:\\Codes\\langchain\\physic\\tools\\agents\\results\\evaluation_results.evo_langgraph\\train\\ground_truth\\案例库-CDyna案例-块体模块案例-扩展案例-三块体碰撞-ThreeBC.js",
+      "task_steps": [],
+      "error_message": "",
+      "notes": "",
+      "evaluation_time": "2026-04-03T11:07:07.997545",
+      "last_run_metrics": {
+        "evo_scores": {
+          "f_s": 1.0,
+          "f_f": 0.11159585590723316,
+          "f_p": null
+        },
+        "evo_breakdown": {
+          "simplicity": {
+            "R": 0,
+            "L": 45
+          },
+          "fitness": {
+            "Sim": 0.023191711814466304,
+            "Cov": 0.2,
+            "terms": [
+              "cdyna",
+              "threebc",
+              "一个",
+              "三块",
+              "与监",
+              "个仿",
+              "仿真",
+              "体碰",
+              "例三",
+              "写一",
+              "出必",
+              "块体",
+              "实现",
+              "展案",
+              "并输",
+              "必要",
+              "扩展",
+              "撞并",
+              "本实",
+              "果与"
+            ],
+            "hit": 4,
+            "total": 20
+          },
+          "physics": {
+            "available": false
+          }
+        },
+        "evo_history_len": 4,
+        "retrieved_count": 14,
+        "ground_truth_encoding": "utf-8"
+      }
+    },
+    {
+      "test_id": "T010",
+      "filename": "案例库-CDyna案例-块体模块案例-扩展案例-根据地层设定材料参数-根据地层设置材料参数.js",
+      "category": "CDyna案例",
+      "query": "请编写一个CDyna仿真脚本，实现扩展案例-根据地层设定材料参数-根据地层设置材料参数，并输出必要的结果与监测。",
+      "generated_code": "setCurDir(getSrcDir());\ndyna.Clear();\ndyna.Set(\"Gravity 0 0 -9.8\");\nblkdyn.GenBrick3D(5, 5, 3, 50, 50, 30, 1);\nblkdyn.SetMatByStratum(\"arrange.txt\");\nblkdyn.FixV(\"z\", 0.0, -0.01, 0.01);\ndyna.Monitor(\"block\", \"szz\");\ndyna.Monitor(\"block\", \"dzz\");\ndyna.Solve();\ndyna.Plot(\"Elem\", \"Young\");\ndyna.Plot(\"Elem\", \"DzZ\");",
+      "generation_time": 89.0102846622467,
+      "similarity_score": 0.8453,
+      "code_quality_score": 5.0,
+      "execution_score": 7.0,
+      "functionality_score": 7.126500000000001,
+      "retrieved_docs_count": 13,
+      "retrieval_quality": "excellent",
+      "diff_unified": "--- 案例库-CDyna案例-块体模块案例-扩展案例-根据地层设定材料参数-根据地层设置材料参数.js (ground_truth)\n+++ 案例库-CDyna案例-块体模块案例-扩展案例-根据地层设定材料参数-根据地层设置材料参数.js (generated)\n@@ -1,19 +1,11 @@\n setCurDir(getSrcDir());\n-\n dyna.Clear();\n-\n dyna.Set(\"Gravity 0 0 -9.8\");\n-\n-\n blkdyn.GenBrick3D(5, 5, 3, 50, 50, 30, 1);\n-\n-\n blkdyn.SetMatByStratum(\"arrange.txt\");\n-\n-\n-blkdyn.FixV(\"xyz\",0.0, \"z\", -0.001, 0.001);\n-\n+blkdyn.FixV(\"z\", 0.0, -0.01, 0.01);\n+dyna.Monitor(\"block\", \"szz\");\n+dyna.Monitor(\"block\", \"dzz\");\n dyna.Solve();\n-\n-//绘制弹性模量的云图\n-dyna.Plot(\"Elem\",\"Young\");\n+dyna.Plot(\"Elem\", \"Young\");\n+dyna.Plot(\"Elem\", \"DzZ\");",
+      "diff_file": "D:\\Codes\\langchain\\physic\\tools\\agents\\results\\evaluation_results.evo_langgraph\\diffs\\案例库-CDyna案例-块体模块案例-扩展案例-根据地层设定材料参数-根据地层设置材料参数.diff",
+      "dataset_split": "train",
+      "saved_generated_script": "D:\\Codes\\langchain\\physic\\tools\\agents\\results\\evaluation_results.evo_langgraph\\train\\generated\\案例库-CDyna案例-块体模块案例-扩展案例-根据地层设定材料参数-根据地层设置材料参数.js",
+      "saved_ground_truth_script": "D:\\Codes\\langchain\\physic\\tools\\agents\\results\\evaluation_results.evo_langgraph\\train\\ground_truth\\案例库-CDyna案例-块体模块案例-扩展案例-根据地层设定材料参数-根据地层设置材料参数.js",
+      "task_steps": [],
+      "error_message": "",
+      "notes": "",
+      "evaluation_time": "2026-04-03T11:08:37.018832",
+      "last_run_metrics": {
+        "evo_scores": {
+          "f_s": 1.0,
+          "f_f": 0.0027100271002710027,
+          "f_p": null
+        },
+        "evo_breakdown": {
+          "simplicity": {
+            "R": 0,
+            "L": 11
+          },
+          "fitness": {
+            "Sim": 0.005420054200542005,
+            "Cov": 0.0,
+            "terms": [
+              "cdyna",
+              "一个",
+              "与监",
+              "个仿",
+              "仿真",
+              "例根",
+              "写一",
+              "出必",
+              "参数",
+              "地层",
+              "定材",
+              "实现",
+              "层设",
+              "展案",
+              "并输",
+              "必要",
+              "扩展",
+              "据地",
+              "数并",
+              "数根"
+            ],
+            "hit": 0,
+            "total": 20
+          },
+          "physics": {
+            "available": false
+          }
+        },
+        "evo_history_len": 4,
+        "retrieved_count": 13,
+        "ground_truth_encoding": "utf-8"
+      }
+    }
+  ]
+}

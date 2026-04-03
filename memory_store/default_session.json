@@ -19,6 +19,36 @@
       "role": "assistant",
       "content": "//设置当前路径为JavaScript脚本所在的路径\nsetCurDir(getSrcDir());\n\n//设置结果的输出间隔为500步\ndyna.Set(\"Output_Interval 1000\");\n\n//关闭虚拟质量开关\ndyna.Set(\"If_Virtural_Mass 0\");\n\n//设置重力加速度\ndyna.Set(\"Gravity 0.0 -9.8 0.0\");\n\n//设置接触容差\ndyna.Set(\"Contact_Detect_Tol 0.0\");\n\ndyna.Set(\"GiD_Out 1\");\n\n//设置底部刚性面\nvar fCoord = [-1.0,0.0,0.0,2.0,0.0,0.0];\nrdface.Create (1, 1, 2, fCoord);\n\nvar fCoord2 = [-1.0,0.0,0.0,-1.0,2.0,0.0];\nvar fCoord3 = [2.0,0.0,0.0,2.0,2.0,0.0];\nrdface.Create (1, 1, 2, fCoord2);\nrdface.Create (1, 1, 2, fCoord3);\n\n//导入pdyna格式的颗粒并创建椭圆\npdyna.CrtEllipsePartFromFile(\"1m-1m-ball.dat\", \"uniform\", 0.8,1, \"uniform\", 0.2,1, \"uniform\", 0.0, 360.0, 12);\n\n//设置颗粒的材料参数，依次为密度、弹性模量、泊松比、抗拉强度、粘聚力、内摩擦角、局部阻尼、粘性阻尼系数（临界阻尼比）\npdyna.SetPartMat(2500, 5e7, 0.25, 0.0, 0.0, 10, 0.01, 0.1, 0.1);\n\n//设置颗粒接触模型为考虑应变软化的Mohr-Coulomb模型\npdyna.SetModel(\"brittleMC\");\n\n//设置动态计算时步为1e-4秒\ndyna.Set(\"Time_Step 1e-5\");\n\n//计算3万步\ndyna.Solve(100000);",
       "timestamp": "2026-04-01T17:32:29.877165"
+    },
+    {
+      "role": "user",
+      "content": "hello",
+      "timestamp": "2026-04-02T14:16:01.512644"
+    },
+    {
+      "role": "assistant",
+      "content": "{\"name\": \"igeo.genEllipSoidV\", \"parameters\": {\"fCoordX\": 20, \"fCoordY\": 30, \"fCoordZ\": 5, \"fXaxis\": 10, \"fYaxis\": 8, \"fZaxis\": 5, \"fsize\": 1, \"iGroup\": 3, \"fAngleX\": 20, \"fAngleY\": 40, \"-10\": -10}}",
+      "timestamp": "2026-04-02T14:16:01.513148"
+    },
+    {
+      "role": "user",
+      "content": "写一个最简单的CDEM脚本模板",
+      "timestamp": "2026-04-02T14:17:00.899731"
+    },
+    {
+      "role": "assistant",
+      "content": "//设置当前路径为JavaScript脚本所在的路径\nsetCurDir(getSrcDir());\n\n//清除GDEM-Pdyna计算核心中的内存数据\ndyna.Clear();\n\n//清除GDEM-Env中的结果数据\ndoc.clearResult();\n\n//设置输出的间隔为500步\ndyna.Set(\"Output_Interval 500\");\n\n//关闭虚质量计算开关\ndyna.Set(\"If_Virtural_Mass 0\");\n\n//设置三个方向的全局重力加速度为0\ndyna.Set(\"Gravity 0.0 -9.8 0.0\");\n\n//打开单元大变形计算开关\ndyna.Set(\"Large_Displace 1\");\n\n//打开单元接触更新开关\ndyna.Set(\"If_Renew_Contact 1\");\n\n//设置接触容差为0\ndyna.Set(\"Contact_Detect_Tol 0.0\");\n\n//设置计算时步为4e-5\ndyna.Set(\"Time_Step 4e-5\");\n\n//创建长宽为1m，厚5cm的板\nblkdyn.ImportGrid(\"gid\",\"element.msh\");\n\n//设置单元模型为线弹性模型\nblkdyn.SetModel(\"SoftenMC\");\n\n//设置单元材料，依次为密度、弹性模量、泊松比、粘聚力、抗拉强度、内摩擦角、剪胀角\nblkdyn.SetMat(2500, 1e8,0.25, 8e5, 8e5, 35, 15);\n\n//设置单元的局部阻尼\nblkdyn.SetLocalDamp(0.05);\n\n//导入颗粒数据\npdyna.Import(\"pdyna\",\"particle.dat\");\n\n//设置颗粒模型为脆性断裂模型\npdyna.SetModel(\"brittleMC\");\n\n//设置颗粒材料参数，依次为密度、弹性模量、泊松比、抗拉强度、粘聚力、内摩擦角、局部阻尼、粘性阻尼系数（临界阻尼比）\npdyna.SetMat(2500, 1e8, 0.25, 8e5, 8e5, 35, 0.0, 0.05);\n\n//创建顶部刚性面\nvar fCoord = new Array();\nfCoord[0]=new Array(-2,0.0,0.0);\nfCoord[1]=new Array(2,0.0,0.0);\nrdface.Create (1, 1, 2, fCoord);\n\n//设置FEM-DEM耦合开关\ndyna.Set(\"If_Cal_FEM_DEM_Evolvement 1\");\n\n//求解2万步\ndyna.Solve(20000);\n\n//打印信息\nprint(\"Solution is ok!\");",
+      "timestamp": "2026-04-02T14:17:00.900233"
+    },
+    {
+      "role": "user",
+      "content": "写一个最简单的CDEM脚本模板",
+      "timestamp": "2026-04-02T14:32:58.303510"
+    },
+    {
+      "role": "assistant",
+      "content": "//设置当前路径为JavaScript脚本所在的路径\nsetCurDir(getSrcDir());\n\n//清除GDEM-Pdyna计算核心中的内存数据\ndyna.Clear();\n\n//清除GDEM-Env中的结果数据\ndoc.clearResult();\n\n//设置输出的间隔为500步\ndyna.Set(\"Output_Interval 500\");\n\n//关闭虚质量计算开关\ndyna.Set(\"If_Virtural_Mass 0\");\n\n//设置三个方向的全局重力加速度为0\ndyna.Set(\"Gravity 0.0 -9.8 0.0\");\n\n//打开单元大变形计算开关\ndyna.Set(\"Large_Displace 1\");\n\n//打开单元接触更新开关\ndyna.Set(\"If_Renew_Contact 1\");\n\n//设置接触容差为0\ndyna.Set(\"Contact_Detect_Tol 0.0\");\n\n//设置计算时步为4e-5\ndyna.Set(\"Time_Step 4e-5\");\n\n//创建长宽为1m，厚5cm的板\nblkdyn.ImportGrid(\"gid\",\"element.msh\");\n\n//设置单元模型为线弹性模型\nblkdyn.SetModel(\"SoftenMC\");\n\n//设置单元材料，依次为密度、弹性模量、泊松比、粘聚力、抗拉强度、内摩擦角、剪胀角\nblkdyn.SetMat(2500, 1e8,0.25, 8e5, 8e5, 35, 15);\n\n//设置单元的局部阻尼\nblkdyn.SetLocalDamp(0.05);\n\n//导入颗粒数据\npdyna.Import(\"pdyna\",\"particle.dat\");\n\n//设置颗粒模型为脆性断裂模型\npdyna.SetModel(\"brittleMC\");\n\n//设置颗粒材料参数，依次为密度、弹性模量、泊松比、抗拉强度、粘聚力、内摩擦角、局部阻尼、粘性阻尼系数（临界阻尼比）\npdyna.SetMat(2500, 1e8, 0.25, 8e5, 8e5, 35, 0.0, 0.05);\n\n//创建顶部刚性面\nvar fCoord = new Array();\nfCoord[0]=new Array(-2,0.0,0.0);\nfCoord[1]=new Array(2,0.0,0.0);\nrdface.Create (1, 1, 2, fCoord);\n\n//设置FEM-DEM耦合开关\ndyna.Set(\"If_Cal_FEM_DEM_Evolvement 1\");\n\n//求解2万步\ndyna.Solve(20000);\n\n//打印信息\nprint(\"Solution is ok!\");",
+      "timestamp": "2026-04-02T14:32:58.304010"
     }
   ],
   "user_preferences": {},
@@ -34,6 +64,24 @@
       "code": "//设置当前路径为JavaScript脚本所在的路径\nsetCurDir(getSrcDir());\n\n//设置结果的输出间隔为500步\ndyna.Set(\"Output_Interval 1000\");\n\n//关闭虚拟质量开关\ndyna.Set(\"If_Virtural_Mass 0\");\n\n//设置重力加速度\ndyna.Set(\"Gravity 0.0 -9.8 0.0\");\n\n//设置接触容差\ndyna.Set(\"Contact_Detect_Tol 0.0\");\n\ndyna.Set(\"GiD_Out 1\");\n\n//设置底部刚性面\nvar fCoord = [-1.0,0.0,0.0,2.0,0.0,0.0];\nrdface.Create (1, 1, 2, fCoord);\n\nvar fCoord2 = [-1.0,0.0,0.0,-1.0,2.0,0.0];\nvar fCoord3 = [2.0,0.0,0.0,2.0,2.0,0.0];\nrdface.Create (1, 1, 2, fCoord2);\nrdface.Create (1, 1, 2, fCoord3);\n\n//导入pdyna格式的颗粒并创建椭圆\npdyna.CrtEllipsePartFromFile(\"1m-1m-ball.dat\", \"uniform\", 0.8,1, \"uniform\", 0.2,1, \"uniform\", 0.0, 360.0, 12);\n\n//设置颗粒的材料参数，依次为密度、弹性模量、泊松比、抗拉强度、粘聚力、内摩擦角、局部阻尼、粘性阻尼系数（临界阻尼比）\npdyna.SetPartMat(2500, 5e7, 0.25, 0.0, 0.0, 10, 0.01, 0.1, 0.1);\n\n//设置颗粒接触模型为考虑应变软化的Mohr-Coulomb模型\npdyna.SetModel(\"brittleMC\");\n\n//设置动态计算时步为1e-4秒\ndyna.Set(\"Time_Step 1e-5\");\n\n//计算3万步\ndyna.Solve(100000);",
       "context": "请编写一个CDyna仿真脚本，实现扩展案例-颗粒飞散计算1-颗粒飞散，并输出必要的结果与监测。",
       "timestamp": "2026-04-01T17:32:30.493087"
+    },
+    {
+      "version": 3,
+      "code": "{\"name\": \"igeo.genEllipSoidV\", \"parameters\": {\"fCoordX\": 20, \"fCoordY\": 30, \"fCoordZ\": 5, \"fXaxis\": 10, \"fYaxis\": 8, \"fZaxis\": 5, \"fsize\": 1, \"iGroup\": 3, \"fAngleX\": 20, \"fAngleY\": 40, \"-10\": -10}}",
+      "context": "hello",
+      "timestamp": "2026-04-02T14:16:02.025570"
+    },
+    {
+      "version": 4,
+      "code": "//设置当前路径为JavaScript脚本所在的路径\nsetCurDir(getSrcDir());\n\n//清除GDEM-Pdyna计算核心中的内存数据\ndyna.Clear();\n\n//清除GDEM-Env中的结果数据\ndoc.clearResult();\n\n//设置输出的间隔为500步\ndyna.Set(\"Output_Interval 500\");\n\n//关闭虚质量计算开关\ndyna.Set(\"If_Virtural_Mass 0\");\n\n//设置三个方向的全局重力加速度为0\ndyna.Set(\"Gravity 0.0 -9.8 0.0\");\n\n//打开单元大变形计算开关\ndyna.Set(\"Large_Displace 1\");\n\n//打开单元接触更新开关\ndyna.Set(\"If_Renew_Contact 1\");\n\n//设置接触容差为0\ndyna.Set(\"Contact_Detect_Tol 0.0\");\n\n//设置计算时步为4e-5\ndyna.Set(\"Time_Step 4e-5\");\n\n//创建长宽为1m，厚5cm的板\nblkdyn.ImportGrid(\"gid\",\"element.msh\");\n\n//设置单元模型为线弹性模型\nblkdyn.SetModel(\"SoftenMC\");\n\n//设置单元材料，依次为密度、弹性模量、泊松比、粘聚力、抗拉强度、内摩擦角、剪胀角\nblkdyn.SetMat(2500, 1e8,0.25, 8e5, 8e5, 35, 15);\n\n//设置单元的局部阻尼\nblkdyn.SetLocalDamp(0.05);\n\n//导入颗粒数据\npdyna.Import(\"pdyna\",\"particle.dat\");\n\n//设置颗粒模型为脆性断裂模型\npdyna.SetModel(\"brittleMC\");\n\n//设置颗粒材料参数，依次为密度、弹性模量、泊松比、抗拉强度、粘聚力、内摩擦角、局部阻尼、粘性阻尼系数（临界阻尼比）\npdyna.SetMat(2500, 1e8, 0.25, 8e5, 8e5, 35, 0.0, 0.05);\n\n//创建顶部刚性面\nvar fCoord = new Array();\nfCoord[0]=new Array(-2,0.0,0.0);\nfCoord[1]=new Array(2,0.0,0.0);\nrdface.Create (1, 1, 2, fCoord);\n\n//设置FEM-DEM耦合开关\ndyna.Set(\"If_Cal_FEM_DEM_Evolvement 1\");\n\n//求解2万步\ndyna.Solve(20000);\n\n//打印信息\nprint(\"Solution is ok!\");",
+      "context": "写一个最简单的CDEM脚本模板",
+      "timestamp": "2026-04-02T14:17:03.430138"
+    },
+    {
+      "version": 5,
+      "code": "//设置当前路径为JavaScript脚本所在的路径\nsetCurDir(getSrcDir());\n\n//清除GDEM-Pdyna计算核心中的内存数据\ndyna.Clear();\n\n//清除GDEM-Env中的结果数据\ndoc.clearResult();\n\n//设置输出的间隔为500步\ndyna.Set(\"Output_Interval 500\");\n\n//关闭虚质量计算开关\ndyna.Set(\"If_Virtural_Mass 0\");\n\n//设置三个方向的全局重力加速度为0\ndyna.Set(\"Gravity 0.0 -9.8 0.0\");\n\n//打开单元大变形计算开关\ndyna.Set(\"Large_Displace 1\");\n\n//打开单元接触更新开关\ndyna.Set(\"If_Renew_Contact 1\");\n\n//设置接触容差为0\ndyna.Set(\"Contact_Detect_Tol 0.0\");\n\n//设置计算时步为4e-5\ndyna.Set(\"Time_Step 4e-5\");\n\n//创建长宽为1m，厚5cm的板\nblkdyn.ImportGrid(\"gid\",\"element.msh\");\n\n//设置单元模型为线弹性模型\nblkdyn.SetModel(\"SoftenMC\");\n\n//设置单元材料，依次为密度、弹性模量、泊松比、粘聚力、抗拉强度、内摩擦角、剪胀角\nblkdyn.SetMat(2500, 1e8,0.25, 8e5, 8e5, 35, 15);\n\n//设置单元的局部阻尼\nblkdyn.SetLocalDamp(0.05);\n\n//导入颗粒数据\npdyna.Import(\"pdyna\",\"particle.dat\");\n\n//设置颗粒模型为脆性断裂模型\npdyna.SetModel(\"brittleMC\");\n\n//设置颗粒材料参数，依次为密度、弹性模量、泊松比、抗拉强度、粘聚力、内摩擦角、局部阻尼、粘性阻尼系数（临界阻尼比）\npdyna.SetMat(2500, 1e8, 0.25, 8e5, 8e5, 35, 0.0, 0.05);\n\n//创建顶部刚性面\nvar fCoord = new Array();\nfCoord[0]=new Array(-2,0.0,0.0);\nfCoord[1]=new Array(2,0.0,0.0);\nrdface.Create (1, 1, 2, fCoord);\n\n//设置FEM-DEM耦合开关\ndyna.Set(\"If_Cal_FEM_DEM_Evolvement 1\");\n\n//求解2万步\ndyna.Solve(20000);\n\n//打印信息\nprint(\"Solution is ok!\");",
+      "context": "写一个最简单的CDEM脚本模板",
+      "timestamp": "2026-04-02T14:33:00.767962"
     }
   ],
   "simulation_summaries": []

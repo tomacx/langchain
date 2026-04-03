@@ -1,0 +1,121 @@
+--- 案例库-SuperCDEM案例-Gravity-Gravity.js (ground_truth)
++++ 案例库-SuperCDEM案例-Gravity-Gravity.js (generated)
+@@ -1,82 +1,67 @@
+-//设置文件路径
+ setCurDir(getSrcDir());
+ 
+-// 设置系统不平衡率为1e-4
++// 设置求解器参数
+ scdem.set("ubr", 1e-4);
+-
+-//设置云图更新间隔
+-scdem.set("outputInterval", 100);
+-
+-//关闭大变形开关
++scdem.outputInterval = 100;
+ scdem.set("isLargeDisplace", 0);
+-
+-//打开虚质量开关
+ scdem.set("isVirtualMass", 1);
+-
+-//设置虚时步
+ scdem.set("virtualStep", 0.8);
+ 
+-scdem.gravity = [0,0,-9.8];
++// 设置重力矢量 (X, Y, Z)
++scdem.gravity = [0, 0, -9.8];
+ 
+-//导入计算网格
+-var msh1 = imesh.importAnsys("200324tet780.dat");
+-scdem.getMesh(msh1);
++// 导入网格 (使用示例网格文件)
++var msh = imesh.importGmsh("gravity_test.msh");
++scdem.getMesh(msh);
+ 
+-//施加单元材料参数(含单元模型设置)
++// 设置单元模型为线弹性模型
+ scdem.setModel("linear");
++
++// 选择所有单元并设置材料参数 (密度, 杨氏模量, 泊松比, 屈服强度, 硬化模量, 失效指数, 失效应力)
+ oSel = new SelElems(scdem);
+-oSel.box(-0.1,-0.1,-0.1,10.1,10.1,10.1);
+-oMat = [2500, 1e9, 0.25, 1.35e4, 0.68e4, 47, 10];
++oSel.all();
++oMat = [2500, 1e9, 0.25, 2e7, 1e6, 10, 0.5];
+ scdem.setMat(oSel, oMat);
+ 
+-//施加界面材料参数(含接触面模型设置)
++// 设置界面模型为线性接触模型
+ scdem.setIModel("linear");
+ scdem.setIMatByElem(50);
+ 
+-//施加位移边界条件(固定底部即四周)
++// 施加位移边界条件 (固定底部四周)
+ oSel = new SelNodes(scdem);
+-oSel.box(-0.1,-0.1,-0.1,0.1,10.1,10.1);
++oSel.box(-0.1, -0.1, -0.1, 0.1, 50.1, 50.1);
+ scdem.setVel(oSel, "x", 0);
+ oSel = new SelNodes(scdem);
+-oSel.box(9.9,-0.1,-0.1,10.1,10.1,10.1);
+-scdem.setVel(oSel, "x", 0);
+-oSel = new SelNodes(scdem);
+-oSel.box(-0.1,-0.1,-0.1,10.1,0.1,10.1);
++oSel.box(-0.1, 9.9, -0.1, 0.1, 50.1, 50.1);
+ scdem.setVel(oSel, "y", 0);
+ oSel = new SelNodes(scdem);
+-oSel.box(-0.1,9.9,-0.1,10.1,10.1,10.1);
++oSel.box(-0.1, -0.1, -0.1, 50.1, 0.1, 50.1);
+ scdem.setVel(oSel, "y", 0);
+ oSel = new SelNodes(scdem);
+-oSel.box(-0.1,-0.1,-0.1,10.1,10.1,0.1);
++oSel.box(-0.1, 9.9, -0.1, 50.1, 50.1, 0.1);
+ scdem.setVel(oSel, "z", 0);
+ 
++// 施加位移边界条件 (固定底部)
++oSel = new SelNodes(scdem);
++oSel.box(-0.1, 9.9, -0.1, 50.1, 50.1, -0.001);
++scdem.setVel(oSel, "y", 0);
+ 
+-//施加监测点
+-scdem.monitor("node", "xAcc", 5,5,5);
+-scdem.monitor("node", "yAcc", 5,5,5);
+-scdem.monitor("node", "zAcc", 5,5,5);
++// 设置监测点 (中心节点 (25, 25, 25))
++scdem.monitor("node", "xDis", 25, 25, 25);
++scdem.monitor("node", "yDis", 25, 25, 25);
++scdem.monitor("node", "zDis", 25, 25, 25);
++scdem.monitor("node", "xVel", 25, 25, 25);
++scdem.monitor("node", "yVel", 25, 25, 25);
++scdem.monitor("node", "zVel", 25, 25, 25);
++scdem.monitor("node", "xAcc", 25, 25, 25);
++scdem.monitor("node", "yAcc", 25, 25, 25);
++scdem.monitor("node", "zAcc", 25, 25, 25);
+ 
+-scdem.monitor("node", "xVel", 5,5,5);
+-scdem.monitor("node", "yVel", 5,5,5);
+-scdem.monitor("node", "zVel", 5,5,5);
++// 求解 (求解 10000 步)
++scdem.solveGpu(10000);
+ 
+-scdem.monitor("node", "xDis", 5,5,5);
+-scdem.monitor("node", "yDis", 5,5,5);
+-scdem.monitor("node", "zDis", 5,5,5);
+-
+-scdem.monitor("node", "sxx", 5,5,5);
+-scdem.monitor("node", "syy", 5,5,5);
+-scdem.monitor("node", "szz", 5,5,5);
+-
+-scdem.monitor("node", "exx", 5,5,5);
+-scdem.monitor("node", "eyy", 5,5,5);
+-scdem.monitor("node", "ezz", 5,5,5);
+-
+-//求解至稳定
+-scdem.solveGpu();
+-
+-//释放GPU端内存
++// 释放 GPU 内存
+ scdem.releaseGpuMem();
+ 
+-//打印提示信息
++// 打印完成信息
+ print("Solution Finished");

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ast
 import importlib.util
+import json
 import os
 import re
 import sys
@@ -30,13 +31,77 @@ try:
 except Exception:
     ChatOpenAI = None
 
-from langgraph.graph import END, START, StateGraph
+try:
+    from langgraph.graph import END, START, StateGraph
+except Exception:
+    END = "__end__"
+    START = "__start__"
+
+    class _CompiledGraph:
+        def __init__(self, graph: "StateGraph"):
+            self._g = graph
+
+        def invoke(self, state: Dict[str, Any]):
+            cur = START
+            st: Dict[str, Any] = dict(state or {})
+            while True:
+                nxts = self._g._edges.get(cur) or []
+                if cur == START:
+                    if not nxts:
+                        return st
+                    cur = nxts[0]
+                    continue
+                if cur == END:
+                    return st
+                fn = self._g._nodes.get(cur)
+                if fn is None:
+                    return st
+                out = fn(st)
+                if isinstance(out, dict):
+                    st = out
+                cond = self._g._conds.get(cur)
+                if cond is not None:
+                    router, mapping = cond
+                    key = router(st)
+                    cur = mapping.get(key, END)
+                    continue
+                nxts = self._g._edges.get(cur) or []
+                cur = nxts[0] if nxts else END
+
+    class StateGraph:
+        def __init__(self, _state_type: Any = None):
+            self._nodes: Dict[str, Any] = {}
+            self._edges: Dict[str, List[str]] = {}
+            self._conds: Dict[str, Any] = {}
+
+        def add_node(self, name: str, fn: Any):
+            self._nodes[name] = fn
+
+        def add_edge(self, src: str, dst: str):
+            self._edges.setdefault(src, []).append(dst)
+
+        def add_conditional_edges(self, src: str, router: Any, mapping: Dict[str, str]):
+            self._conds[src] = (router, mapping)
+
+        def compile(self):
+            return _CompiledGraph(self)
 
 import evo_game
 import evo_llm
 import evo_simulation
 import evo_scoring
 import evo_toolbox as evo_tb
+try:
+    from agent import AgentConstructionModule, AgentFeatureFlags, EvaluationModule, ToolConstructionModule, VectorKnowledgeBaseModule
+
+    _HAS_AGENT_STACK = True
+except Exception:
+    AgentConstructionModule = None
+    AgentFeatureFlags = None
+    EvaluationModule = None
+    ToolConstructionModule = None
+    VectorKnowledgeBaseModule = None
+    _HAS_AGENT_STACK = False
 
 
 UtilityVector = Tuple[float, float, float]
@@ -143,6 +208,327 @@ def _load_agent_system_prompt() -> str:
 
 def _get_llm():
     return evo_llm.get_llm()
+
+
+def _load_best_agent_system_prompt() -> str:
+    prompt_path = Path(__file__).resolve().parents[1] / "prompt" / "agent_system.py"
+    if prompt_path.exists():
+        try:
+            spec = importlib.util.spec_from_file_location("cdem_prompt_agent_system_for_evo_best", prompt_path)
+            mod = importlib.util.module_from_spec(spec)
+            assert spec and spec.loader
+            spec.loader.exec_module(mod)
+            for name in ("AGENT_SYSTEM_PROMPT2", "AGENT_SYSTEM_PROMPT1", "AGENT_SYSTEM_PROMPT0"):
+                if hasattr(mod, name):
+                    v = str(getattr(mod, name))
+                    if v.strip():
+                        return v
+            if hasattr(mod, "SYSTEM_PROMPT"):
+                return str(mod.SYSTEM_PROMPT)
+            if hasattr(mod, "SYSTEM_MESSAGE"):
+                return str(mod.SYSTEM_MESSAGE)
+        except Exception:
+            pass
+    return _load_agent_system_prompt()
+
+
+class EvolutionaryAgentConstructionModule(AgentConstructionModule if _HAS_AGENT_STACK else object):
+    def _build_agent(self):
+        self.llm = _get_llm()
+        self.system_prompt = _load_best_agent_system_prompt()
+        self.agent_executor = None
+
+    def generate_code(self, query: str, verbose: bool = False, dynamic_sys_prompt: str = "") -> tuple[str, float, int]:
+        start_time = time.time()
+        retrieved_count = 0
+        self.last_run_metrics = {}
+
+        tool_context, retrieved_count = self._build_reference_context(query)
+
+        class _GenState(TypedDict, total=False):
+            query: str
+            tool_context: str
+            script: str
+            scores: Dict[str, Any]
+            breakdown: Dict[str, Any]
+            history_len: int
+
+        def _node_optimize(state: _GenState) -> _GenState:
+            optimizer = evo_game.MultiObjectiveGameOptimizer(
+                llm=self.llm,
+                simulator=None,
+                system_prompt=_load_best_agent_system_prompt(),
+            )
+            result = optimizer.optimize(task=state.get("query", ""), tool_context=state.get("tool_context", ""))
+            script = (result.script or "").strip()
+            if "setCurDir(getSrcDir());" not in script:
+                script = "setCurDir(getSrcDir());\n" + script
+            return {
+                **state,
+                "script": script,
+                "scores": {"f_s": result.scores.f_s, "f_f": result.scores.f_f, "f_p": result.scores.f_p},
+                "breakdown": {
+                    "simplicity": result.breakdown.simplicity,
+                    "fitness": result.breakdown.fitness,
+                    "physics": result.breakdown.physics,
+                },
+                "history_len": len(result.history),
+            }
+
+        graph = StateGraph(_GenState)
+        graph.add_node("optimize", _node_optimize)
+        graph.add_edge(START, "optimize")
+        graph.add_edge("optimize", END)
+        app = graph.compile()
+
+        out = app.invoke({"query": query, "tool_context": tool_context})
+        code = evo_game.extract_js_code(out.get("script", "") or "")
+
+        self.last_run_metrics = {
+            "evo_scores": out.get("scores"),
+            "evo_breakdown": out.get("breakdown"),
+            "evo_history_len": out.get("history_len"),
+            "retrieved_count": retrieved_count,
+        }
+        return code, time.time() - start_time, retrieved_count
+
+
+class CDEMEvolutionaryAgentEvaluator:
+    def __init__(
+        self,
+        *,
+        vector_db_path: str,
+        test_data_dir: str,
+        output_dir: str,
+        model_name: str = "qwen3.5-flash",
+        enable_preprocessing: bool = False,
+        query_dataset_json: Optional[str] = None,
+        vector_db_collection: Optional[str] = None,
+        feature_flags: Optional[AgentFeatureFlags] = None,
+    ):
+        self.feature_flags = feature_flags or AgentFeatureFlags.from_env()
+
+        self.vector_module = None
+        if self.feature_flags.enable_vector_kb:
+            collection = (vector_db_collection or os.environ.get("CDEM_VECTOR_DB_COLLECTION") or "new_db_cdem").strip()
+            self.vector_module = VectorKnowledgeBaseModule.connect(vector_db_path, collection_name=collection)
+
+        tools: List[Any] = []
+        self.tool_module = None
+        if self.feature_flags.enable_tools:
+            self.tool_module = ToolConstructionModule(model_name=model_name, feature_flags=self.feature_flags)
+            if self.vector_module is not None:
+                physics_tool = self.tool_module.build_physics_search_tool(self.vector_module)
+                tools.append(physics_tool)
+
+        self.agent_module = EvolutionaryAgentConstructionModule(
+            tools=tools,
+            model_name=model_name,
+            enable_preprocessing=enable_preprocessing,
+            vectorstore=self.vector_module if self.feature_flags.enable_rag else None,
+            feature_flags=self.feature_flags,
+        )
+
+        self.eval_module = EvaluationModule(
+            agent_module=self.agent_module,
+            test_data_dir=test_data_dir,
+            output_dir=output_dir,
+            query_dataset_json=query_dataset_json,
+        )
+
+    @property
+    def results(self):
+        return self.eval_module.results
+
+    @results.setter
+    def results(self, value):
+        self.eval_module.results = value
+
+    def run_ab_test(self, test_files: List[str], verbose: bool = False):
+        self.eval_module.run_ab_test(test_files, verbose)
+
+    def validate_training_set(self, dataset_split_json: str, sample_size: Optional[int] = None, verbose: bool = True):
+        self.eval_module.validate_training_set(dataset_split_json, sample_size, verbose)
+
+    def evaluate_test_set(self, dataset_split_json: str, verbose: bool = False):
+        self.eval_module.evaluate_test_set(dataset_split_json, verbose)
+
+    def run_custom_query(self, query: str, case_filename: Optional[str] = None, verbose: bool = True) -> Dict[str, Any]:
+        return self.eval_module.run_custom_query(query=query, case_filename=case_filename, verbose=verbose)
+
+
+class CDEMEvolutionaryAgentEvaluatorLite:
+    def __init__(self, *, test_data_dir: str, output_dir: str, query_dataset_json: Optional[str] = None):
+        self.test_data_dir = str(test_data_dir)
+        self.output_dir = str(output_dir)
+        self.query_dataset_json = str(query_dataset_json) if query_dataset_json else ""
+        self._query_map: Dict[str, str] = {}
+        self.results: List[Dict[str, Any]] = []
+
+        if self.query_dataset_json and Path(self.query_dataset_json).exists():
+            try:
+                data = json.loads(Path(self.query_dataset_json).read_text(encoding="utf-8"))
+                cases = data.get("cases") if isinstance(data, dict) else None
+                if isinstance(cases, list):
+                    for it in cases:
+                        if not isinstance(it, dict):
+                            continue
+                        rel = str(it.get("relative_path") or it.get("filename") or "").strip()
+                        q = str(it.get("default_query") or "").strip()
+                        if rel and q and rel not in self._query_map:
+                            self._query_map[rel] = q
+            except Exception:
+                pass
+
+    def _case_path(self, relative_path: str) -> Path:
+        return (Path(self.test_data_dir) / relative_path).resolve()
+
+    def _load_case_code(self, relative_path: str) -> str:
+        p = self._case_path(relative_path)
+        return p.read_text(encoding="utf-8", errors="ignore")
+
+    def _default_query_for_case(self, relative_path: str) -> str:
+        q = (self._query_map.get(relative_path) or "").strip()
+        if q:
+            return q
+        name = Path(relative_path).stem
+        return f"请编写一个CDEM/CDyna仿真脚本，实现：{name}，并输出必要的结果与监测。"
+
+    def generate_code(self, query: str) -> tuple[str, float, int, Dict[str, Any]]:
+        t0 = time.time()
+        llm = _get_llm()
+        optimizer = evo_game.MultiObjectiveGameOptimizer(llm=llm, simulator=None, system_prompt=_load_best_agent_system_prompt())
+        result = optimizer.optimize(task=query, tool_context="")
+        code = evo_game.extract_js_code(result.script or "")
+        if "setCurDir(getSrcDir());" not in code:
+            code = "setCurDir(getSrcDir());\n" + code
+        meta = {
+            "scores": {"f_s": result.scores.f_s, "f_f": result.scores.f_f, "f_p": result.scores.f_p},
+            "breakdown": {
+                "simplicity": result.breakdown.simplicity,
+                "fitness": result.breakdown.fitness,
+                "physics": result.breakdown.physics,
+            },
+            "history_len": len(result.history),
+        }
+        return code, time.time() - t0, 0, meta
+
+    def run_custom_query(self, query: str, case_filename: Optional[str] = None, verbose: bool = True) -> Dict[str, Any]:
+        code, gen_time, _, meta = self.generate_code(query)
+        out: Dict[str, Any] = {"generated_code": code, "gen_time": gen_time, **meta}
+        if case_filename:
+            gt = self._load_case_code(case_filename)
+            out["case_filename"] = case_filename
+            out["similarity_score"] = evo_scoring.semantic_similarity(code, gt)
+        if verbose:
+            print(code)
+        return out
+
+    def _run_split(self, dataset_split_json: str, *, split_key: str, sample_size: Optional[int], verbose: bool):
+        data = json.loads(Path(dataset_split_json).read_text(encoding="utf-8"))
+        files = data.get(split_key) if isinstance(data, dict) else None
+        if not isinstance(files, list):
+            return
+        items = [str(x) for x in files if x]
+        if sample_size is not None:
+            items = items[: max(0, int(sample_size))]
+
+        Path(self.output_dir).mkdir(parents=True, exist_ok=True)
+        out_path = Path(self.output_dir) / f"{split_key}_set_results.json"
+
+        results: List[Dict[str, Any]] = []
+        for rel in items:
+            query = self._default_query_for_case(rel)
+            gt = self._load_case_code(rel)
+            gen, gen_time, _, meta = self.generate_code(query)
+            sim = evo_scoring.semantic_similarity(gen, gt)
+            row = {
+                "filename": rel,
+                "query": query,
+                "similarity_score": sim,
+                "gen_time": gen_time,
+                **meta,
+            }
+            results.append(row)
+            if verbose:
+                print(f"[{split_key}] {rel} sim={sim:.4f} t={gen_time:.2f}s")
+
+        out_path.write_text(json.dumps(results, ensure_ascii=False, indent=2), encoding="utf-8")
+        self.results = results
+
+    def validate_training_set(self, dataset_split_json: str, sample_size: Optional[int] = None, verbose: bool = True):
+        self._run_split(dataset_split_json, split_key="train", sample_size=sample_size, verbose=verbose)
+
+    def evaluate_test_set(self, dataset_split_json: str, verbose: bool = False):
+        self._run_split(dataset_split_json, split_key="test", sample_size=None, verbose=verbose)
+
+
+def main():
+    project_root = Path(__file__).resolve().parents[2]
+    repo_root = Path(__file__).resolve().parents[3]
+
+    def resolve_env_path(key: str, default_path: Path) -> str:
+        raw = (os.environ.get(key) or "").strip()
+        if not raw:
+            return str(default_path)
+        p = Path(raw)
+        if not p.is_absolute():
+            p = (repo_root / p).resolve()
+        return str(p)
+
+    default_vector_db_path = project_root / "tools" / "js_store" / "new_db_cdem"
+    vector_db_path = resolve_env_path("CDEM_VECTOR_DB_PATH", default_vector_db_path)
+    vector_db_collection = (os.environ.get("CDEM_VECTOR_DB_COLLECTION") or "new_db_cdem").strip()
+
+    dataset_root = project_root / "dataset_split_results"
+    default_dataset_split_json = dataset_root / "dataset_split.json"
+    default_query_dataset_json = dataset_root / "case_queries_content.json"
+    dataset_split_json = resolve_env_path("CDEM_DATASET_SPLIT_JSON", default_dataset_split_json)
+    query_dataset_json = resolve_env_path("CDEM_QUERY_DATASET_JSON", default_query_dataset_json)
+
+    docs_root = project_root / "docs"
+    default_test_data_dir = docs_root / "CDEM案例库及手册"
+    test_data_dir = resolve_env_path("CDEM_CASE_DIR", default_test_data_dir)
+
+    default_output_dir = Path(__file__).resolve().parent / "results/evaluation_results.evo_langgraph"
+    output_dir = resolve_env_path("CDEM_EVO_EVAL_OUTPUT_DIR", default_output_dir)
+
+    model_name = (os.environ.get("CDEM_LLM_MODEL") or "qwen2.5:14b").strip()
+
+    if _HAS_AGENT_STACK:
+        evaluator: Any = CDEMEvolutionaryAgentEvaluator(
+            vector_db_path=vector_db_path,
+            vector_db_collection=vector_db_collection,
+            test_data_dir=test_data_dir,
+            output_dir=output_dir,
+            model_name=model_name,
+            enable_preprocessing=False,
+            query_dataset_json=query_dataset_json,
+        )
+    else:
+        evaluator = CDEMEvolutionaryAgentEvaluatorLite(
+            test_data_dir=test_data_dir,
+            output_dir=output_dir,
+            query_dataset_json=query_dataset_json,
+        )
+
+    custom_query = (os.environ.get("CDEM_CUSTOM_QUERY") or "").strip()
+    custom_case = (os.environ.get("CDEM_CUSTOM_CASE") or "").strip() or None
+    if custom_query:
+        out = evaluator.run_custom_query(custom_query, case_filename=custom_case, verbose=True)
+        print(out)
+        return
+
+    sample_size_raw = (os.environ.get("CDEM_TRAIN_SAMPLE_SIZE") or "").strip()
+    sample_size = int(sample_size_raw) if sample_size_raw else 10
+    evaluator.validate_training_set(dataset_split_json, sample_size=sample_size, verbose=True)
+
+    run_test = (os.environ.get("CDEM_RUN_TEST_EVAL") or "0").strip().lower() in {"1", "true", "yes", "y"}
+    if run_test:
+        evaluator.results = []
+        evaluator.evaluate_test_set(dataset_split_json, verbose=True)
+
+    print(f"Output: {output_dir}")
 
 
 @dataclass
@@ -734,25 +1120,4 @@ def run_game(task: str, *, simulator: Optional[Any] = None) -> Dict[str, Any]:
 
 
 if __name__ == "__main__":
-    demo_task = os.getenv(
-        "CDEM_EVO_DEMO_TASK",
-        "生成一个极端力学冲击载荷下的二维块体 CDEM 仿真脚本，要求包含步长控制、收敛与能量监测。",
-    )
-    mode = (os.getenv("CDEM_EVO_MODE") or "langgraph").strip().lower()
-    if mode == "game":
-        out = run_game(demo_task)
-        print("==== Final Scores ====")
-        print(out.get("scores"))
-        print("==== Final Script (JS) ====")
-        print(out.get("script_content", ""))
-        print("==== History Len ====")
-        print(out.get("history_len"))
-    else:
-        result = run_demo(demo_task)
-        print("==== Final Utility ====")
-        print(result.get("utility"))
-        print("==== Final Script (JS) ====")
-        print(result.get("script_content", ""))
-        print("==== Feedback Log (tail) ====")
-        for ln in (result.get("feedback_log", []) or [])[-12:]:
-            print(ln)
+    main()
