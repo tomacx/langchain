@@ -28,4 +28,16 @@ pnpm-debug.log*
 .DS_Store.env
 
 # Chroma vector store (generated, too large for git)
+__pycache__/
+*.py[cod]
 
+physic/results/
+physic/dataset_split_results/
+physic/tools/agents/results*/
+physic/tools/agents/evaluation_results.*/
+physic/tools/agents/swebench_workdir/
+physic/tools/agents/memory_store/
+physic/tools/agents/data/SWE-bench_Lite/
+physic/tools/agents/*.zip
+physic/tools/js_store/**/chroma.sqlite3
+physic/alfred/

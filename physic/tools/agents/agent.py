@@ -17,6 +17,27 @@ except Exception:
     pass
 
 # LangChain imports
+def _boot_env_flag(key: str, default: bool) -> bool:
+    raw = (os.environ.get(key) or "").strip().lower()
+    if not raw:
+        return bool(default)
+    if raw in {"1", "true", "yes", "y", "on"}:
+        return True
+    if raw in {"0", "false", "no", "n", "off"}:
+        return False
+    return bool(default)
+
+if _boot_env_flag("CDEM_ENABLE_LANGCHAIN_SUPPORTS_PATCH", True):
+    import langchain.agents.factory
+    _orig_supports = langchain.agents.factory._supports_provider_strategy
+
+    def _patch_supports(model, tools):
+        if model.__class__.__name__ == "ChatOllama":
+            return True
+        return _orig_supports(model, tools)
+
+    langchain.agents.factory._supports_provider_strategy = _patch_supports
+
 from langchain_chroma import Chroma
 from langchain_core.tools import create_retriever_tool, Tool
 try:
@@ -131,6 +152,8 @@ class AgentFeatureFlags:
     enable_strict_retry: bool = True
     enable_prompt_optimizer: bool = True
     enable_workflow_optimizer: bool = True
+    enable_kb_tool: bool = True
+    enable_json_tool_patch: bool = True
     prompt_optimizer: str = "textgrad"
     workflow_optimizer_rounds: int = 2
     workflow_optimizer_candidates: int = 3
@@ -148,6 +171,8 @@ class AgentFeatureFlags:
             enable_strict_retry=_env_flag("CDEM_ENABLE_STRICT_RETRY", True),
             enable_prompt_optimizer=_env_flag("CDEM_ENABLE_PROMPT_OPTIMIZER", True),
             enable_workflow_optimizer=_env_flag("CDEM_ENABLE_WORKFLOW_OPTIMIZER", True),
+            enable_kb_tool=_env_flag("CDEM_ENABLE_KB_TOOL", True),
+            enable_json_tool_patch=_env_flag("CDEM_ENABLE_JSON_TOOL_PATCH", True),
             prompt_optimizer=(os.environ.get("CDEM_PROMPT_OPTIMIZER") or "textgrad").strip().lower() or "textgrad",
             workflow_optimizer_rounds=_env_int("CDEM_WORKFLOW_OPTIMIZER_ROUNDS", 2),
             workflow_optimizer_candidates=_env_int("CDEM_WORKFLOW_OPTIMIZER_CANDIDATES", 3),
@@ -167,14 +192,7 @@ class TextGradPromptOptimizer:
         self.last_trace: List[Dict[str, Any]] = []
 
     def optimize_retry_prompt(self, issues: Sequence[str], query: str) -> str:
-        gaia_mode = _env_flag("GAIA_MODE", False) or (os.environ.get("CDEM_EVAL_PROFILE") or "").strip().lower() == "gaia"
-        if gaia_mode:
-            base = (
-                "GAIA优先：如有Attachment path先用read_local_file读取再回答。"
-                "只输出单行：Final answer: <answer>。禁止解释、禁止多行、禁止JSON。"
-            )
-        else:
-            base = "拟合度优先：确保脚本可直接运行，补全缺失模块调用与求解入口，禁止输出 JSON/工具名。物理合规性优先：强调收敛与能量监测（若 API 支持）。"
+        base = "拟合度优先：确保脚本可直接运行，补全缺失模块调用与求解入口，禁止输出 JSON/工具名。物理合规性优先：强调收敛与能量监测（若 API 支持）。"
         candidates: List[Tuple[str, str]] = [("base", base)]
 
         if "json_output" in issues:
@@ -185,15 +203,18 @@ class TextGradPromptOptimizer:
             candidates.append(("rule_missing_modules", base + " 必须补齐必要模块调用；不要省略初始化与求解入口。"))
         if "too_short" in issues:
             candidates.append(("rule_too_short", base + " 生成完整脚本，不要输出片段或伪代码。"))
-        if gaia_mode:
-            if "missing_final_prefix" in issues:
-                candidates.append(("gaia_final_prefix", base + " 必须以“Final answer:”开头。"))
-            if "multi_line" in issues:
-                candidates.append(("gaia_single_line", base + " 必须单行输出，不允许换行。"))
-            if "empty_final" in issues:
-                candidates.append(("gaia_no_empty", base + " 不要输出空答案；必须给出可验证的最终答案。"))
-            if "no_tool_used" in issues:
-                candidates.append(("gaia_force_tool", base + " 你必须先调用read_local_file读取Attachment path指向的文件。"))
+        if "wrong_product_pipeline" in issues:
+            candidates.append(("rule_cdyna_pipeline", base + " 任务为 CDyna/BlockDyna：禁止使用 scdem/igeo/imeshing/gmsh/ImportGrid 等建模管线；优先用 blkdyn.GenCircle 直接建圆盘。"))
+        if "missing_gen_circle" in issues:
+            candidates.append(("rule_need_gencircle", base + " 必须调用 blkdyn.GenCircle(...) 创建半径0.02m二维圆盘，并按案例流程设置交界面与材料。"))
+        if "missing_group_iface_cut" in issues:
+            candidates.append(("rule_iface_cut", base + " 必须对组号1创建/切割交界面：使用 blkdyn.CrtIFace(1, 1) 并 UpdateIFaceMesh()。"))
+        if "missing_frac_energy_by_group_iface" in issues:
+            candidates.append(("rule_frac_energy", base + " 必须使用 blkdyn.SetIFracEnergyByGroupInterface(拉伸能,剪切能,1,1) 设置断裂能（不要用 ByCoord 代替）。"))
+        if "bc_api_mismatch" in issues:
+            candidates.append(("rule_bc_api", base + " 边界/加载应使用 FixVByCoord(...)（底部固定、顶部施加极慢速度载荷），不要臆造 ApplyDisplacement/ApplyVelocity 接口。"))
+        if "large_displace_on_quasi_static" in issues:
+            candidates.append(("rule_quasi_static_flags", base + " 准静态拉伸：关闭大变形 Large_Displace=0；重力为0；输出/监测参数参考 CDyna 基本案例。"))
 
         allow_llm = _env_flag("CDEM_PROMPT_OPTIMIZER_USE_LLM", True)
         if allow_llm and self.llm is not None:
@@ -234,29 +255,18 @@ class TextGradPromptOptimizer:
         return best_prompt
 
     def _score_prompt(self, prompt: str, issues: Sequence[str]) -> float:
-        gaia_mode = _env_flag("GAIA_MODE", False) or (os.environ.get("CDEM_EVAL_PROFILE") or "").strip().lower() == "gaia"
         s = 0.0
         p = prompt.lower()
-        if gaia_mode:
-            if "final answer" in p:
-                s += 3.0
-            if "单行" in prompt or "single line" in p:
-                s += 2.0
-            if "read_local_file" in p:
-                s += 1.0
-            if ("禁止" in prompt or "do not" in p) and "json" in p:
-                s += 1.0
-        else:
-            if "物理合规" in prompt:
-                s += 3.0
-            if "禁止" in prompt and ("json" in p or "工具" in prompt):
-                s += 2.0
-            if "search_physics_knowledge" in p:
-                s += 1.0
-            if "收敛" in prompt or "能量" in prompt:
-                s += 1.0
-            if "```javascript" in p:
-                s += 0.5
+        if "物理合规" in prompt:
+            s += 3.0
+        if "禁止" in prompt and ("json" in p or "工具" in prompt):
+            s += 2.0
+        if "search_physics_knowledge" in p:
+            s += 1.0
+        if "收敛" in prompt or "能量" in prompt:
+            s += 1.0
+        if "```javascript" in p:
+            s += 0.5
         for it in issues:
             if it == "missing_modules" and ("模块" in prompt or "补齐" in prompt):
                 s += 1.0
@@ -266,12 +276,18 @@ class TextGradPromptOptimizer:
                 s += 1.0
             if it == "too_short" and ("完整" in prompt or "不要输出片段" in prompt):
                 s += 1.0
-            if it == "missing_final_prefix" and ("final answer" in p or "开头" in prompt):
+            if it == "wrong_product_pipeline" and ("cdyna" in p or "blockdyna" in p) and ("禁止" in prompt):
                 s += 1.0
-            if it == "multi_line" and ("单行" in prompt or "single line" in p):
+            if it == "missing_gen_circle" and "gencircle" in p:
                 s += 1.0
-            if it == "no_tool_used" and "read_local_file" in p:
-                s += 1.0
+            if it == "missing_group_iface_cut" and "crtiface" in p:
+                s += 0.8
+            if it == "missing_frac_energy_by_group_iface" and ("groupinterface" in p or "bygroup" in p):
+                s += 0.8
+            if it == "bc_api_mismatch" and "fixvbycoord" in p:
+                s += 0.8
+            if it == "large_displace_on_quasi_static" and ("large_displace" in p or "大变形" in prompt):
+                s += 0.6
         return s
 
 
@@ -927,272 +943,6 @@ class ToolConstructionModule:
         )
         return search_physics_knowledge
 
-    def build_gaia_offline_tools(self) -> List[Any]:
-        import csv
-        import io
-        import zipfile
-        import tempfile
-        from pathlib import Path
-        import xml.etree.ElementTree as ET
-
-        def _resolve_abs(p: str) -> Path:
-            pp = Path((p or "").strip()).expanduser()
-            if not pp.is_absolute():
-                raise ValueError("path 必须是绝对路径")
-            return pp.resolve()
-
-        def _allowed(pp: Path) -> bool:
-            root = (os.environ.get("GAIA_ROOT") or "").strip()
-            if not root:
-                return True
-            rr = Path(root).expanduser().resolve()
-            try:
-                return pp.is_relative_to(rr)
-            except Exception:
-                try:
-                    pp.relative_to(rr)
-                    return True
-                except Exception:
-                    return False
-
-        def _clip(text: str, limit: int = 20000) -> str:
-            t = (text or "")
-            if len(t) <= limit:
-                return t
-            return t[:limit] + "\n...（已截断）"
-
-        def _read_bytes(pp: Path, max_bytes: int = 2_000_000) -> bytes:
-            data = pp.read_bytes()
-            if len(data) > max_bytes:
-                return data[:max_bytes]
-            return data
-
-        def _read_text(pp: Path) -> str:
-            data = _read_bytes(pp)
-            for enc in ("utf-8", "utf-8-sig", "gb18030", "gbk", "cp936"):
-                try:
-                    return data.decode(enc)
-                except Exception:
-                    continue
-            return data.decode("utf-8", errors="replace")
-
-        def _jsonl_preview(pp: Path, max_lines: int = 80) -> str:
-            lines = []
-            with open(pp, "r", encoding="utf-8", errors="replace") as f:
-                for i, line in enumerate(f, 1):
-                    if i > max_lines:
-                        break
-                    lines.append(line.rstrip("\n"))
-            return "\n".join(lines)
-
-        def _read_pdf(pp: Path, max_pages: int = 6) -> str:
-            try:
-                import fitz
-            except Exception as e:
-                return f"无法读取 PDF（缺少 PyMuPDF/fitz）：{e}"
-            doc = fitz.open(str(pp))
-            n = doc.page_count
-            out = [f"PDF pages: {n}"]
-            take = min(max(1, _env_int("GAIA_PDF_MAX_PAGES", int(max_pages))), n)
-            for i in range(take):
-                page = doc.load_page(i)
-                txt = (page.get_text("text") or "").strip()
-                if txt:
-                    out.append(f"\n--- page {i+1} ---\n{txt}")
-            doc.close()
-            return _clip("\n".join(out), 24000)
-
-        def _read_excel(pp: Path) -> str:
-            try:
-                import pandas as pd
-            except Exception as e:
-                return f"无法读取 Excel（缺少 pandas）：{e}"
-            xls = pd.ExcelFile(str(pp))
-            sheets = list(xls.sheet_names or [])
-            out = [f"Excel sheets: {sheets}"]
-            max_sheets = max(1, _env_int("GAIA_EXCEL_MAX_SHEETS", 3))
-            max_rows = max(1, _env_int("GAIA_EXCEL_MAX_ROWS", 120))
-            for sn in sheets[:max_sheets]:
-                try:
-                    df = pd.read_excel(str(pp), sheet_name=sn, nrows=max_rows)
-                except Exception as e:
-                    out.append(f"\nSheet: {sn}\n读取失败：{e}")
-                    continue
-                out.append(f"\nSheet: {sn} (rows_preview={len(df)} cols={len(df.columns)})")
-                out.append("Columns: " + ", ".join([str(c) for c in df.columns]))
-                out.append(df.to_string(index=False))
-            return _clip("\n".join(out), 24000)
-
-        def _read_csv_file(pp: Path) -> str:
-            try:
-                import pandas as pd
-            except Exception:
-                with open(pp, "r", encoding="utf-8", errors="replace") as f:
-                    reader = csv.reader(f)
-                    rows = []
-                    for i, row in enumerate(reader, 1):
-                        rows.append(row)
-                        if i >= 40:
-                            break
-                sio = io.StringIO()
-                for r in rows:
-                    sio.write("\t".join(r) + "\n")
-                return _clip(sio.getvalue(), 24000)
-            df = pd.read_csv(str(pp), nrows=50)
-            return _clip(df.to_string(index=False), 24000)
-
-        def _extract_docx_text(pp: Path) -> str:
-            try:
-                with zipfile.ZipFile(str(pp), "r") as z:
-                    xml_bytes = z.read("word/document.xml")
-            except Exception as e:
-                return f"无法读取 docx：{e}"
-            try:
-                root = ET.fromstring(xml_bytes)
-            except Exception as e:
-                return f"无法解析 docx XML：{e}"
-            texts = []
-            for node in root.iter():
-                if node.tag.endswith("}t") and node.text:
-                    texts.append(node.text)
-            return _clip("".join(texts), 24000)
-
-        def _extract_pptx_text(pp: Path) -> str:
-            try:
-                with zipfile.ZipFile(str(pp), "r") as z:
-                    slide_names = sorted([n for n in z.namelist() if n.startswith("ppt/slides/slide") and n.endswith(".xml")])
-                    out = []
-                    for name in slide_names[:20]:
-                        xml_bytes = z.read(name)
-                        try:
-                            root = ET.fromstring(xml_bytes)
-                        except Exception:
-                            continue
-                        texts = []
-                        for node in root.iter():
-                            if node.tag.endswith("}t") and node.text:
-                                texts.append(node.text)
-                        if texts:
-                            out.append(f"[{Path(name).name}]\n" + "".join(texts))
-            except Exception as e:
-                return f"无法读取 pptx：{e}"
-            return _clip("\n\n".join(out), 24000)
-
-        def _safe_extract_zip(pp: Path) -> str:
-            base = (os.environ.get("GAIA_WORK_DIR") or "").strip()
-            if not base:
-                base = str(Path(tempfile.gettempdir()) / "gaia_work")
-            base_dir = Path(base).expanduser().resolve()
-            base_dir.mkdir(parents=True, exist_ok=True)
-            out_dir = base_dir / pp.stem
-            out_dir.mkdir(parents=True, exist_ok=True)
-            extracted = []
-            with zipfile.ZipFile(str(pp), "r") as z:
-                for info in z.infolist():
-                    name = info.filename
-                    if not name or name.endswith("/"):
-                        continue
-                    p = Path(name)
-                    parts = [x for x in p.parts if x not in ("", ".", "..")]
-                    safe = Path(*parts)
-                    dest = (out_dir / safe).resolve()
-                    if not dest.is_relative_to(out_dir.resolve()):
-                        continue
-                    dest.parent.mkdir(parents=True, exist_ok=True)
-                    with z.open(info) as src, open(dest, "wb") as dst:
-                        dst.write(src.read())
-                    extracted.append(str(dest))
-            return _clip("Extracted to: " + str(out_dir) + "\n" + "\n".join(extracted[:200]), 24000)
-
-        def read_local_file(path: str) -> str:
-            pp = _resolve_abs(path)
-            if not _allowed(pp):
-                return "拒绝访问：路径不在 GAIA_ROOT 下"
-            if not pp.exists():
-                return "文件不存在"
-            if pp.is_dir():
-                entries = []
-                for p in sorted(pp.iterdir()):
-                    entries.append(p.name + ("/" if p.is_dir() else ""))
-                    if len(entries) >= 200:
-                        break
-                return "DIR:\n" + "\n".join(entries)
-            ext = pp.suffix.lower()
-            if ext in {".txt", ".md", ".py", ".js", ".json", ".xml", ".html", ".htm", ".csv", ".tsv"}:
-                if ext == ".jsonl":
-                    return _clip(_jsonl_preview(pp), 24000)
-                if ext in {".csv", ".tsv"}:
-                    return _read_csv_file(pp)
-                if ext == ".json":
-                    try:
-                        obj = json.loads(_read_text(pp))
-                        return _clip(json.dumps(obj, ensure_ascii=False, indent=2), 24000)
-                    except Exception:
-                        return _clip(_read_text(pp), 24000)
-                if ext == ".xml":
-                    return _clip(_read_text(pp), 24000)
-                return _clip(_read_text(pp), 24000)
-            if ext in {".jsonl"}:
-                return _clip(_jsonl_preview(pp), 24000)
-            if ext in {".xlsx", ".xlsm", ".xls"}:
-                return _read_excel(pp)
-            if ext == ".pdf":
-                return _read_pdf(pp)
-            if ext == ".docx":
-                return _extract_docx_text(pp)
-            if ext == ".pptx":
-                return _extract_pptx_text(pp)
-            if ext == ".zip":
-                return _safe_extract_zip(pp)
-            if ext in {".png", ".jpg", ".jpeg", ".webp"}:
-                try:
-                    from PIL import Image
-                except Exception as e:
-                    return f"无法读取图片（缺少 PIL）：{e}"
-                try:
-                    im = Image.open(pp)
-                    w, h = im.size
-                    mode = im.mode
-                    fmt = im.format
-                    if _env_flag("GAIA_ENABLE_OCR", False):
-                        try:
-                            import pytesseract
-                        except Exception as e:
-                            return f"Image: {fmt} {w}x{h} mode={mode}\nOCR 不可用（缺少 pytesseract）：{e}"
-                        try:
-                            text = (pytesseract.image_to_string(im) or "").strip()
-                        except Exception as e:
-                            return f"Image: {fmt} {w}x{h} mode={mode}\nOCR 失败：{e}"
-                        if text:
-                            return _clip(f"Image: {fmt} {w}x{h} mode={mode}\nOCR:\n{text}", 24000)
-                        return f"Image: {fmt} {w}x{h} mode={mode}\nOCR: （空）"
-                    return f"Image: {fmt} {w}x{h} mode={mode}\n未启用 OCR（可设置 GAIA_ENABLE_OCR=1）"
-                except Exception as e:
-                    return f"无法读取图片：{e}"
-            if ext in {".mp3", ".m4a", ".wav"}:
-                return "音频暂不支持离线转写"
-            return "不支持的文件类型: " + ext
-
-        def list_local_dir(path: str) -> str:
-            pp = _resolve_abs(path)
-            if not _allowed(pp):
-                return "拒绝访问：路径不在 GAIA_ROOT 下"
-            if not pp.exists():
-                return "路径不存在"
-            if not pp.is_dir():
-                return "不是目录"
-            entries = []
-            for p in sorted(pp.iterdir()):
-                entries.append(p.name + ("/" if p.is_dir() else ""))
-                if len(entries) >= 500:
-                    break
-            return "DIR:\n" + "\n".join(entries)
-
-        return [
-            Tool(name="read_local_file", func=read_local_file, description="读取本地文件内容（绝对路径）。支持 txt/json/jsonl/xml/csv/xlsx/pdf/docx/pptx/zip；目录会列出文件名。"),
-            Tool(name="list_local_dir", func=list_local_dir, description="列出本地目录内容（绝对路径）。"),
-        ]
-
 
 class ContextMemoryManager:
     """上下文记忆管理器：滑动窗口+向量检索双路方案，支持跨会话持久化"""
@@ -1435,7 +1185,42 @@ class AgentConstructionModule:
             s = "hint_search_physics_knowledge"
         return s[:48]
 
-    def _detect_issue_tags(self, code: str, required_modules: List[str], profile: TaskProfile, tool_names: List[str]) -> List[str]:
+    def _detect_semantic_issue_tags(self, code: str, query: str) -> List[str]:
+        tags: List[str] = []
+        if not code:
+            return tags
+        ql = (query or "").lower()
+        cl = code.lower()
+
+        is_cdyna = ("cdyna" in ql) or ("blockdyna" in ql)
+        is_supercdem = ("supercdem" in ql) or ("scdem" in ql)
+        is_quasi_static = any(k in ql for k in ["准静态", "quasi-static", "quasistatic", "静力", "静态"])
+        is_tension_like = any(k in ql for k in ["拉伸", "张拉", "tension", "tensile", "位移载荷", "恒定的向上位移", "位移加载"])
+
+        if is_cdyna and not is_supercdem:
+            uses_mesh_pipeline = any(x in cl for x in ["igeo.", "imeshing.", "genmesh", "gmsh", "importgrid", "gdem.msh", "imesh.import"])
+            uses_scdem_api = "scdem." in cl
+            if uses_mesh_pipeline or uses_scdem_api:
+                tags.append("wrong_product_pipeline")
+            if "blkdyn.gencircle" not in cl:
+                tags.append("missing_gen_circle")
+            if "blkdyn.crtiface(1" not in cl and "blkdyn.crtiface( 1" not in cl:
+                tags.append("missing_group_iface_cut")
+            if "setifractenergybygroupinterface" not in cl:
+                tags.append("missing_frac_energy_by_group_iface")
+            if ("fixvbycoord" not in cl) and (("applydisplacement" in cl) or ("applyvelocity" in cl) or ("fixv(" in cl)):
+                tags.append("bc_api_mismatch")
+            if ("setmatbygroup" not in cl) and ("setmat(" in cl):
+                tags.append("mat_api_mismatch")
+
+        if is_quasi_static and is_tension_like:
+            m = re.search(r'dyna\.set\(\s*["\']Large_Displace\s+(\d+)["\']\s*\)', code)
+            if m and (m.group(1) or "").strip() == "1":
+                tags.append("large_displace_on_quasi_static")
+
+        return tags
+
+    def _detect_issue_tags(self, code: str, required_modules: List[str], profile: TaskProfile, tool_names: List[str], query: str = "") -> List[str]:
         tags: List[str] = []
         min_lines = int(getattr(profile, "min_effective_lines", 10) or 10)
         normalized = CodeSimilarityCalculator._normalize_code(code or "")
@@ -1462,6 +1247,7 @@ class AgentConstructionModule:
         missing = self._missing_required_modules(code, required_modules)
         if missing:
             tags.append("missing_modules")
+        tags.extend(self._detect_semantic_issue_tags(code=code, query=query))
         return tags
 
     def _execution_heuristic(self, code: str) -> float:
@@ -1485,13 +1271,20 @@ class AgentConstructionModule:
         penalties = {
             "tool_leak": 6.0,
             "json_output": 5.0,
-            "too_short": 4.0,
+            "too_short": 30.0,
             "missing_modules": 3.0,
             "missing_prelude": 2.0,
             "missing_solve": 3.0,
             "braces_mismatch": 2.5,
             "parens_mismatch": 2.0,
             "while_true": 1.5,
+            "wrong_product_pipeline": 4.0,
+            "missing_gen_circle": 3.0,
+            "missing_group_iface_cut": 2.5,
+            "missing_frac_energy_by_group_iface": 2.5,
+            "bc_api_mismatch": 2.0,
+            "mat_api_mismatch": 1.5,
+            "large_displace_on_quasi_static": 2.0,
         }
         for t in issue_tags or []:
             score -= penalties.get(t, 1.0)
@@ -1695,20 +1488,8 @@ class AgentConstructionModule:
             )
         
         # 3. 系统提示词
-        gaia_mode = _env_flag("GAIA_MODE", False) or (os.environ.get("CDEM_EVAL_PROFILE") or "").strip().lower() == "gaia"
         sys_mode = (os.environ.get("CDEM_SYSTEM_PROMPT_MODE") or "").strip().lower()
-        if gaia_mode:
-            system_prompt = (
-                "You are an offline agent for GAIA-style tasks.\n"
-                "You may call tools to inspect local attachments:\n"
-                "- read_local_file(path): read a local file by absolute path\n"
-                "- list_local_dir(path): list a local directory by absolute path\n"
-                "If the user question includes 'Attachment path:', you should call read_local_file on that path before answering unless it is clearly unnecessary.\n"
-                "Output must be a single line in the exact format:\n"
-                "Final answer: <answer>\n"
-                "Do not add any extra text."
-            )
-        elif sys_mode in {"generic", "general", "base"}:
+        if sys_mode in {"generic", "general", "base"}:
             system_prompt = self._get_generic_system_prompt()
         elif globals().get('HAS_CUSTOM_PROMPT', False) and globals().get('agent_system') is not None:
             system_prompt = agent_system.AGENT_SYSTEM_PROMPT0
@@ -1761,6 +1542,46 @@ class AgentConstructionModule:
         docs = []
         self._last_retrieval_docs_meta = []
         try:
+            def _infer_target_product(q: str) -> str:
+                ql = (q or "").lower()
+                if "cdyna" in ql or "blockdyna" in ql:
+                    return "cdyna"
+                if "supercdem" in ql or "scdem" in ql:
+                    return "supercdem"
+                if "gflow" in ql:
+                    return "gflow"
+                if "mudsim" in ql:
+                    return "mudsim"
+                return ""
+
+            def _filter_case_docs_by_product(docs_in: List[Any], target: str) -> List[Any]:
+                if not docs_in:
+                    return []
+                t = (target or "").strip().lower()
+                if not t:
+                    return docs_in
+                out: List[Any] = []
+                for d in docs_in:
+                    meta = getattr(d, "metadata", None) or {}
+                    src = (meta.get("source") or meta.get("path") or meta.get("doc_id") or "").strip()
+                    s = src.lower()
+                    keep = True
+                    if t == "cdyna":
+                        keep = ("cdyna案例" in s) or ("案例库-cdyna案例" in s) or ("/cdyna" in s) or ("blockdyna" in s)
+                        if ("supercdem" in s) or ("scdem" in s):
+                            keep = False
+                    elif t == "supercdem":
+                        keep = ("supercdem" in s) or ("scdem" in s) or ("supercdem案例" in s) or ("案例库-supercdem案例" in s)
+                        if "cdyna案例" in s:
+                            keep = False
+                    elif t == "gflow":
+                        keep = "gflow" in s
+                    elif t == "mudsim":
+                        keep = "mudsim" in s
+                    if keep:
+                        out.append(d)
+                return out
+
             def search_with_fallback(q: str, k: int, source_types: Optional[List[str]] = None) -> List:
                 if not source_types:
                     return self.vectorstore.similarity_search(q, k=k)
@@ -1831,11 +1652,13 @@ class AgentConstructionModule:
 
             results_manual = []
             results_case = []
+            target_product = _infer_target_product(query)
             for qv in query_variants:
                 if keywords and qv == keywords and (os.environ.get("CDEM_RAG_DEBUG") or "").strip() in {"1", "true", "on", "yes"}:
                     print(f"RAG debug keyword search: {keywords}")
                 results_manual.extend(search_with_fallback(qv, k=6, source_types=manual_types))
                 results_case.extend(search_with_fallback(qv, k=4, source_types=case_types))
+            results_case = _filter_case_docs_by_product(results_case, target=target_product)
             
             # 3. 合并与去重
             seen_sources = set()
@@ -2027,6 +1850,8 @@ class AgentConstructionModule:
         retrieved_count = 0
         self.last_run_metrics = {}
         flags = getattr(self, "feature_flags", None) or AgentFeatureFlags.from_env()
+        print_opt_trace = _env_flag("CDEM_PRINT_OPT_TRACE", False)
+        print_opt_trace_max_events = _env_int("CDEM_PRINT_OPT_TRACE_MAX_EVENTS", 200)
         
         max_recursion_limit = int(os.environ.get("CDEM_AGENT_RECURSION_LIMIT", "25"))
         max_tool_calls = int(os.environ.get("CDEM_AGENT_MAX_TOOL_CALLS", "6"))
@@ -2068,6 +1893,9 @@ class AgentConstructionModule:
             last_ai_text = ""
             final_messages = []
             cutoff_info: Dict[str, Any] = {}
+            if (time.time() - start_time) >= total_timeout_s:
+                cutoff_info = {"hit": True, "reason": "total_timeout_pre", "steps": 0, "tool_calls": 0, "elapsed_s": 0.0}
+                return "", 0, time.time() - t0, cutoff_info
             
             input_messages = [HumanMessage(content=prompt_text)]
             memory_prompt = build_memory_prompt()
@@ -2093,86 +1921,129 @@ class AgentConstructionModule:
             hit_reason = ""
             last_sig = ""
             repeat_sig = 0
-            for chunk in executor.stream(
-                {"messages": input_messages},
-                stream_mode="values",
-                config={"recursion_limit": max_recursion_limit},
-            ):
-                now = time.time()
-                if (now - t0) >= stream_timeout_s:
-                    if verbose:
-                        print(f"\n⏱️ 达到单次生成超时限制: {now - t0:.1f}s/{stream_timeout_s}s，截断以避免循环。")
-                    hit_limit = True
-                    hit_reason = "stream_timeout"
-                    break
-                if (now - start_time) >= total_timeout_s:
-                    if verbose:
-                        print(f"\n⏱️ 达到总超时限制: {now - start_time:.1f}s/{total_timeout_s}s，截断以避免循环。")
-                    hit_limit = True
-                    hit_reason = "total_timeout"
-                    break
-
-                step += 1
-                final_messages = chunk["messages"]
-                last_message = chunk["messages"][-1]
-                
-                if step >= max_chunks:
-                    if verbose:
-                        print(f"\n⚠️ 达到最大chunk限制: {step}/{max_chunks}，提前结束以避免循环。")
-                    hit_limit = True
-                    hit_reason = "max_chunks"
-                    break
-
-                if isinstance(last_message, AIMessage):
-                    if last_message.content:
-                        last_ai_text = last_message.content
-
-                    if last_message.tool_calls:
-                        tool_calls += len(last_message.tool_calls)
+            while True:
+                for chunk in executor.stream(
+                    {"messages": input_messages},
+                    stream_mode="values",
+                    config={"recursion_limit": max_recursion_limit},
+                ):
+                    now = time.time()
+                    if (now - t0) >= stream_timeout_s:
                         if verbose:
-                            tc = last_message.tool_calls[0]
-                            print(f"\n🛠️  调用工具: {tc['name']}")
-                            print(f"   参数: {tc['args']}")
-                    else:
-                        local_generated = last_message.content
-                        if verbose:
-                            print("\n✅ Agent 输出最终脚本")
-
-                    sig = ""
-                    if last_message.tool_calls:
-                        try:
-                            tc0 = last_message.tool_calls[0]
-                            sig = f"tool:{tc0.get('name')}:{json.dumps(tc0.get('args', {}), ensure_ascii=False, sort_keys=True)}"
-                        except Exception:
-                            sig = "tool:unknown"
-                    else:
-                        sig = "final:" + (last_message.content or "").strip()[:200]
-                    if sig and sig == last_sig:
-                        repeat_sig += 1
-                    else:
-                        repeat_sig = 0
-                        last_sig = sig
-                    if repeat_sig >= max_repeat_signature:
-                        if verbose:
-                            print(f"\n⚠️ 检测到重复行为（signature 连续重复 {repeat_sig} 次），截断以避免循环。")
+                            print(f"\n⏱️ 达到单次生成超时限制: {now - t0:.1f}s/{stream_timeout_s}s，截断以避免循环。")
                         hit_limit = True
-                        hit_reason = "repeat_signature"
+                        hit_reason = "stream_timeout"
                         break
-                elif hasattr(last_message, "type") and last_message.type == "tool":
-                    tool_calls += 1
+                    if (now - start_time) >= total_timeout_s:
+                        if verbose:
+                            print(f"\n⏱️ 达到总超时限制: {now - start_time:.1f}s/{total_timeout_s}s，截断以避免循环。")
+                        hit_limit = True
+                        hit_reason = "total_timeout"
+                        break
+    
+                    step += 1
+                    final_messages = chunk["messages"]
+                    last_message = chunk["messages"][-1]
+                    
+                    if step >= max_chunks:
+                        if verbose:
+                            print(f"\n⚠️ 达到最大chunk限制: {step}/{max_chunks}，提前结束以避免循环。")
+                        hit_limit = True
+                        hit_reason = "max_chunks"
+                        break
+    
+                    if isinstance(last_message, AIMessage):
+                        if last_message.content:
+                            last_ai_text = last_message.content
+    
+                        if last_message.tool_calls:
+                            tool_calls += len(last_message.tool_calls)
+                            if verbose:
+                                tc = last_message.tool_calls[0]
+                                print(f"\n🛠️  调用工具: {tc['name']}")
+                                print(f"   参数: {tc['args']}")
+                        else:
+                            local_generated = last_message.content
+                            if verbose:
+                                print("\n✅ Agent 输出最终脚本")
+    
+                        sig = ""
+                        if last_message.tool_calls:
+                            try:
+                                tc0 = last_message.tool_calls[0]
+                                sig = f"tool:{tc0.get('name')}:{json.dumps(tc0.get('args', {}), ensure_ascii=False, sort_keys=True)}"
+                            except Exception:
+                                sig = "tool:unknown"
+                        else:
+                            sig = "final:" + (last_message.content or "").strip()[:200]
+                        if sig and sig == last_sig:
+                            repeat_sig += 1
+                        else:
+                            repeat_sig = 0
+                            last_sig = sig
+                        if repeat_sig >= max_repeat_signature:
+                            if verbose:
+                                print(f"\n⚠️ 检测到重复行为（signature 连续重复 {repeat_sig} 次），截断以避免循环。")
+                            hit_limit = True
+                            hit_reason = "repeat_signature"
+                            break
+                    elif hasattr(last_message, "type") and last_message.type == "tool":
+                        tool_calls += 1
+                    
+                    if tool_calls >= max_tool_calls:
+                        if verbose:
+                            print(f"\n⚠️ 达到最大工具调用次数限制: {tool_calls}/{max_tool_calls}，提前结束以避免循环。")
+                        hit_limit = True
+                        hit_reason = "max_tool_calls"
+                        break
+                    if step >= max_recursion_limit:
+                        if verbose:
+                            print(f"\n⚠️ 达到最大步数限制: {step}/{max_recursion_limit}，提前结束以避免循环。")
+                        hit_limit = True
+                        hit_reason = "max_steps"
+                        break
                 
-                if tool_calls >= max_tool_calls:
-                    if verbose:
-                        print(f"\n⚠️ 达到最大工具调用次数限制: {tool_calls}/{max_tool_calls}，提前结束以避免循环。")
-                    hit_limit = True
-                    hit_reason = "max_tool_calls"
+                if hit_limit:
                     break
-                if step >= max_recursion_limit:
-                    if verbose:
-                        print(f"\n⚠️ 达到最大步数限制: {step}/{max_recursion_limit}，提前结束以避免循环。")
-                    hit_limit = True
-                    hit_reason = "max_steps"
-                    break
+
+                # 检查是否存在幻觉的 JSON 工具调用
+                content_str = (local_generated or "").strip()
+                if flags.enable_json_tool_patch and content_str.startswith("{") and content_str.endswith("}") and '"name"' in content_str:
+                    try:
+                        import json
+                        import uuid
+                        parsed = json.loads(content_str)
+                        if "name" in parsed and ("parameters" in parsed or "arguments" in parsed or "args" in parsed):
+                            tool_name = parsed["name"]
+                            args = parsed.get("parameters") or parsed.get("arguments") or parsed.get("args") or {}
+                            if isinstance(args, str):
+                                args = json.loads(args)
+                            tool_obj = None
+                            if hasattr(self, "tools") and self.tools:
+                                for t in self.tools:
+                                    if t.name == tool_name:
+                                        tool_obj = t
+                                        break
+                            if tool_obj is None:
+                                break
+                            if verbose:
+                                print(f"\n🔧 检测到 JSON 格式工具调用 (修补执行): {tool_name}\n   参数: {args}")
+                            tool_calls += 1
+                            try:
+                                tool_result = tool_obj.invoke(args)
+                            except Exception as e:
+                                tool_result = f"Tool execution failed: {e}"
+                            tool_call_id = str(uuid.uuid4())
+                            msgs = list(chunk["messages"])
+                            msgs[-1] = AIMessage(content="", tool_calls=[{"name": tool_name, "args": args, "id": tool_call_id}])
+                            msgs.append(ToolMessage(content=str(tool_result), tool_call_id=tool_call_id, name=tool_name))
+                            input_messages = msgs
+                            local_generated = ""
+                            continue
+                    except Exception:
+                        pass
+                
+                break
             
             # 准确统计工具调用次数 (遍历最终消息历史)
             local_retrieved = sum(1 for m in final_messages if hasattr(m, "type") and m.type == "tool")
@@ -2270,183 +2141,74 @@ class AgentConstructionModule:
                     print("- （无）")
                 print("【参考文档清单结束】\n")
             
-            # --- 意图识别与分支 ---
-            # 简单启发式：如果包含“脚本”、“生成”、“代码”、“case”、“example”且不包含“问”、“什么”、“解释”，则倾向于生成脚本
-            # 否则如果是纯疑问句，倾向于 QA
-            
-            is_coding_task = True
-            q_lower = query.lower()
-            qa_triggers = ["如何", "怎么", "什么", "解释", "含义", "介绍", "which", "what", "how", "explain", "meaning", "？", "?"]
-            code_triggers = ["脚本", "代码", "生成", "写一个", "实现", "script", "code", "generate", "implement"]
-            
-            # 1. 优先判定 Coding Task
-            if any(t in q_lower for t in code_triggers):
+            forced_task = (os.environ.get("CDEM_TASK_TYPE") or "").strip().lower()
+            if forced_task in {"qa", "q", "answer"}:
+                is_coding_task = False
+            elif forced_task in {"code", "coding", "script", "gen"}:
                 is_coding_task = True
-            # 2. 如果包含 QA 触发词，且不包含明确的代码生成指令，则判定为 QA
-            elif any(t in q_lower for t in qa_triggers):
-                is_coding_task = False
+            else:
+                q = (query or "")
+                q_lower = q.lower()
+                detector = (os.environ.get("CDEM_INTENT_DETECTOR") or "v2").strip().lower()
+                threshold = _env_int("CDEM_INTENT_THRESHOLD", 1)
 
-            if _env_flag("GAIA_MODE", False) or (os.environ.get("CDEM_EVAL_PROFILE") or "").strip().lower() == "gaia":
-                is_coding_task = False
+                code_score = 0
+                qa_score = 0
+
+                if "```" in q_lower:
+                    code_score += 2
+                if re.search(r"(生成|输出|编写|写一段|写一个).{0,10}(脚本|代码)", q):
+                    code_score += 4
+                if re.search(r"(CDEM|CDyna|GFlow|MudSim|SuperCDEM).{0,20}(脚本|javascript|js)", q, re.IGNORECASE):
+                    code_score += 4
+                if re.search(r"(要求|需要).{0,20}(脚本|代码)", q):
+                    code_score += 3
+                if re.search(r"\bSolve\s*\(|\bSet\s*\(|\bAdd\s*\(", q):
+                    code_score += 2
+                if any(t in q_lower for t in ["脚本", "javascript", "js", "code", "script", "生成", "实现", "建模", "网格", "材料参数", "接触参数"]):
+                    code_score += 2
+
+                if ("?" in q_lower) or ("？" in q):
+                    qa_score += 2
+                if any(t in q_lower for t in ["解释", "含义", "介绍", "区别", "为什么", "怎么", "如何", "什么", "meaning", "explain", "what", "how", "which"]):
+                    qa_score += 2
+                if re.search(r"\b(what|which|how|why)\b", q_lower):
+                    qa_score += 1
+
+                if detector == "legacy":
+                    is_coding_task = code_score >= qa_score
+                else:
+                    is_coding_task = code_score >= (qa_score + int(threshold))
             
             if not is_coding_task:
                 if verbose:
                     print("🔍 识别为 QA 问答任务")
                 
-                gaia_mode = _env_flag("GAIA_MODE", False) or (os.environ.get("CDEM_EVAL_PROFILE") or "").strip().lower() == "gaia"
-                if gaia_mode:
-                    qa_prompt = (
-                        "You are a helpful assistant solving GAIA tasks offline.\n"
-                        "You can use available tools to read local files (spreadsheets, PDFs, text, zip).\n"
-                        "If the question includes an attachment path, use tools to inspect that file.\n\n"
-                        "Output format requirements:\n"
-                        "- Output a single line only.\n"
-                        "- Start with: Final answer: \n"
-                        "- Put the answer immediately after it, with no extra commentary.\n\n"
-                        "User question:\n"
-                        f"{query}\n"
-                    )
-                else:
-                    qa_prompt = (
-                        "【角色设定】\n"
-                        "你是 CDEM 物理仿真软件的技术支持专家。请基于参考资料回答用户问题。\n\n"
-                        "【用户问题】\n"
-                        f"{query}\n\n"
-                        "【参考资料】\n"
-                        f"{reference_context}\n\n"
-                        "【回答要求】\n"
-                        "1. 必须基于参考资料回答，不要编造。\n"
-                        "2. 如果资料中没有相关信息，请直接说明“资料不足”。\n"
-                        "3. 如果涉及 API 用法，请给出简短的代码示例（使用 ```javascript ... ```）。\n"
-                        "4. 回答要简洁明了，使用中文。\n"
-                    )
+                qa_prompt = (
+                    "【角色设定】\n"
+                    "你是 CDEM 物理仿真软件的技术支持专家。请基于参考资料回答用户问题。\n\n"
+                    "【用户问题】\n"
+                    f"{query}\n\n"
+                    "【参考资料】\n"
+                    f"{reference_context}\n\n"
+                    "【回答要求】\n"
+                    "1. 必须基于参考资料回答，不要编造。\n"
+                    "2. 如果资料中没有相关信息，请直接说明“资料不足”。\n"
+                    "3. 如果涉及 API 用法，请给出简短的代码示例（使用 ```javascript ... ```）。\n"
+                    "4. 回答要简洁明了，使用中文。\n"
+                )
 
-                def _qa_extract_final(text: str) -> str:
-                    t = (text or "").strip()
-                    if not t:
-                        return ""
-                    lines = [ln.strip() for ln in t.splitlines() if ln.strip()]
-                    for ln in reversed(lines):
-                        m = re.search(r"(?i)(?:final answer|final|answer)\s*[:：]\s*(.+)$", ln)
-                        if m:
-                            return (m.group(1) or "").strip()
-                    if len(lines) == 1:
-                        return lines[0]
-                    return (lines[-1] if lines else "").strip()
-
-                def _qa_issue_tags(text: str, tool_calls: int) -> List[str]:
-                    tags: List[str] = []
-                    t = (text or "").strip()
-                    if not t:
-                        return ["empty_final"]
-                    lines = [ln.strip() for ln in t.splitlines() if ln.strip()]
-                    if len(lines) > 1:
-                        tags.append("multi_line")
-                    if not re.search(r"(?i)\bfinal answer\b\s*[:：]", t):
-                        tags.append("missing_final_prefix")
-                    final = _qa_extract_final(t)
-                    if not final:
-                        if "empty_final" not in tags:
-                            tags.append("empty_final")
-                    if ("Attachment path:" in (query or "")) and int(tool_calls or 0) <= 0 and flags.enable_tools and (self.tools or []):
-                        tags.append("no_tool_used")
-                    return tags
-
-                def _qa_score(text: str, tool_calls: int) -> Tuple[float, List[str], str]:
-                    final = _qa_extract_final(text)
-                    tags = _qa_issue_tags(text, tool_calls=int(tool_calls or 0))
-                    s = 0.0
-                    if final:
-                        s += 2.0
-                    if "missing_final_prefix" not in tags:
-                        s += 2.0
-                    if "multi_line" not in tags:
-                        s += 1.0
-                    if "Attachment path:" in (query or "") and int(tool_calls or 0) > 0:
-                        s += 0.75
-                    if final:
-                        s -= min(1.5, max(0.0, (len(final) - 80) / 120.0))
-                    if tags:
-                        s -= 0.25 * float(len(tags))
-                    return float(s), tags, final
-
-                def _qa_ensure_final_line(text: str) -> str:
-                    final = _qa_extract_final(text)
-                    if final:
-                        return f"Final answer: {final}".strip()
-                    t = (text or "").strip().replace("\n", " ").strip()
-                    if not t:
-                        return "Final answer: "
-                    if re.search(r"(?i)\bfinal answer\b\s*[:：]", t):
-                        return t
-                    return "Final answer: " + t[:300].strip()
-
-                qa_best_text = ""
-                qa_best_score = None
-                qa_best_tags: List[str] = []
-                qa_best_final = ""
-                qa_best_tool_calls = 0
-                qa_best_cutoff: Dict[str, Any] = {}
-
-                gaia_mode = _env_flag("GAIA_MODE", False) or (os.environ.get("CDEM_EVAL_PROFILE") or "").strip().lower() == "gaia"
-                if gaia_mode and flags.enable_workflow_optimizer:
-                    base_tools = list(self.tools or []) if flags.enable_tools else []
-                    cands: List[Tuple[str, str, List[Any]]] = []
-                    if base_tools:
-                        cands.append(("qa_tool_first", "若题目包含Attachment path，必须先调用read_local_file读取该文件内容，再给出Final answer。", base_tools))
-                        cands.append(("qa_default", "", base_tools))
-                    cands.append(("qa_no_tools", "不要调用任何工具；直接作答并保持Final answer单行格式。", []))
-
-                    max_k = max(1, int(getattr(flags, "workflow_optimizer_candidates", 2) or 2))
-                    for _, dyn, tl in cands[:max_k]:
-                        ex = self._get_executor(tl)
-                        txt, tool_msgs, _, cutoff = run_once(qa_prompt, dyn_prompt=dyn, executor_override=ex)
-                        sc, tags, final = _qa_score(txt, tool_calls=int(tool_msgs or 0))
-                        if qa_best_score is None or sc > qa_best_score:
-                            qa_best_score = float(sc)
-                            qa_best_text = str(txt or "")
-                            qa_best_tags = list(tags or [])
-                            qa_best_final = str(final or "")
-                            qa_best_tool_calls = int(tool_msgs or 0)
-                            qa_best_cutoff = dict(cutoff or {})
-                else:
-                    txt, tool_msgs, _, cutoff = run_once(qa_prompt)
-                    sc, tags, final = _qa_score(txt, tool_calls=int(tool_msgs or 0))
-                    qa_best_score = float(sc)
-                    qa_best_text = str(txt or "")
-                    qa_best_tags = list(tags or [])
-                    qa_best_final = str(final or "")
-                    qa_best_tool_calls = int(tool_msgs or 0)
-                    qa_best_cutoff = dict(cutoff or {})
-
-                if gaia_mode and flags.enable_prompt_optimizer and self.prompt_optimizer is not None and qa_best_tags:
-                    try:
-                        dyn2 = self.prompt_optimizer.optimize_retry_prompt(issues=qa_best_tags, query=query)
-                    except Exception:
-                        dyn2 = ""
-                    if dyn2:
-                        ex2 = self._get_executor(list(self.tools or []) if flags.enable_tools else [])
-                        txt2, tool_msgs2, _, cutoff2 = run_once(qa_prompt, dyn_prompt=dyn2, executor_override=ex2)
-                        sc2, tags2, final2 = _qa_score(txt2, tool_calls=int(tool_msgs2 or 0))
-                        if qa_best_score is None or float(sc2) >= float(qa_best_score):
-                            qa_best_score = float(sc2)
-                            qa_best_text = str(txt2 or "")
-                            qa_best_tags = list(tags2 or [])
-                            qa_best_final = str(final2 or "")
-                            qa_best_tool_calls = int(tool_msgs2 or 0)
-                            qa_best_cutoff = dict(cutoff2 or {})
-
-                qa_resp = _qa_ensure_final_line(qa_best_text)
+                qa_text, qa_tool_msgs, _, qa_cutoff = run_once(qa_prompt)
+                qa_resp = (qa_text or "").strip() or "资料不足"
                 
                 self.last_run_metrics = {
                     "task_type": "qa",
                     "retrieved_docs_count": int(retrieved_count),
                     "duration_s": 0.0,
-                    "qa_tool_calls": int(qa_best_tool_calls),
-                    "qa_issue_tags": list(qa_best_tags or []),
+                    "qa_tool_calls": int(qa_tool_msgs or 0),
                 }
-                if qa_best_cutoff:
-                    self.last_run_metrics["cutoff"] = dict(qa_best_cutoff or {})
+                if qa_cutoff:
+                    self.last_run_metrics["cutoff"] = dict(qa_cutoff or {})
                 
                 if verbose:
                     print("\n【QA 回答】")
@@ -2524,8 +2286,12 @@ class AgentConstructionModule:
                 txt, tool_msgs, dur, cutoff = run_once(base_prompt, dyn_prompt=dyn_prompt, executor_override=ex)
                 code = self._extract_code(txt)
                 tool_names = list(self._executor_key(tools_for_run))
-                tags = self._detect_issue_tags(code, required_modules, profile=profile, tool_names=tool_names)
-                score = self._score_generated_code(code, tags) - 0.15 * float(tool_msgs)
+                tags = self._detect_issue_tags(code, required_modules, profile=profile, tool_names=tool_names, query=query)
+                if not (code or "").strip():
+                    tags = ["too_short"]
+                    score = -999.0
+                else:
+                    score = self._score_generated_code(code, tags) - 0.15 * float(tool_msgs)
                 cand = WorkflowCandidate(
                     name=name,
                     dyn_prompt=(dyn_prompt or "").strip(),
@@ -2584,6 +2350,9 @@ class AgentConstructionModule:
                         for s in toolgen_specs:
                             print(f"  - {s.name}: {s.description}")
                 for name, dp, tl in cands[:max_k]:
+                    if (time.time() - start_time) >= total_timeout_s:
+                        trace({"phase": "budget_stop", "reason": "total_timeout_before_init"})
+                        break
                     cand, code, dur, cutoff = eval_workflow(name, dp, tl, phase="init")
                     workflow_candidates.append(cand)
                     if (workflow_best is None) or (cand.score > workflow_best.score):
@@ -2600,6 +2369,11 @@ class AgentConstructionModule:
                 rounds = max(0, int(flags.workflow_optimizer_rounds))
                 for r in range(rounds):
                     if not workflow_best:
+                        break
+                    if (time.time() - start_time) >= total_timeout_s:
+                        trace({"phase": "budget_stop", "round": int(r + 1), "reason": "total_timeout_before_iter"})
+                        if verbose:
+                            print(f"- stop(round={r+1}): total_timeout")
                         break
                     tags = list(workflow_best.issue_tags or [])
                     if not tags:
@@ -2856,6 +2630,23 @@ class AgentConstructionModule:
                 "task_steps": list(steps),
                 "workflow": wf_summary,
             }
+            if print_opt_trace:
+                try:
+                    wf = self.last_run_metrics.get("workflow") or {}
+                    cands = wf.get("candidates") or []
+                    tr = wf.get("trace") or []
+                    tr2 = list(tr)[: max(0, int(print_opt_trace_max_events))]
+                    print("\n【优化过程追踪】")
+                    if cands:
+                        print("【候选工作流摘要】")
+                        print(json.dumps(cands, ensure_ascii=False, indent=2))
+                    if tr2:
+                        print("【优化事件序列】")
+                        print(json.dumps(tr2, ensure_ascii=False, indent=2))
+                    else:
+                        print("【优化事件序列】[]")
+                except Exception:
+                    pass
             if cutoff_info:
                 self.last_run_metrics["cutoff"] = cutoff_info
             
@@ -3178,6 +2969,15 @@ class EvaluationModule:
             "task_steps": list(extra.get("task_steps") or []),
             "last_run_metrics": extra,
         }
+        try:
+            base_dir = Path(self.output_dir)
+            rel = Path(case_filename) if case_filename else Path("custom_query.js")
+            gen_path = (base_dir / "custom" / "generated" / rel).with_suffix(".js")
+            gen_path.parent.mkdir(parents=True, exist_ok=True)
+            gen_path.write_text(self._normalize_script_content(generated_code), encoding="utf-8")
+            out["saved_generated_script"] = str(gen_path)
+        except Exception:
+            out["saved_generated_script"] = ""
         if not case_filename:
             return out
         file_path = self.test_data_dir / case_filename
@@ -3186,6 +2986,15 @@ class EvaluationModule:
         except Exception as e:
             out["error"] = f"无法读取对比案例: {file_path} ({e})"
             return out
+        try:
+            base_dir = Path(self.output_dir)
+            rel = Path(case_filename)
+            gt_path = (base_dir / "custom" / "ground_truth" / rel).with_suffix(".js")
+            gt_path.parent.mkdir(parents=True, exist_ok=True)
+            gt_path.write_text(self._normalize_script_content(ground_truth), encoding="utf-8")
+            out["saved_ground_truth_script"] = str(gt_path)
+        except Exception:
+            out["saved_ground_truth_script"] = ""
         similarity = CodeSimilarityCalculator.calculate_similarity(ground_truth, generated_code)
         diff_unified = self._build_unified_diff(
             filename=case_filename,
@@ -3451,6 +3260,11 @@ class CDEMAgentEvaluator:
         feature_flags: Optional[AgentFeatureFlags] = None,
     ):
         self.feature_flags = feature_flags or AgentFeatureFlags.from_env()
+        if _env_flag("CDEM_PRINT_FEATURE_FLAGS", False):
+            try:
+                print("FeatureFlags:", json.dumps(asdict(self.feature_flags), ensure_ascii=False, sort_keys=True))
+            except Exception:
+                print("FeatureFlags:", self.feature_flags)
 
         self.vector_module = None
         if self.feature_flags.enable_vector_kb:
@@ -3461,10 +3275,7 @@ class CDEMAgentEvaluator:
         tools: List[Any] = []
         if self.feature_flags.enable_tools:
             self.tool_module = ToolConstructionModule(model_name=model_name, feature_flags=self.feature_flags)
-            gaia_mode = _env_flag("GAIA_MODE", False) or (os.environ.get("CDEM_EVAL_PROFILE") or "").strip().lower() == "gaia"
-            if gaia_mode:
-                tools.extend(self.tool_module.build_gaia_offline_tools())
-            if self.vector_module is not None:
+            if self.vector_module is not None and self.feature_flags.enable_kb_tool:
                 physics_tool = self.tool_module.build_physics_search_tool(self.vector_module)
                 tools.append(physics_tool)
         
@@ -3575,7 +3386,20 @@ def main():
     custom_case = (os.environ.get("CDEM_CUSTOM_CASE") or "").strip() or None
     if not custom_query:
         try:
-            custom_query = (input("请输入自定义query（回车跳过进入数据集评估）: ") or "").strip()
+            print("请输入自定义query（回车跳过进入数据集评估）：")
+            print("- 支持多行粘贴/输入")
+            print("- 输入一行 END 表示结束\n")
+            first = (input() or "")
+            if not first.strip():
+                custom_query = ""
+            else:
+                lines = [first.rstrip("\n")]
+                while True:
+                    line = input()
+                    if (line or "").strip() == "END":
+                        break
+                    lines.append((line or "").rstrip("\n"))
+                custom_query = "\n".join(lines).strip()
         except Exception:
             custom_query = ""
     if custom_query:
@@ -3587,9 +3411,17 @@ def main():
         out = evaluator.run_custom_query(custom_query, case_filename=custom_case, verbose=True)
         print("\n" + "=" * 60)
         print("✅ 自定义Query测试完成")
+        if out.get("saved_generated_script"):
+            print(f"生成脚本文件: {out.get('saved_generated_script')}")
+        if out.get("generated_code"):
+            print("\n【生成脚本（完整）】")
+            print(out.get("generated_code"))
+            print("【生成脚本结束】\n")
         if out.get("case_filename"):
             print(f"对比案例: {out.get('case_filename')}")
             print(f"相似度: {out.get('similarity_score')}")
+            if out.get("saved_ground_truth_script"):
+                print(f"标准脚本文件: {out.get('saved_ground_truth_script')}")
             if out.get("diff_file"):
                 print(f"Diff文件: {out.get('diff_file')}")
         print("=" * 60)

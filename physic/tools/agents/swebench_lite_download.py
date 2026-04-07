@@ -2,9 +2,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import importlib
 from pathlib import Path
-
-from datasets import load_dataset
 
 
 def main() -> int:
@@ -20,6 +19,23 @@ def main() -> int:
     out_path = Path(args.out).expanduser().resolve()
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
+    try:
+        from datasets import load_dataset
+    except Exception as e:
+        mod_file = None
+        mod_path = None
+        try:
+            m = importlib.import_module("datasets")
+            mod_file = getattr(m, "__file__", None)
+            mod_path = getattr(m, "__path__", None)
+        except Exception:
+            pass
+        raise RuntimeError(
+            "无法导出 SWE-bench 数据集：需要安装正确的 `datasets` 包（HuggingFace Datasets）。\n"
+            "- 解决方式：pip install -U datasets\n"
+            f"- 诊断：import datasets 的位置 file={mod_file} path={mod_path}"
+        ) from e
+
     ds = load_dataset(args.dataset_name, split=args.split)
     with out_path.open("w", encoding="utf-8") as f:
         for row in ds:
@@ -31,4 +47,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

@@ -13,7 +13,7 @@ if [[ "${1:-}" != "" && "${1:-}" != "-"* ]]; then
 fi
 MODEL_NAME="${MODEL_NAME:-llama3.1:latest}"
 TIMEOUT_S="${TIMEOUT_S:-300}"
-OUTPUT_DIR="${GAIA_EVAL_OUTPUT_DIR:-physic/tools/agents/results/gaia_offline_full_attach}"
+OUTPUT_DIR="${GAIA_EVAL_OUTPUT_DIR:-physic/tools/agents/results/gaia_offline_full_attach4.6.1}"
 
 export GAIA_MODE="${GAIA_MODE:-1}"
 export GAIA_EVAL_OUTPUT_DIR="${OUTPUT_DIR}"

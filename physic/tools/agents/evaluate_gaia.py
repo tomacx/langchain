@@ -105,12 +105,19 @@ def _strip_code_fences(text: str) -> str:
     return t
 
 
+def _remove_code_fences(text: str) -> str:
+    t = (text or "")
+    if "```" not in t:
+        return t
+    return re.sub(r"```[\w+-]*\s*\n[\s\S]*?```", "", t, flags=re.IGNORECASE)
+
+
 def _extract_final_answer(text: str) -> str:
     t = (text or "").strip()
     if not t:
         return ""
-    t2 = _strip_code_fences(t)
-    t2 = t2.strip()
+    t_no_code = _remove_code_fences(t).strip()
+    t2 = t_no_code if t_no_code else t
     patterns = [
         r"(?:final answer|final|answer)\s*[:：]\s*(.+)$",
         r"(?:答案|最终答案)\s*[:：]\s*(.+)$",
@@ -124,7 +131,9 @@ def _extract_final_answer(text: str) -> str:
                 return cand
     lines = [x.strip() for x in t2.splitlines() if x.strip()]
     if not lines:
-        return t2
+        t3 = _strip_code_fences(t).strip()
+        lines2 = [x.strip() for x in t3.splitlines() if x.strip()]
+        return (lines2[-1] if lines2 else t3)[:200]
     last = lines[-1]
     if len(last) <= 200:
         return last
@@ -326,7 +335,7 @@ def _attachment_preview(abs_path: str, max_chars: int = 20000) -> str:
         return _clip_text("DIR:\n" + "\n".join(names), max_chars)
 
     ext = p.suffix.lower()
-    if ext in {".txt", ".md", ".py", ".js", ".json", ".xml", ".html", ".htm"}:
+    if ext in {".txt", ".md", ".py", ".js", ".json", ".jsonld", ".xml", ".html", ".htm", ".pdb"}:
         data = p.read_bytes()
         text = ""
         for enc in ("utf-8", "utf-8-sig", "gb18030", "gbk", "cp936"):
@@ -367,9 +376,269 @@ def _attachment_preview(abs_path: str, max_chars: int = 20000) -> str:
                 df = pd.read_excel(str(p), sheet_name=sheet0, nrows=30)
                 out.append(f"\nSheet: {sheet0}")
                 out.append(df.to_string(index=False))
+                style_preview_enabled = (os.environ.get("GAIA_XLSX_STYLE_PREVIEW") or "").strip().lower() not in {"0", "false", "off", "no"}
+                force_style_preview = (os.environ.get("GAIA_XLSX_STYLE_PREVIEW_FORCE") or "").strip().lower() in {"1", "true", "on", "yes"}
+                try:
+                    nan_ratio = float(df.isna().sum().sum()) / float(df.size or 1)
+                except Exception:
+                    nan_ratio = 0.0
+                needs_style = force_style_preview or (nan_ratio >= 0.85)
+                if style_preview_enabled and needs_style:
+                    try:
+                        import openpyxl
+
+                        def _norm_rgb(v: str) -> str:
+                            t = (v or "").strip().replace("#", "").upper()
+                            if len(t) == 8:
+                                t = t[2:]
+                            return t if len(t) == 6 else ""
+
+                        def _label_for(i: int) -> str:
+                            alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+                            if i < 26:
+                                return alphabet[i]
+                            a = i // 26 - 1
+                            b = i % 26
+                            return alphabet[a] + alphabet[b]
+
+                        max_rows = int(os.environ.get("GAIA_XLSX_STYLE_MAX_ROWS") or "60")
+                        max_cols = int(os.environ.get("GAIA_XLSX_STYLE_MAX_COLS") or "60")
+                        max_rows = max(1, min(120, max_rows))
+                        max_cols = max(1, min(120, max_cols))
+
+                        wb = openpyxl.load_workbook(str(p), data_only=True)
+                        ws = wb.active
+                        r_lim = min(int(getattr(ws, "max_row", 0) or 0), max_rows) or max_rows
+                        c_lim = min(int(getattr(ws, "max_column", 0) or 0), max_cols) or max_cols
+
+                        palette: dict[str, str] = {}
+                        grid_lines: list[str] = []
+                        for r in range(1, r_lim + 1):
+                            row_tokens: list[str] = []
+                            any_nonempty = False
+                            for c in range(1, c_lim + 1):
+                                cell = ws.cell(row=r, column=c)
+                                v = cell.value
+                                if v is not None and str(v).strip() != "":
+                                    s = str(v).strip().replace("\n", " ").replace("\r", " ")
+                                    row_tokens.append(s[:6])
+                                    any_nonempty = True
+                                    continue
+
+                                rgb = ""
+                                try:
+                                    fg = getattr(getattr(cell, "fill", None), "fgColor", None)
+                                    if fg is not None and getattr(fg, "type", None) == "rgb":
+                                        rgb = _norm_rgb(getattr(fg, "rgb", "") or "")
+                                except Exception:
+                                    rgb = ""
+
+                                if rgb and rgb not in {"FFFFFF", "000000"}:
+                                    if rgb not in palette:
+                                        palette[rgb] = _label_for(len(palette))
+                                    row_tokens.append(palette[rgb])
+                                    any_nonempty = True
+                                else:
+                                    row_tokens.append(".")
+
+                            if any_nonempty and any(t != "." for t in row_tokens):
+                                grid_lines.append(" ".join(row_tokens).rstrip())
+
+                        legend_lines = []
+                        if palette:
+                            legend_lines.append("Legend (fill colors):")
+                            for rgb, lab in list(palette.items())[:80]:
+                                legend_lines.append(f"{lab}={rgb}")
+
+                        style_txt = "Excel style preview (openpyxl fills):\n" + ("\n".join(grid_lines) if grid_lines else "(no styled cells detected)") + ("\n\n" + "\n".join(legend_lines) if legend_lines else "")
+                        out.append("\n" + style_txt)
+                    except Exception:
+                        pass
             return _clip_text("\n".join(out), max_chars)
-        except Exception as e:
-            return f"Excel preview failed: {e}"
+        except Exception:
+            if ext == ".xls":
+                return "Excel preview failed: .xls requires extra dependency (e.g. xlrd)."
+
+            import zipfile
+            import xml.etree.ElementTree as ET
+
+            def _xlsx_preview_via_xml(pp: Path) -> str:
+                with zipfile.ZipFile(str(pp), "r") as z:
+                    names = set(z.namelist())
+                    sheet_xml_name = None
+                    if "xl/worksheets/sheet1.xml" in names:
+                        sheet_xml_name = "xl/worksheets/sheet1.xml"
+                    else:
+                        for n in sorted(names):
+                            if n.startswith("xl/worksheets/sheet") and n.endswith(".xml"):
+                                sheet_xml_name = n
+                                break
+                    if sheet_xml_name is None:
+                        return "Excel preview failed: no worksheet xml found."
+
+                    shared: list[str] = []
+                    if "xl/sharedStrings.xml" in names:
+                        try:
+                            root = ET.fromstring(z.read("xl/sharedStrings.xml"))
+                            for node in root.iter():
+                                if node.tag.endswith("}t") and node.text is not None:
+                                    shared.append(node.text)
+                        except Exception:
+                            shared = []
+
+                    def _cell_text(c_node) -> str:
+                        t_attr = c_node.attrib.get("t")
+                        v_node = None
+                        for child in c_node:
+                            if child.tag.endswith("}v"):
+                                v_node = child
+                                break
+                            if child.tag.endswith("}is"):
+                                for cc in child.iter():
+                                    if cc.tag.endswith("}t") and cc.text is not None:
+                                        return str(cc.text)
+                        if v_node is None or v_node.text is None:
+                            return ""
+                        v = v_node.text
+                        if t_attr == "s":
+                            try:
+                                idx = int(v)
+                                return str(shared[idx]) if 0 <= idx < len(shared) else ""
+                            except Exception:
+                                return ""
+                        return str(v)
+
+                    sheet_root = ET.fromstring(z.read(sheet_xml_name))
+                    cells: dict[tuple[int, int], str] = {}
+                    max_r = 0
+                    max_c = 0
+                    for c in sheet_root.iter():
+                        if not c.tag.endswith("}c"):
+                            continue
+                        ref = c.attrib.get("r") or ""
+                        m = re.match(r"^([A-Z]+)(\d+)$", ref)
+                        if not m:
+                            continue
+                        col_s, row_s = m.group(1), m.group(2)
+                        try:
+                            row_i = int(row_s)
+                        except Exception:
+                            continue
+                        col_i = 0
+                        for ch in col_s:
+                            col_i = col_i * 26 + (ord(ch) - ord("A") + 1)
+                        txt = _cell_text(c)
+                        if txt == "":
+                            continue
+                        cells[(row_i, col_i)] = txt
+                        max_r = max(max_r, row_i)
+                        max_c = max(max_c, col_i)
+
+                    max_rows = min(max_r or 50, 50)
+                    max_cols = min(max_c or 20, 20)
+                    lines = ["Excel preview (zip/xml fallback):"]
+                    for r in range(1, max_rows + 1):
+                        row_vals = []
+                        for c in range(1, max_cols + 1):
+                            v = (cells.get((r, c), "") or "").replace("\n", " ").replace("\r", " ").strip()
+                            row_vals.append(v)
+                        if any(x for x in row_vals):
+                            lines.append("\t".join(row_vals).rstrip())
+                    if len(lines) == 1:
+                        lines.append("(no visible cells in preview window)")
+                    return "\n".join(lines)
+
+            try:
+                txt = _xlsx_preview_via_xml(p)
+
+                style_preview_enabled = (os.environ.get("GAIA_XLSX_STYLE_PREVIEW") or "").strip().lower() not in {"0", "false", "off", "no"}
+                force_style_preview = (os.environ.get("GAIA_XLSX_STYLE_PREVIEW_FORCE") or "").strip().lower() in {"1", "true", "on", "yes"}
+
+                needs_style = force_style_preview or ("(no visible cells in preview window)" in txt) or (txt.count("\n") <= 3)
+
+                if style_preview_enabled and needs_style:
+                    try:
+                        import openpyxl
+                        from openpyxl.utils import get_column_letter
+
+                        def _norm_rgb(v: str) -> str:
+                            t = (v or "").strip()
+                            if not t:
+                                return ""
+                            t = t.replace("#", "").upper()
+                            if len(t) == 8:
+                                t = t[2:]
+                            if len(t) != 6:
+                                return ""
+                            return t
+
+                        def _label_for(i: int) -> str:
+                            alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+                            if i < 26:
+                                return alphabet[i]
+                            a = i // 26 - 1
+                            b = i % 26
+                            return alphabet[a] + alphabet[b]
+
+                        max_rows = int(os.environ.get("GAIA_XLSX_STYLE_MAX_ROWS") or "60")
+                        max_cols = int(os.environ.get("GAIA_XLSX_STYLE_MAX_COLS") or "60")
+                        max_rows = max(1, min(120, max_rows))
+                        max_cols = max(1, min(120, max_cols))
+
+                        wb = openpyxl.load_workbook(str(p), data_only=True)
+                        ws = wb.active
+                        r_lim = min(int(getattr(ws, "max_row", 0) or 0), max_rows) or max_rows
+                        c_lim = min(int(getattr(ws, "max_column", 0) or 0), max_cols) or max_cols
+
+                        palette: dict[str, str] = {}
+                        grid_lines: list[str] = []
+                        for r in range(1, r_lim + 1):
+                            row_tokens: list[str] = []
+                            any_nonempty = False
+                            for c in range(1, c_lim + 1):
+                                cell = ws.cell(row=r, column=c)
+                                v = cell.value
+                                if v is not None and str(v).strip() != "":
+                                    s = str(v).strip().replace("\n", " ").replace("\r", " ")
+                                    tok = s[:6]
+                                    row_tokens.append(tok)
+                                    any_nonempty = True
+                                    continue
+
+                                rgb = ""
+                                try:
+                                    fill = cell.fill
+                                    fg = getattr(fill, "fgColor", None)
+                                    if fg is not None and getattr(fg, "type", None) == "rgb":
+                                        rgb = _norm_rgb(getattr(fg, "rgb", "") or "")
+                                except Exception:
+                                    rgb = ""
+
+                                if rgb and rgb not in {"FFFFFF", "000000"}:
+                                    if rgb not in palette:
+                                        palette[rgb] = _label_for(len(palette))
+                                    row_tokens.append(palette[rgb])
+                                    any_nonempty = True
+                                else:
+                                    row_tokens.append(".")
+
+                            if any_nonempty and any(t != "." for t in row_tokens):
+                                grid_lines.append(" ".join(row_tokens).rstrip())
+
+                        legend_lines = []
+                        if palette:
+                            legend_lines.append("Legend (fill colors):")
+                            for rgb, lab in list(palette.items())[:80]:
+                                legend_lines.append(f"{lab}={rgb}")
+
+                        style_txt = "Excel style preview (openpyxl fills):\n" + ("\n".join(grid_lines) if grid_lines else "(no styled cells detected)") + ("\n\n" + "\n".join(legend_lines) if legend_lines else "")
+                        txt = txt + "\n\n" + style_txt
+                    except Exception:
+                        pass
+
+                return _clip_text(txt, max_chars)
+            except Exception as e:
+                return f"Excel preview failed: {e}"
 
     if ext == ".pdf":
         try:
@@ -382,8 +651,36 @@ def _attachment_preview(abs_path: str, max_chars: int = 20000) -> str:
                     out.append(f"\n--- page {i+1} ---\n{txt}")
             doc.close()
             return _clip_text("\n".join(out), max_chars)
-        except Exception as e:
-            return f"PDF preview failed: {e}"
+        except Exception:
+            try:
+                from pypdf import PdfReader
+                reader = PdfReader(str(p))
+                out = [f"PDF pages: {len(reader.pages)}"]
+                for i in range(min(6, len(reader.pages))):
+                    page = reader.pages[i]
+                    txt = (page.extract_text() or "").strip()
+                    if txt:
+                        out.append(f"\n--- page {i+1} ---\n{txt}")
+                return _clip_text("\n".join(out), max_chars)
+            except Exception:
+                import shutil
+                import subprocess
+                exe = shutil.which("pdftotext")
+                if not exe:
+                    return "PDF preview failed: missing dependency (install pymupdf/fitz, or pypdf, or system pdftotext)."
+                try:
+                    res = subprocess.run(
+                        [exe, "-f", "1", "-l", "6", "-layout", "-nopgbrk", str(p), "-"],
+                        capture_output=True,
+                        text=True,
+                        timeout=20,
+                    )
+                    txt = (res.stdout or "").strip()
+                    if not txt:
+                        return "PDF preview failed: pdftotext produced empty output."
+                    return _clip_text("PDF preview (pdftotext):\n" + txt, max_chars)
+                except Exception as e:
+                    return f"PDF preview failed: {e}"
 
     if ext in {".docx", ".pptx", ".zip"}:
         import zipfile
@@ -416,20 +713,94 @@ def _attachment_preview(abs_path: str, max_chars: int = 20000) -> str:
                             chunks.append(f"[{Path(n).name}]\n" + "".join(texts))
                     if chunks:
                         return _clip_text("\n\n".join(chunks), max_chars)
+                if ext == ".zip":
+                    import tempfile
+                    out = ["ZIP entries:\n" + "\n".join(names[:200])]
+                    previewed = 0
+                    for n in names:
+                        if previewed >= 3:
+                            break
+                        low = n.lower()
+                        if not any(low.endswith(s) for s in (".txt", ".md", ".csv", ".tsv", ".json", ".jsonld", ".xml", ".html", ".htm", ".pdb", ".py", ".js", ".xlsx", ".xlsm", ".xls", ".pdf")):
+                            continue
+                        try:
+                            data = z.read(n)
+                        except Exception:
+                            continue
+                        try:
+                            with tempfile.NamedTemporaryFile(delete=True, suffix=Path(n).suffix) as tf:
+                                tf.write(data)
+                                tf.flush()
+                                out.append(f"\n\n--- {n} ---\n" + _attachment_preview(tf.name, max_chars=max(2000, min(max_chars, 12000))))
+                            previewed += 1
+                        except Exception:
+                            continue
+                    return _clip_text("\n".join(out), max_chars)
                 return _clip_text("ZIP entries:\n" + "\n".join(names[:200]), max_chars)
         except Exception as e:
             return f"Archive preview failed: {e}"
 
     if ext in {".png", ".jpg", ".jpeg", ".webp"}:
+        enable_ocr = (os.environ.get("GAIA_ENABLE_OCR") or "").strip().lower() in {"1", "true", "on", "yes"}
         try:
             from PIL import Image
             im = Image.open(str(p))
-            return f"Image: {im.format} {im.size[0]}x{im.size[1]} mode={im.mode}\nOCR not enabled."
+            header = f"Image: {im.format} {im.size[0]}x{im.size[1]} mode={im.mode}"
+            if not enable_ocr:
+                return header + "\nOCR not enabled."
         except Exception as e:
-            return f"Image preview failed: {e}"
+            if not enable_ocr:
+                return f"Image preview failed: {e}"
+            header = "Image OCR enabled."
+
+        import shutil
+        import subprocess
+        exe = shutil.which("tesseract")
+        if not exe:
+            return header + "\nOCR failed: system tesseract not found."
+        lang = (os.environ.get("GAIA_TESSERACT_LANG") or "eng").strip() or "eng"
+        try:
+            res = subprocess.run([exe, str(p), "stdout", "-l", lang], capture_output=True, text=True, timeout=60)
+            txt = (res.stdout or "").strip()
+            if not txt:
+                return header + "\nImage OCR: (empty)"
+            return _clip_text(header + "\nImage OCR:\n" + txt, max_chars)
+        except Exception as ee:
+            return header + f"\nOCR failed: {ee}"
 
     if ext in {".mp3", ".m4a", ".wav", ".mov"}:
-        return "Binary media file (audio/video). Offline transcription not enabled."
+        enable_asr = (os.environ.get("GAIA_ENABLE_ASR") or "").strip().lower() in {"1", "true", "on", "yes"}
+        if not enable_asr:
+            return "Binary media file (audio/video). Offline transcription not enabled."
+        import shutil
+        import subprocess
+        exe = shutil.which("whisper")
+        model = (os.environ.get("GAIA_WHISPER_MODEL") or "base").strip() or "base"
+        if not exe:
+            exe = shutil.which("python")
+            if not exe:
+                return "Binary media file (audio/video). Transcription enabled but whisper CLI not found."
+            runner = [exe, "-m", "whisper"]
+        else:
+            runner = [exe]
+        try:
+            import tempfile
+            with tempfile.TemporaryDirectory() as td:
+                res = subprocess.run(
+                    [*runner, str(p), "--model", model, "--output_format", "txt", "--output_dir", td, "--fp16", "False"],
+                    capture_output=True,
+                    text=True,
+                    timeout=240,
+                )
+                txt_files = list(Path(td).glob("*.txt"))
+                if not txt_files:
+                    return "Audio transcription failed: no txt output."
+                text = txt_files[0].read_text(encoding="utf-8", errors="replace").strip()
+                if not text:
+                    return "Audio transcription: (empty)"
+                return _clip_text("Audio transcription:\n" + text, max_chars)
+        except Exception as e:
+            return f"Audio transcription failed: {e}"
 
     return f"Unsupported attachment type: {ext}"
 
@@ -512,6 +883,8 @@ def evaluate_gaia(
     verbose: bool = False,
     dry_run: bool = False,
     timeout_s: Optional[float] = None,
+    gaia_preamble: bool = True,
+    preamble_text: Optional[str] = None,
 ) -> Dict[str, Any]:
     ds_path = Path(dataset_path)
     items = _load_json_any(ds_path)
@@ -551,6 +924,7 @@ def evaluate_gaia(
     summary_path = out_dir / f"summary_{run_id}.json"
 
     evaluator = None
+    agent_tool_names: List[str] = []
     if not dry_run:
         _ensure_physic_importable()
         from physic.tools.agents.agent import CDEMAgentEvaluator
@@ -565,6 +939,18 @@ def evaluate_gaia(
             enable_preprocessing=False,
             query_dataset_json=None,
         )
+        try:
+            tools_obj = getattr(getattr(evaluator, "agent_module", None), "tools", None) or []
+            for t in tools_obj:
+                name = getattr(t, "name", None)
+                if name:
+                    agent_tool_names.append(str(name))
+        except Exception:
+            agent_tool_names = []
+
+        has_file_tools = any(x in {"read_local_file", "list_local_dir"} for x in agent_tool_names)
+        if (not bool(inline_attachment)) and (not has_file_tools):
+            inline_attachment = True
 
     correct = 0
     scored: List[ScoredItem] = []
@@ -579,6 +965,18 @@ def evaluate_gaia(
 
     repo_root = _infer_gaia_repo_root(ds_path)
     dataset_dir = ds_path.resolve().parent
+    gaia_preamble_text = (preamble_text or os.environ.get("GAIA_PROMPT_PREAMBLE") or "").strip()
+    if gaia_preamble and not gaia_preamble_text:
+        gaia_preamble_text = (
+            "You are an evaluation assistant for the GAIA benchmark.\n"
+            "You must solve the task using ONLY the information provided in the question and the attachment preview/transcription/OCR.\n"
+            "If the question includes 'Attachment path:' and an 'Attachment preview:' is provided, rely on that preview as the file contents.\n"
+            "Do NOT output code, pseudocode, explanations, or multiple lines.\n"
+            "Even if the question says 'using Python' or names a library, do the computation internally and only output the final result.\n"
+            "Respect formatting requirements in the question (e.g., commas, ordering, no whitespace, rounding).\n"
+            "Output exactly ONE line in this format:\n"
+            "Final answer: <answer>"
+        )
 
     with open(pred_path, "w", encoding="utf-8") as f, open(submission_path, "w", encoding="utf-8") as sf:
         for idx, item in enumerate(items, 1):
@@ -586,6 +984,8 @@ def evaluate_gaia(
             question_raw = str(_pick_first(item, q_keys) or "").strip()
             abs_attach = _get_attachment_abs_path(item=item, repo_root=repo_root, dataset_dir=dataset_dir)
             question = (question_raw or "").strip()
+            if gaia_preamble and gaia_preamble_text:
+                question = gaia_preamble_text + "\n\n" + question
             if abs_attach:
                 question += "\n\n" + f"Attachment path: {abs_attach}"
                 if inline_attachment:
@@ -688,6 +1088,8 @@ def evaluate_gaia(
         "output_predictions_jsonl": str(pred_path),
         "output_submission_jsonl": str(submission_path),
         "elapsed_s": float(round(elapsed, 3)),
+        "agent_tools": agent_tool_names,
+        "effective_inline_attachment": bool(inline_attachment),
     }
     with open(summary_path, "w", encoding="utf-8") as f:
         json.dump(summary, f, ensure_ascii=False, indent=2)
@@ -725,12 +1127,18 @@ def main() -> None:
     ap.add_argument("--inline_attachment", action="store_true", default=True, help="将附件内容预览直接拼进提示词（离线解题推荐；默认开启）")
     ap.add_argument("--no_inline_attachment", action="store_true")
     ap.add_argument("--inline_max_chars", type=int, default=20000)
+    ap.add_argument("--force_inline_attachment", action="store_true", help="强制 inline 附件预览（即使传了 --no_inline_attachment 也会开启；用于没有文件工具时的 GAIA 评测）")
     ap.add_argument("--question_key", type=str, default=None)
     ap.add_argument("--answer_key", type=str, default=None)
     ap.add_argument("--id_key", type=str, default=None)
     ap.add_argument("--verbose", action="store_true")
     ap.add_argument("--dry_run", action="store_true", help="不调用智能体，仅输出空预测并进行打分（用于验证加载/字段）")
     ap.add_argument("--timeout_s", type=float, default=None, help="单题超时（秒）。设置后每题在子进程中运行以便超时中断，会显著变慢。")
+    ap.add_argument("--no_force_gaia_mode", action="store_true", help="不强制设置 GAIA_MODE=1（默认会强制，以避免被 .env 覆盖导致走非 GAIA prompt/工具链）")
+    ap.add_argument("--no_gaia_preamble", action="store_true", help="不在问题前添加 GAIA 通用前导指令（默认添加，以提升工具调用与输出格式稳定性）")
+    ap.add_argument("--gaia_preamble_text", type=str, default="", help="自定义 GAIA 前导指令（覆盖默认/环境变量 GAIA_PROMPT_PREAMBLE）")
+    ap.add_argument("--gaia_preamble_file", type=str, default="", help="从文件读取 GAIA 前导指令（优先级高于 --gaia_preamble_text 与环境变量）")
+    ap.add_argument("--no_force_task_type", action="store_true", help="不强制将 CDEM_TASK_TYPE 设为 qa（默认 GAIA 评测会强制，以避免误走脚本生成分支）")
     ap.add_argument("--download_hf", action="store_true", help="从 HuggingFace 下载 GAIA（需要 HF_TOKEN 且已在网页同意条款）")
     ap.add_argument("--hf_dir", type=str, default=str(Path(__file__).resolve().parent / "data" / "GAIA"), help="下载目录（--download_hf 生效）")
     ap.add_argument("--subset", type=str, default="2023_all", help="2023_all/2023_level1/2023_level2/2023_level3（--download_hf 生效）")
@@ -740,14 +1148,20 @@ def main() -> None:
     ap.add_argument("--disable_vector_kb", action="store_true")
     ap.add_argument("--disable_rag", action="store_true")
     ap.add_argument("--disable_tools", action="store_true")
+    ap.add_argument(
+        "--no_gaia_disable_cdem",
+        action="store_true",
+        help="GAIA 评测时不自动关闭 CDEM 的向量库/RAG/KB 工具（默认会自动关闭，以避免无关资料干扰）",
+    )
     ap.add_argument("--self_test", action="store_true")
     args = ap.parse_args()
 
     if args.self_test:
         raise SystemExit(_run_self_test())
 
-    if (os.environ.get("GAIA_MODE") or "").strip() == "":
+    if not bool(args.no_force_gaia_mode):
         os.environ["GAIA_MODE"] = "1"
+    gaia_mode = (os.environ.get("GAIA_MODE") or "").strip() in {"1", "true", "on", "yes"}
 
     dataset_path = (args.dataset or "").strip()
     if args.download_hf or not dataset_path:
@@ -767,6 +1181,14 @@ def main() -> None:
     if rr is not None and (os.environ.get("GAIA_ROOT") or "").strip() == "":
         os.environ["GAIA_ROOT"] = str(rr)
 
+    if gaia_mode and (not bool(args.no_gaia_disable_cdem)):
+        os.environ["CDEM_ENABLE_VECTOR_KB"] = "0"
+        os.environ["CDEM_ENABLE_RAG"] = "0"
+        os.environ["CDEM_ENABLE_RAG_FALLBACK"] = "0"
+        os.environ["CDEM_ENABLE_KB_TOOL"] = "0"
+        if not bool(args.no_force_task_type):
+            os.environ["CDEM_TASK_TYPE"] = "qa"
+
     if args.disable_vector_kb:
         os.environ["CDEM_ENABLE_VECTOR_KB"] = "0"
     if args.disable_rag:
@@ -785,7 +1207,7 @@ def main() -> None:
         seed=int(args.seed),
         level=args.level,
         only_with_file=bool(args.only_with_file),
-        inline_attachment=bool(args.inline_attachment) and (not bool(args.no_inline_attachment)),
+        inline_attachment=bool(args.force_inline_attachment) or (bool(args.inline_attachment) and (not bool(args.no_inline_attachment))),
         inline_max_chars=int(args.inline_max_chars),
         question_key=args.question_key,
         answer_key=args.answer_key,
@@ -793,6 +1215,12 @@ def main() -> None:
         verbose=bool(args.verbose),
         dry_run=bool(args.dry_run),
         timeout_s=args.timeout_s,
+        gaia_preamble=(not bool(args.no_gaia_preamble)),
+        preamble_text=(
+            Path(str(args.gaia_preamble_file)).read_text(encoding="utf-8").strip()
+            if str(args.gaia_preamble_file or "").strip()
+            else (str(args.gaia_preamble_text or "").strip() or None)
+        ),
     )
     print(json.dumps(summary, ensure_ascii=False, indent=2))
 
