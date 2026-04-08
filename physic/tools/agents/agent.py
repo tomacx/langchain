@@ -4,10 +4,19 @@ import time
 import difflib
 import re
 import importlib.util
+import sys
 from pathlib import Path, PurePosixPath
 from typing import List, Dict, Any, Optional, Tuple, Sequence, Protocol
 from dataclasses import dataclass, asdict, field
 from datetime import datetime
+
+try:
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    if hasattr(sys.stderr, "reconfigure"):
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
 
 try:
     from dotenv import load_dotenv
@@ -65,19 +74,19 @@ if prompt_path.exists():
         spec.loader.exec_module(mod)
         agent_system = mod
         HAS_CUSTOM_PROMPT = True
-        print(f"✅ 使用自定义系统提示词: {prompt_path}")
+        print(f"Using custom system prompt: {prompt_path}")
     except Exception as e:
-        print(f"⚠️ 加载自定义提示词失败 {prompt_path}: {e}")
+        print(f"Failed to load custom system prompt {prompt_path}: {e}")
 
 if not HAS_CUSTOM_PROMPT:
     try:
         from prompt import agent_system as local_agent_system
         agent_system = local_agent_system
         HAS_CUSTOM_PROMPT = True
-        print("✅ 使用本地 prompt.py 中的系统提示词")
+        print("Using local prompt.py system prompt")
     except ImportError:
         HAS_CUSTOM_PROMPT = False
-        print("⚠️ 未找到自定义 prompt，使用默认系统提示词")
+        print("No custom prompt found; using default system prompt")
 
 
 @dataclass
@@ -690,6 +699,50 @@ class QueryPreprocessor:
         }
 
 
+import traceback
+import sys
+import io
+import contextlib
+import urllib.request
+import urllib.parse
+from bs4 import BeautifulSoup
+from duckduckgo_search import DDGS
+import textwrap
+
+class PythonREPL:
+    """A simple Python REPL to execute code and capture stdout/stderr."""
+    def __init__(self):
+        self.globals = {}
+        self.locals = {}
+
+    def run(self, command: str) -> str:
+        """Run the command and return stdout/stderr or exception."""
+        old_stdout = sys.stdout
+        old_stderr = sys.stderr
+        sys.stdout = io.StringIO()
+        sys.stderr = io.StringIO()
+        
+        try:
+            # Wrap in a function if it contains return
+            if "return " in command and "def " not in command:
+                command = f"def __temp_func__():\n{textwrap.indent(command, '    ')}\n__temp_res__ = __temp_func__()\nprint(__temp_res__)"
+            
+            exec(command, self.globals, self.locals)
+            
+            out = sys.stdout.getvalue()
+            err = sys.stderr.getvalue()
+            res = out
+            if err:
+                res += f"\nStderr:\n{err}"
+            if not res.strip():
+                res = "Execution successful, but no output was printed."
+            return res
+        except Exception:
+            return traceback.format_exc()
+        finally:
+            sys.stdout = old_stdout
+            sys.stderr = old_stderr
+
 class ToolConstructionModule:
     """工具构造模块：负责创建智能体所需的工具"""
     def __init__(self, model_name: Optional[str] = None, feature_flags: Optional[AgentFeatureFlags] = None):
@@ -942,6 +995,61 @@ class ToolConstructionModule:
             "你可以直接输入自然语言需求，本工具会先做意图理解并自动改写为更有效的检索短语，再检索并返回最匹配的资料。"
         )
         return search_physics_knowledge
+
+    def build_duckduckgo_search_tool(self, max_results: int = 5) -> Any:
+        @lc_tool("web_search")
+        def web_search(query: str) -> str:
+            """用于在互联网上搜索最新信息。输入关键字或问题，返回 DuckDuckGo 的搜索结果摘要和链接。"""
+            try:
+                # Add proxies if available in environment
+                proxies = os.environ.get("HTTPS_PROXY") or os.environ.get("HTTP_PROXY")
+                with DDGS(timeout=15, proxies=proxies) as ddgs:
+                    results = list(ddgs.text(query, max_results=max_results, backend="lite"))
+                if not results:
+                    return "No results found."
+                parts = []
+                for i, r in enumerate(results, 1):
+                    title = r.get("title", "")
+                    link = r.get("href", "")
+                    body = r.get("body", "")
+                    parts.append(f"Result {i}:\nTitle: {title}\nLink: {link}\nSnippet: {body}")
+                return "\n\n".join(parts)
+            except Exception as e:
+                return f"Search failed: {e}"
+        return web_search
+
+    def build_web_fetcher_tool(self) -> Any:
+        @lc_tool("read_webpage")
+        def read_webpage(url: str) -> str:
+            """读取指定 URL 的网页内容并提取纯文本。用于深入阅读搜索结果的详细信息。"""
+            try:
+                headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
+                req = urllib.request.Request(url, headers=headers)
+                with urllib.request.urlopen(req, timeout=10) as response:
+                    html = response.read().decode('utf-8', errors='ignore')
+                soup = BeautifulSoup(html, 'html.parser')
+                for script in soup(["script", "style", "nav", "footer", "header"]):
+                    script.extract()
+                text = soup.get_text(separator='\n', strip=True)
+                return text[:8000] + ("\n...[Content truncated]" if len(text) > 8000 else "")
+            except Exception as e:
+                return f"Failed to fetch webpage: {e}"
+        return read_webpage
+
+    def build_python_repl_tool(self) -> Any:
+        repl = PythonREPL()
+        @lc_tool("python_calculator")
+        def python_calculator(code: str) -> str:
+            """一个 Python REPL 交互式解释器。
+            你可以输入完整的 Python 代码（如复杂数学计算、逻辑推导），并返回 print 输出。
+            请确保使用 print() 打印你想要获取的结果。"""
+            code = code.strip()
+            if code.startswith("```"):
+                lines = code.split("\n")
+                if len(lines) >= 2:
+                    code = "\n".join(lines[1:-1])
+            return repl.run(code)
+        return python_calculator
 
 
 class ContextMemoryManager:
@@ -1871,6 +1979,8 @@ class AgentConstructionModule:
             }
         
         def build_memory_prompt() -> str:
+            if (os.environ.get("GAIA_MODE") or "").strip().lower() in {"1", "true", "on", "yes"}:
+                return ""
             if getattr(self, "memory_manager", None):
                 context_str = self.memory_manager.recall_context(query)
                 return "【全局上下文记忆】\n" + context_str
@@ -1911,7 +2021,19 @@ class AgentConstructionModule:
                 try:
                     resp = self.llm.invoke(input_messages)
                     local_generated = getattr(resp, "content", "") or ""
-                except Exception:
+                except Exception as e:
+                    cutoff_info = {
+                        "hit": True,
+                        "reason": "direct_invoke_error",
+                        "error_type": type(e).__name__,
+                        "error": (str(e) or "")[:800],
+                    }
+                    if verbose or _env_flag("CDEM_DIRECT_INVOKE_DEBUG", False):
+                        try:
+                            print("\n❌ 直连模型调用失败（无工具模式）")
+                            print(f"{type(e).__name__}: {e}")
+                        except Exception:
+                            pass
                     local_generated = ""
                 return local_generated, 0, time.time() - t0, cutoff_info
 
@@ -2142,6 +2264,10 @@ class AgentConstructionModule:
                 print("【参考文档清单结束】\n")
             
             forced_task = (os.environ.get("CDEM_TASK_TYPE") or "").strip().lower()
+            q0 = (query or "")
+            q0_lower = q0.lower()
+            gaia_mode = (os.environ.get("GAIA_MODE") or "").strip().lower() in {"1", "true", "on", "yes"}
+            looks_like_gaia = gaia_mode or ("gaia benchmark" in q0_lower) or ("you are an evaluation assistant for the gaia benchmark" in q0_lower)
             if forced_task in {"qa", "q", "answer"}:
                 is_coding_task = False
             elif forced_task in {"code", "coding", "script", "gen"}:
@@ -2180,29 +2306,43 @@ class AgentConstructionModule:
                 else:
                     is_coding_task = code_score >= (qa_score + int(threshold))
             
+            if looks_like_gaia:
+                is_coding_task = False
+            
             if not is_coding_task:
                 if verbose:
                     print("🔍 识别为 QA 问答任务")
                 
-                qa_prompt = (
-                    "【角色设定】\n"
-                    "你是 CDEM 物理仿真软件的技术支持专家。请基于参考资料回答用户问题。\n\n"
-                    "【用户问题】\n"
-                    f"{query}\n\n"
-                    "【参考资料】\n"
-                    f"{reference_context}\n\n"
-                    "【回答要求】\n"
-                    "1. 必须基于参考资料回答，不要编造。\n"
-                    "2. 如果资料中没有相关信息，请直接说明“资料不足”。\n"
-                    "3. 如果涉及 API 用法，请给出简短的代码示例（使用 ```javascript ... ```）。\n"
-                    "4. 回答要简洁明了，使用中文。\n"
-                )
+                if looks_like_gaia:
+                    qa_prompt = (query or "").strip()
+                else:
+                    qa_prompt = (
+                        "【角色设定】\n"
+                        "你是 CDEM 物理仿真软件的技术支持专家。请基于参考资料回答用户问题。\n\n"
+                        "【用户问题】\n"
+                        f"{query}\n\n"
+                        "【参考资料】\n"
+                        f"{reference_context}\n\n"
+                        "【回答要求】\n"
+                        "1. 必须基于参考资料回答，不要编造。\n"
+                        "2. 如果资料中没有相关信息，请直接说明“资料不足”。\n"
+                        "3. 如果涉及 API 用法，请给出简短的代码示例（使用 ```javascript ... ```）。\n"
+                        "4. 回答要简洁明了，使用中文。\n"
+                    )
 
                 qa_text, qa_tool_msgs, _, qa_cutoff = run_once(qa_prompt)
-                qa_resp = (qa_text or "").strip() or "资料不足"
+                qa_resp = (qa_text or "").strip()
+                if looks_like_gaia and qa_resp:
+                    low = qa_resp.lower()
+                    if ("final answer" not in low) and ("答案" not in qa_resp) and ("最终答案" not in qa_resp):
+                        lines = [x.strip() for x in qa_resp.splitlines() if x.strip()]
+                        if lines:
+                            qa_resp = "Final answer: " + lines[-1]
+                if (not looks_like_gaia) and (not qa_resp):
+                    qa_resp = "资料不足"
                 
                 self.last_run_metrics = {
-                    "task_type": "qa",
+                    "task_type": ("gaia" if looks_like_gaia else "qa"),
                     "retrieved_docs_count": int(retrieved_count),
                     "duration_s": 0.0,
                     "qa_tool_calls": int(qa_tool_msgs or 0),
@@ -3278,6 +3418,15 @@ class CDEMAgentEvaluator:
             if self.vector_module is not None and self.feature_flags.enable_kb_tool:
                 physics_tool = self.tool_module.build_physics_search_tool(self.vector_module)
                 tools.append(physics_tool)
+            
+            # Load general GAIA tools
+            if os.environ.get("GAIA_MODE") == "1":
+                try:
+                    tools.append(self.tool_module.build_duckduckgo_search_tool())
+                    tools.append(self.tool_module.build_web_fetcher_tool())
+                    tools.append(self.tool_module.build_python_repl_tool())
+                except Exception as e:
+                    print(f"Warning: Failed to load some GAIA tools: {e}")
         
         self.agent_module = AgentConstructionModule(
             tools=tools,

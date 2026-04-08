@@ -7,10 +7,18 @@ import re
 import sys
 import time
 import traceback
+import shutil
 from dataclasses import dataclass, asdict
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
+
+try:
+    from dotenv import load_dotenv
+
+    load_dotenv(encoding="utf-8")
+except Exception:
+    pass
 
 
 def _ensure_physic_importable() -> None:
@@ -173,11 +181,10 @@ def _parse_single_number(s: str) -> Optional[float]:
     if not t:
         return None
     t = t.replace(",", "")
-    nums = re.findall(r"[-+]?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?", t)
-    if len(nums) != 1:
+    if not re.fullmatch(r"[-+]?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?", t):
         return None
     try:
-        return float(nums[0])
+        return float(t)
     except Exception:
         return None
 
@@ -691,11 +698,27 @@ def _attachment_preview(abs_path: str, max_chars: int = 20000) -> str:
                 if ext == ".docx" and "word/document.xml" in names:
                     xml_bytes = z.read("word/document.xml")
                     root = ET.fromstring(xml_bytes)
-                    texts = []
-                    for node in root.iter():
-                        if node.tag.endswith("}t") and node.text:
-                            texts.append(node.text)
-                    return _clip_text("".join(texts), max_chars)
+                    lines: list[str] = []
+                    for para in root.iter():
+                        if not para.tag.endswith("}p"):
+                            continue
+                        parts: list[str] = []
+                        for node in para.iter():
+                            if node.tag.endswith("}t") and node.text:
+                                parts.append(node.text)
+                        if not parts:
+                            continue
+                        s = " ".join([x.strip() for x in parts if x.strip()])
+                        s = re.sub(r"\s+", " ", s).strip()
+                        if s:
+                            lines.append(s)
+                    if not lines:
+                        texts = []
+                        for node in root.iter():
+                            if node.tag.endswith("}t") and node.text:
+                                texts.append(node.text)
+                        return _clip_text(" ".join([x.strip() for x in texts if x and x.strip()]), max_chars)
+                    return _clip_text("\n".join(lines), max_chars)
                 if ext == ".pptx":
                     slide_names = sorted([n for n in names if n.startswith("ppt/slides/slide") and n.endswith(".xml")])
                     chunks = []
@@ -710,7 +733,9 @@ def _attachment_preview(abs_path: str, max_chars: int = 20000) -> str:
                             if node.tag.endswith("}t") and node.text:
                                 texts.append(node.text)
                         if texts:
-                            chunks.append(f"[{Path(n).name}]\n" + "".join(texts))
+                            s = " ".join([x.strip() for x in texts if x and x.strip()])
+                            s = re.sub(r"\s+", " ", s).strip()
+                            chunks.append(f"[{Path(n).name}]\n" + s)
                     if chunks:
                         return _clip_text("\n\n".join(chunks), max_chars)
                 if ext == ".zip":
@@ -755,7 +780,7 @@ def _attachment_preview(abs_path: str, max_chars: int = 20000) -> str:
 
         import shutil
         import subprocess
-        exe = shutil.which("tesseract")
+        exe = (os.environ.get("TESSERACT_CMD") or "").strip() or shutil.which("tesseract")
         if not exe:
             return header + "\nOCR failed: system tesseract not found."
         lang = (os.environ.get("GAIA_TESSERACT_LANG") or "eng").strip() or "eng"
@@ -772,24 +797,36 @@ def _attachment_preview(abs_path: str, max_chars: int = 20000) -> str:
         enable_asr = (os.environ.get("GAIA_ENABLE_ASR") or "").strip().lower() in {"1", "true", "on", "yes"}
         if not enable_asr:
             return "Binary media file (audio/video). Offline transcription not enabled."
+        import importlib.util
         import shutil
         import subprocess
+
         exe = shutil.which("whisper")
         model = (os.environ.get("GAIA_WHISPER_MODEL") or "base").strip() or "base"
-        if not exe:
-            exe = shutil.which("python")
-            if not exe:
-                return "Binary media file (audio/video). Transcription enabled but whisper CLI not found."
-            runner = [exe, "-m", "whisper"]
-        else:
+
+        runner: Optional[List[str]] = None
+        if exe:
             runner = [exe]
+        elif importlib.util.find_spec("whisper") is not None:
+            runner = [sys.executable, "-m", "whisper"]
+        else:
+            return "Binary media file (audio/video). Transcription enabled but whisper not found."
+
+        ffmpeg = (os.environ.get("FFMPEG_CMD") or "").strip() or shutil.which("ffmpeg")
+        if not ffmpeg:
+            return "Binary media file (audio/video). Transcription enabled but ffmpeg not found."
         try:
             import tempfile
             with tempfile.TemporaryDirectory() as td:
+                env = os.environ.copy()
+                if ffmpeg and (os.path.isabs(ffmpeg) or ("\\" in ffmpeg) or ("/" in ffmpeg)):
+                    ff_dir = str(Path(ffmpeg).resolve().parent)
+                    env["PATH"] = ff_dir + os.pathsep + env.get("PATH", "")
                 res = subprocess.run(
                     [*runner, str(p), "--model", model, "--output_format", "txt", "--output_dir", td, "--fp16", "False"],
                     capture_output=True,
                     text=True,
+                    env=env,
                     timeout=240,
                 )
                 txt_files = list(Path(td).glob("*.txt"))
@@ -969,12 +1006,13 @@ def evaluate_gaia(
     if gaia_preamble and not gaia_preamble_text:
         gaia_preamble_text = (
             "You are an evaluation assistant for the GAIA benchmark.\n"
-            "You must solve the task using ONLY the information provided in the question and the attachment preview/transcription/OCR.\n"
-            "If the question includes 'Attachment path:' and an 'Attachment preview:' is provided, rely on that preview as the file contents.\n"
-            "Do NOT output code, pseudocode, explanations, or multiple lines.\n"
-            "Even if the question says 'using Python' or names a library, do the computation internally and only output the final result.\n"
+            "You are equipped with powerful tools including web_search, read_webpage, and python_calculator.\n"
+            "You MUST use these tools to search the internet, read specific web pages, or perform calculations to find the correct answer.\n"
+            "If the question includes 'Attachment path:' and an 'Attachment preview:' is provided, use that preview as the file contents.\n"
+            "Do NOT output code, pseudocode, explanations, or multiple lines as your final answer.\n"
+            "Even if the question says 'using Python' or names a library, use the python_calculator tool to do the computation and only output the final result.\n"
             "Respect formatting requirements in the question (e.g., commas, ordering, no whitespace, rounding).\n"
-            "Output exactly ONE line in this format:\n"
+            "Output exactly ONE line in this format at the very end of your response when you have the final answer:\n"
             "Final answer: <answer>"
         )
 

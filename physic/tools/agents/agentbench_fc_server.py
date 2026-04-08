@@ -1,9 +1,14 @@
+import json
 import os
+import time
 from functools import lru_cache
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict
 
+import anyio
 from fastapi import FastAPI, HTTPException, Request
-from openai import OpenAI
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
+
+from physic.tools.agents.agent import AgentConstructionModule
 
 
 app = FastAPI()
@@ -15,34 +20,14 @@ def _provider() -> str:
     return (os.environ.get("CDEM_LLM_PROVIDER") or "ollama").strip().lower()
 
 
-def _resolve_openai_endpoint() -> Tuple[str, str]:
-    provider = _provider()
-
-    if provider == "ollama":
-        return "http://localhost:11434/v1", "ollama"
-
-    if provider == "bailian":
-        base_url = (os.environ.get("CDEM_BAILIAN_BASE_URL") or "https://dashscope.aliyuncs.com/compatible-mode/v1").strip()
-        api_key = (
-            os.environ.get("CDEM_BAILIAN_API_KEY")
-            or os.environ.get("DASHSCOPE_API_KEY")
-            or os.environ.get("OPENAI_API_KEY")
-            or ""
-        ).strip()
-        if not api_key:
-            raise RuntimeError("Missing API key for bailian provider (CDEM_BAILIAN_API_KEY / DASHSCOPE_API_KEY / OPENAI_API_KEY).")
-        return base_url, api_key
-
-    base_url = (os.environ.get("OPENAI_BASE_URL") or "https://api.openai.com/v1").strip()
-    api_key = (os.environ.get("OPENAI_API_KEY") or "").strip()
-    if not api_key:
-        raise RuntimeError("Missing OPENAI_API_KEY.")
-    return base_url, api_key
-
-
 @lru_cache(maxsize=8)
-def _client(base_url: str, api_key: str) -> OpenAI:
-    return OpenAI(base_url=base_url, api_key=api_key)
+def _agent_backend(model_name: str) -> AgentConstructionModule:
+    return AgentConstructionModule(
+        tools=[],
+        model_name=model_name,
+        enable_preprocessing=False,
+        vectorstore=None,
+    )
 
 def _tool_names(tools: Any) -> set[str]:
     if not isinstance(tools, list):
@@ -91,6 +76,116 @@ def _inject_guidance(messages: list, tools: Any) -> list:
     return [sys_msg, *messages]
 
 
+def _prune_messages(messages: list[dict], max_messages: int = 40, max_content_chars: int = 12000, max_tool_chars: int = 6000) -> list[dict]:
+    if not isinstance(messages, list) or not messages:
+        return messages
+    systems: list[dict] = []
+    rest: list[dict] = []
+    for m in messages:
+        if not isinstance(m, dict):
+            continue
+        role = (m.get("role") or "").strip()
+        if role == "system":
+            systems.append(m)
+        else:
+            rest.append(m)
+
+    if len(rest) > max_messages:
+        rest = rest[-max_messages:]
+
+    out: list[dict] = []
+    for m in (systems[:4] + rest):
+        role = (m.get("role") or "").strip()
+        content = m.get("content")
+        if isinstance(content, str):
+            limit = max_tool_chars if role == "tool" else max_content_chars
+            if len(content) > limit:
+                head = content[: int(limit * 0.6)]
+                tail = content[-int(limit * 0.4) :]
+                content = head + "\n...[truncated]...\n" + tail
+            nm = dict(m)
+            nm["content"] = content
+            out.append(nm)
+        else:
+            out.append(m)
+    return out
+
+
+def _to_lc_messages(messages: list[dict]) -> list:
+    out: list = []
+    for m in messages:
+        if not isinstance(m, dict):
+            continue
+        role = (m.get("role") or "").strip()
+        content = m.get("content")
+        if role == "system":
+            out.append(SystemMessage(content=str(content or "")))
+        elif role == "user":
+            out.append(HumanMessage(content=str(content or "")))
+        elif role == "assistant":
+            tc_in = m.get("tool_calls")
+            tc_out = []
+            if isinstance(tc_in, list):
+                for tc in tc_in:
+                    if not isinstance(tc, dict):
+                        continue
+                    fn = tc.get("function") or {}
+                    if not isinstance(fn, dict):
+                        fn = {}
+                    name = fn.get("name")
+                    args_raw = fn.get("arguments")
+                    args: dict = {}
+                    if isinstance(args_raw, str) and args_raw.strip():
+                        try:
+                            args = json.loads(args_raw)
+                        except Exception:
+                            args = {}
+                    tc_out.append(
+                        {
+                            "name": str(name or ""),
+                            "args": args,
+                            "id": str(tc.get("id") or ""),
+                            "type": "tool_call",
+                        }
+                    )
+            out.append(AIMessage(content=str(content or ""), tool_calls=tc_out or None))
+        elif role == "tool":
+            tool_call_id = m.get("tool_call_id") or m.get("tool_callId") or m.get("id") or ""
+            out.append(ToolMessage(content=str(content or ""), tool_call_id=str(tool_call_id), name=m.get("name")))
+    return out
+
+
+def _to_openai_tool_calls(tool_calls: Any) -> list[dict]:
+    out: list[dict] = []
+    if not isinstance(tool_calls, list):
+        return out
+    for tc in tool_calls:
+        if not isinstance(tc, dict):
+            continue
+        name = tc.get("name")
+        args = tc.get("args") or {}
+        try:
+            args_s = json.dumps(args, ensure_ascii=False)
+        except Exception:
+            args_s = "{}"
+        out.append(
+            {
+                "id": tc.get("id") or "",
+                "type": "function",
+                "function": {"name": str(name or ""), "arguments": args_s},
+            }
+        )
+    return out
+
+
+def _normalize_tool_choice(tool_choice: Any) -> Any:
+    if tool_choice == "required":
+        return "any"
+    if tool_choice in (None, "auto"):
+        return "auto"
+    return tool_choice
+
+
 @app.get("/health")
 def health() -> Dict[str, Any]:
     return {"ok": True, "provider": _provider()}
@@ -112,22 +207,35 @@ async def chat_completions(req: Request) -> Dict[str, Any]:
         raise HTTPException(status_code=400, detail="Missing messages")
 
     tools = payload.get("tools")
-    temperature = payload.get("temperature")
-    max_tokens = payload.get("max_tokens") or payload.get("max_completion_tokens")
+    _ = payload.get("temperature")
+    _ = payload.get("max_tokens") or payload.get("max_completion_tokens")
     tool_choice = payload.get("tool_choice")
 
     try:
         messages = _inject_guidance(messages, tools)
-        base_url, api_key = _resolve_openai_endpoint()
-        cli = _client(base_url, api_key)
-        resp = cli.chat.completions.create(
-            model=model,
-            messages=messages,
-            tools=tools if isinstance(tools, list) else None,
-            temperature=temperature if isinstance(temperature, (int, float)) else None,
-            max_tokens=max_tokens if isinstance(max_tokens, int) else None,
-            tool_choice=tool_choice,
-        )
-        return resp.model_dump()
+        messages = _prune_messages(messages)
+        backend = _agent_backend(model)
+        llm = backend.llm
+        lc_messages = _to_lc_messages(messages)
+        tool_choice_lc = _normalize_tool_choice(tool_choice)
+        bound = llm
+        if isinstance(tools, list) and tools:
+            bound = llm.bind_tools(tools, tool_choice=tool_choice_lc)
+        resp_msg = await anyio.to_thread.run_sync(lambda: bound.invoke(lc_messages))
+        out_msg: dict = {"role": "assistant", "content": getattr(resp_msg, "content", "") or ""}
+        tc = _to_openai_tool_calls(getattr(resp_msg, "tool_calls", None))
+        if tc:
+            out_msg["tool_calls"] = tc
+            out_msg["content"] = ""
+            finish_reason = "tool_calls"
+        else:
+            finish_reason = "stop"
+        return {
+            "id": "agentbench-fc-local",
+            "object": "chat.completion",
+            "created": int(time.time()),
+            "model": model,
+            "choices": [{"index": 0, "message": out_msg, "finish_reason": finish_reason}],
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
