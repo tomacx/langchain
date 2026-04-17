@@ -761,6 +761,13 @@ class ToolConstructionModule:
             return ChatOllama(model=self.model_name, temperature=0.0, base_url=ollama_base_url, streaming=False, keep_alive="5m")
         if ChatOpenAI is None:
             return None
+        if self.provider in {"claude", "anthropic"}:
+            api_key = (os.environ.get("CDEM_CLAUDE_API_KEY") or "").strip()
+            base_url = (os.environ.get("CDEM_CLAUDE_API_URL") or "https://api.jiekou.ai/openai").strip()
+            model_name = (os.environ.get("CDEM_CLAUDE_MODEL") or self.model_name).strip()
+            if not api_key or not base_url:
+                return None
+            return ChatOpenAI(model_name=model_name, api_key=api_key, base_url=base_url, temperature=0.0, streaming=False)
         api_key = (
             os.environ.get("CDEM_BAILIAN_API_KEY")
             or os.environ.get("DASHSCOPE_API_KEY")
@@ -1569,6 +1576,24 @@ class AgentConstructionModule:
                 temperature=0.0,
                 base_url=ollama_base_url,
                 keep_alive="5m",
+                streaming=streaming_enabled,
+                callbacks=callbacks,
+            )
+        elif provider in {"claude", "anthropic"}:
+            if ChatOpenAI is None:
+                raise ImportError("未安装 langchain-openai：请先安装后再使用 Claude（CDEM_LLM_PROVIDER=claude）。")
+            api_key = (os.environ.get("CDEM_CLAUDE_API_KEY") or "").strip()
+            base_url = (os.environ.get("CDEM_CLAUDE_API_URL") or "https://api.jiekou.ai/openai").strip()
+            model_name = (os.environ.get("CDEM_CLAUDE_MODEL") or self.model_name).strip()
+            if not api_key:
+                raise ValueError("缺少 Claude API Key：请设置环境变量 CDEM_CLAUDE_API_KEY。")
+            if not base_url:
+                raise ValueError("缺少 Claude API URL：请设置环境变量 CDEM_CLAUDE_API_URL。")
+            self.llm = ChatOpenAI(
+                model_name=model_name,
+                api_key=api_key,
+                base_url=base_url,
+                temperature=0.0,
                 streaming=streaming_enabled,
                 callbacks=callbacks,
             )
@@ -3503,7 +3528,12 @@ def main():
     
     # 4. LLM模型
     provider = (os.environ.get("CDEM_LLM_PROVIDER") or "bailian").strip().lower()
-    default_model = "llama3.1:latest" if provider in {"ollama", "local"} else "qwen3.5-flash"
+    if provider in {"ollama", "local"}:
+        default_model = "llama3.1:latest"
+    elif provider in {"claude", "anthropic"}:
+        default_model = (os.environ.get("CDEM_CLAUDE_MODEL") or "claude-opus-4-7").strip()
+    else:
+        default_model = "qwen3.5-flash"
     MODEL_NAME = os.environ.get("CDEM_LLM_MODEL", default_model)
     
     # 5. 功能配置
