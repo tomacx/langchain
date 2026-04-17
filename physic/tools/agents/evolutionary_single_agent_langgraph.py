@@ -18,8 +18,21 @@ try:
 except Exception:
     pass
 
-from langchain_core.messages import HumanMessage, SystemMessage
-from langchain_core.tools import BaseTool
+try:
+    from langchain_core.messages import HumanMessage, SystemMessage
+    from langchain_core.tools import BaseTool
+except Exception:
+    class HumanMessage(dict):
+        def __init__(self, content: str = ""):
+            super().__init__(role="user", content=content)
+
+    class SystemMessage(dict):
+        def __init__(self, content: str = ""):
+            super().__init__(role="system", content=content)
+
+    class BaseTool:
+        name: str = ""
+        description: str = ""
 
 try:
     from langchain_ollama import ChatOllama
@@ -86,22 +99,39 @@ except Exception:
         def compile(self):
             return _CompiledGraph(self)
 
-import evo_game
-import evo_llm
-import evo_simulation
-import evo_scoring
-import evo_toolbox as evo_tb
 try:
-    from agent import AgentConstructionModule, AgentFeatureFlags, EvaluationModule, ToolConstructionModule, VectorKnowledgeBaseModule
+    import evo_game
+except Exception:
+    evo_game = None
+try:
+    import evo_llm
+except Exception:
+    evo_llm = None
+try:
+    import evo_simulation
+except Exception:
+    evo_simulation = None
+import evo_scoring
+try:
+    import evo_toolbox as evo_tb
+except Exception:
+    evo_tb = None
+try:
+    from agent_json import AgentConstructionModule, AgentFeatureFlags, EvaluationModule, ToolConstructionModule, VectorKnowledgeBaseModule
 
     _HAS_AGENT_STACK = True
 except Exception:
-    AgentConstructionModule = None
-    AgentFeatureFlags = None
-    EvaluationModule = None
-    ToolConstructionModule = None
-    VectorKnowledgeBaseModule = None
-    _HAS_AGENT_STACK = False
+    try:
+        from agent import AgentConstructionModule, AgentFeatureFlags, EvaluationModule, ToolConstructionModule, VectorKnowledgeBaseModule
+
+        _HAS_AGENT_STACK = True
+    except Exception:
+        AgentConstructionModule = None
+        AgentFeatureFlags = None
+        EvaluationModule = None
+        ToolConstructionModule = None
+        VectorKnowledgeBaseModule = None
+        _HAS_AGENT_STACK = False
 
 
 UtilityVector = Tuple[float, float, float]
@@ -232,6 +262,55 @@ def _load_best_agent_system_prompt() -> str:
     return _load_agent_system_prompt()
 
 
+TargetEngine = Literal["cdyna", "supercdem", "mudsim", "unknown"]
+
+
+def _infer_target_engine(query: str) -> TargetEngine:
+    raw = (os.environ.get("CDEM_MODULE") or "").strip().lower()
+    if raw in {"cdyna"}:
+        return "cdyna"
+    if raw in {"supercdem", "super-cdem"}:
+        return "supercdem"
+    if raw in {"mudsim"}:
+        return "mudsim"
+    ql = (query or "").lower()
+    if ("supercdem" in ql) or ("super-cdem" in ql):
+        return "supercdem"
+    if "mudsim" in ql:
+        return "mudsim"
+    if "cdyna" in ql:
+        return "cdyna"
+    if any(k in (query or "") for k in ["块体模块", "颗粒模块", "冲击波模块", "CDyna案例"]):
+        return "cdyna"
+    return "unknown"
+
+
+def _filter_reference_context_for_engine(tool_context: str, *, target: TargetEngine) -> Tuple[str, int]:
+    t = (tool_context or "").strip()
+    if not t:
+        return "", 0
+    if target == "cdyna":
+        banned = ["supercdem", "super-cdem", "mudsim"]
+    elif target == "supercdem":
+        banned = ["cdyna", "mudsim"]
+    elif target == "mudsim":
+        banned = ["cdyna", "supercdem", "super-cdem"]
+    else:
+        banned = []
+    parts = [p.strip() for p in t.split("\n\n") if p.strip()]
+    kept: List[str] = []
+    removed = 0
+    if not banned:
+        return t, 0
+    for p in parts:
+        pl = p.lower()
+        if any(b in pl for b in banned):
+            removed += 1
+            continue
+        kept.append(p)
+    return "\n\n".join(kept).strip(), removed
+
+
 class EvolutionaryAgentConstructionModule(AgentConstructionModule if _HAS_AGENT_STACK else object):
     def _build_agent(self):
         self.llm = _get_llm()
@@ -244,6 +323,9 @@ class EvolutionaryAgentConstructionModule(AgentConstructionModule if _HAS_AGENT_
         self.last_run_metrics = {}
 
         tool_context, retrieved_count = self._build_reference_context(query)
+        target_engine = _infer_target_engine(query)
+        removed_ctx = 0
+        tool_context, removed_ctx = _filter_reference_context_for_engine(tool_context, target=target_engine)
 
         class _GenState(TypedDict, total=False):
             query: str
@@ -254,10 +336,25 @@ class EvolutionaryAgentConstructionModule(AgentConstructionModule if _HAS_AGENT_
             history_len: int
 
         def _node_optimize(state: _GenState) -> _GenState:
+            sys_prompt = _load_best_agent_system_prompt()
+            dyn = (dynamic_sys_prompt or "").strip()
+            t_engine = _infer_target_engine(state.get("query", ""))
+            if t_engine == "cdyna":
+                hint = "请使用 CDyna 模块的对象与接口（块体/颗粒/冲击波等）；不要使用/引用 SuperCDEM 或 MudSim 的专用接口、对象、参数命名。"
+                dyn = (dyn + "\n" + hint).strip() if dyn else hint
+            elif t_engine == "supercdem":
+                hint = "请使用 SuperCDEM 对应的对象与接口；不要输出 CDyna 或 MudSim 的专用接口与参数命名。"
+                dyn = (dyn + "\n" + hint).strip() if dyn else hint
+            elif t_engine == "mudsim":
+                hint = "请使用 MudSim 对应的对象与接口；不要输出 CDyna 或 SuperCDEM 的专用接口与参数命名。"
+                dyn = (dyn + "\n" + hint).strip() if dyn else hint
+            if dyn:
+                sys_prompt = (sys_prompt + "\n\n【动态优化指令】\n" + dyn).strip()
             optimizer = evo_game.MultiObjectiveGameOptimizer(
                 llm=self.llm,
                 simulator=None,
-                system_prompt=_load_best_agent_system_prompt(),
+                system_prompt=sys_prompt,
+                domain="cdem_js",
             )
             result = optimizer.optimize(task=state.get("query", ""), tool_context=state.get("tool_context", ""))
             script = (result.script or "").strip()
@@ -289,6 +386,8 @@ class EvolutionaryAgentConstructionModule(AgentConstructionModule if _HAS_AGENT_
             "evo_breakdown": out.get("breakdown"),
             "evo_history_len": out.get("history_len"),
             "retrieved_count": retrieved_count,
+            "filtered_reference_context_parts": int(removed_ctx),
+            "target_engine": target_engine,
         }
         return code, time.time() - start_time, retrieved_count
 
@@ -353,6 +452,12 @@ class CDEMEvolutionaryAgentEvaluator:
     def evaluate_test_set(self, dataset_split_json: str, verbose: bool = False):
         self.eval_module.evaluate_test_set(dataset_split_json, verbose)
 
+    def evaluate_excel_file(self, excel_path: str, verbose: bool = False):
+        fn = getattr(self.eval_module, "evaluate_excel_file", None)
+        if callable(fn):
+            return fn(excel_path=excel_path, verbose=verbose)
+        raise RuntimeError("EvaluationModule does not support evaluate_excel_file")
+
     def run_custom_query(self, query: str, case_filename: Optional[str] = None, verbose: bool = True) -> Dict[str, Any]:
         return self.eval_module.run_custom_query(query=query, case_filename=case_filename, verbose=verbose)
 
@@ -397,7 +502,12 @@ class CDEMEvolutionaryAgentEvaluatorLite:
     def generate_code(self, query: str) -> tuple[str, float, int, Dict[str, Any]]:
         t0 = time.time()
         llm = _get_llm()
-        optimizer = evo_game.MultiObjectiveGameOptimizer(llm=llm, simulator=None, system_prompt=_load_best_agent_system_prompt())
+        optimizer = evo_game.MultiObjectiveGameOptimizer(
+            llm=llm,
+            simulator=None,
+            system_prompt=_load_best_agent_system_prompt(),
+            domain="cdem_js",
+        )
         result = optimizer.optimize(task=query, tool_context="")
         code = evo_game.extract_js_code(result.script or "")
         if "setCurDir(getSrcDir());" not in code:
@@ -462,6 +572,370 @@ class CDEMEvolutionaryAgentEvaluatorLite:
     def evaluate_test_set(self, dataset_split_json: str, verbose: bool = False):
         self._run_split(dataset_split_json, split_key="test", sample_size=None, verbose=verbose)
 
+    def evaluate_excel_file(self, excel_path: str, verbose: bool = False):
+        try:
+            import pandas as pd
+        except Exception as e:
+            raise ImportError(f"missing pandas for excel evaluation: {e}")
+        df = pd.read_excel(str(excel_path), dtype=str)
+        cols = {str(c).strip(): c for c in list(df.columns)}
+        q_col = cols.get("user_query") or cols.get("query") or cols.get("prompt") or None
+        id_col = cols.get("id") or cols.get("task_id") or None
+        out_dir_col = cols.get("output_dir") or None
+        rows = df.to_dict(orient="records")
+        for i, row in enumerate(rows, 1):
+            q = str(row.get(q_col) or "").strip() if q_col else ""
+            if not q:
+                continue
+            rid = str(row.get(id_col) or f"row_{i}").strip() if id_col else f"row_{i}"
+            out = self._run_query(q, verbose=bool(verbose))
+            rec = {"id": rid, "user_query": q, "generated_code": out.get("generated_code") or "", "meta": out.get("meta") or {}}
+            if out_dir_col:
+                rec["output_dir"] = str(row.get(out_dir_col) or "").strip()
+            self.results.append(rec)
+        return self.results
+
+
+def _infer_domain_from_query(query: str) -> evo_scoring.Domain:
+    q = (query or "").strip()
+    ql = q.lower()
+    gaia_mode = (os.environ.get("GAIA_MODE") or "").strip().lower() in {"1", "true", "on", "yes"}
+    if gaia_mode or ("gaia benchmark" in ql) or ("you are an evaluation assistant for the gaia benchmark" in ql):
+        return "gaia_text"
+    if ("diff --git " in q) or ("swe-bench" in ql) or ("unified diff" in ql):
+        return "swebench_patch"
+    if any(k in ql for k in ["cdem", "cdyna", "gflow", "mudsim", "supercdem"]):
+        return "cdem_js"
+    return "generic_text"
+
+
+def _is_gaia_tool_line(text: str) -> bool:
+    t = (text or "").strip()
+    if not t:
+        return False
+    t2 = re.sub(r"(?im)^\s*Final\s*answer\s*:\s*", "", t).strip()
+    return bool(re.match(r"(?im)^\s*TOO[LL]\s+(web_search|read_webpage|python_calculator)\s*:\s*.+\s*$", t2))
+
+
+def _looks_like_gaia_final_line(text: str) -> bool:
+    t = (text or "").strip()
+    if not t:
+        return False
+    return bool(re.match(r"(?im)^\s*Final\s*answer\s*:\s*.+\s*$", t))
+
+
+def _gaia_needs_verification(question: str) -> bool:
+    q = (question or "")
+    if "Attachment preview" in q or "Attachment path" in q:
+        return True
+    if re.search(r"\b(\d{1,2}:\d{2})\b", q):
+        return True
+    if re.search(r"\b(USD|EUR|km|kg|mph|AM|PM)\b", q, re.IGNORECASE):
+        return True
+    if any(k in q for k in ["总计", "合计", "平均", "最大", "最小", "最多", "最少", "比例", "百分比", "排名"]):
+        return True
+    return False
+
+
+def _merge_dynamic_prompt(base: str, extra: str) -> str:
+    b = (base or "").strip()
+    e = (extra or "").strip()
+    if not b:
+        return e
+    if not e:
+        return b
+    return (b + "\n\n" + e).strip()
+
+
+def _balanced_product(u: UtilityVector) -> float:
+    return float((u[0] + 1e-6) * (u[1] + 1e-6) * (u[2] + 1e-6))
+
+
+def _pareto_update(
+    archive: List[Tuple[str, UtilityVector, Dict[str, Any]]],
+    incoming: Sequence[Tuple[str, UtilityVector, Dict[str, Any]]],
+    *,
+    max_size: int,
+) -> Tuple[List[Tuple[str, UtilityVector, Dict[str, Any]]], bool]:
+    changed = False
+    items = list(archive)
+    for text, u, meta in incoming:
+        if any(_dominates(u_old, u) for _, u_old, _ in items):
+            continue
+        kept: List[Tuple[str, UtilityVector, Dict[str, Any]]] = []
+        removed = False
+        for it in items:
+            if _dominates(u, it[1]):
+                removed = True
+                continue
+            kept.append(it)
+        items = kept
+        items.append((text, u, meta))
+        changed = True or removed
+    if max_size > 0 and len(items) > max_size:
+        items = sorted(items, key=lambda x: _balanced_product(x[1]), reverse=True)[:max_size]
+        changed = True
+    return items, bool(changed)
+
+
+def _select_knee_from_archive(archive: Sequence[Tuple[str, UtilityVector, Dict[str, Any]]]) -> Tuple[str, UtilityVector, Dict[str, Any]]:
+    if not archive:
+        raise ValueError("empty archive")
+
+    def key_fn(it: Tuple[str, UtilityVector, Dict[str, Any]]) -> Tuple[float, float]:
+        u = it[1]
+        return (min(u[0], u[1], u[2]), _balanced_product(u))
+
+    return max(archive, key=key_fn)
+
+
+def _select_best_for_domain(
+    archive: Sequence[Tuple[str, UtilityVector, Dict[str, Any]]],
+    *,
+    domain: evo_scoring.Domain,
+) -> Tuple[str, UtilityVector, Dict[str, Any]]:
+    if not archive:
+        raise ValueError("empty archive")
+    if domain == "swebench_patch":
+        def key_fn(it: Tuple[str, UtilityVector, Dict[str, Any]]) -> Tuple[float, float, float]:
+            u = it[1]
+            return (float(u[1]), float(u[0]), float(u[2]))
+        return max(archive, key=key_fn)
+    if domain == "gaia_text":
+        def key_fn(it: Tuple[str, UtilityVector, Dict[str, Any]]) -> Tuple[float, float, float]:
+            u = it[1]
+            return (float(u[2]), float(u[1]), float(u[0]))
+        return max(archive, key=key_fn)
+    return _select_knee_from_archive(archive)
+
+
+class EvolutionaryWrapperAgentConstructionModule:
+    def __init__(
+        self,
+        *,
+        base_agent: Any,
+        domain: Optional[evo_scoring.Domain] = None,
+        max_iters: Optional[int] = None,
+        stall_iters: Optional[int] = None,
+        max_archive: Optional[int] = None,
+        validate_patch: Optional[Any] = None,
+        validate_output: Optional[Any] = None,
+    ):
+        self.base_agent = base_agent
+        self.tools = getattr(base_agent, "tools", None) or []
+        self.llm = getattr(base_agent, "llm", None)
+        self.system_prompt = getattr(base_agent, "system_prompt", "")
+        self.domain = domain
+        self.max_iters = max(1, int(max_iters if max_iters is not None else os.environ.get("CDEM_EVO_WRAP_MAX_ITERS", "2")))
+        self.stall_iters = max(1, int(stall_iters if stall_iters is not None else os.environ.get("CDEM_EVO_WRAP_STALL_ITERS", "1")))
+        self.max_archive = max(4, int(max_archive if max_archive is not None else os.environ.get("CDEM_EVO_WRAP_MAX_ARCHIVE", "16")))
+        self.validate_patch = validate_patch
+        self.validate_output = validate_output
+        self.last_run_metrics: Dict[str, Any] = {}
+
+    def generate_code(self, query: str, verbose: bool = False, dynamic_sys_prompt: str = "") -> tuple[str, float, int]:
+        t0 = time.time()
+        dom = self.domain or _infer_domain_from_query(query)
+        max_iters_eff = self.max_iters
+        if (not (os.environ.get("CDEM_EVO_WRAP_MAX_ITERS") or "").strip()) and dom in {"swebench_patch", "gaia_text"}:
+            max_iters_eff = 1
+        alpha = float(os.environ.get("CDEM_EVO_ALPHA", "0.5"))
+        beta = float(os.environ.get("CDEM_EVO_BETA", "0.5"))
+
+        archive: List[Tuple[str, UtilityVector, Dict[str, Any]]] = []
+        stall = 0
+        retrieved_total = 0
+        best_text = ""
+        best_meta: Dict[str, Any] = {}
+
+        def _score(text: str) -> Tuple[UtilityVector, Dict[str, Any]]:
+            phy_override = None
+            extra_meta: Dict[str, Any] = {}
+            if dom == "swebench_patch" and self.validate_patch is not None:
+                try:
+                    ok_v, err_v = self.validate_patch(text)
+                    ok_b = bool(ok_v)
+                    err_s = str(err_v or "")
+                except Exception as e:
+                    ok_b = False
+                    err_s = f"{type(e).__name__}: {e}"
+                phy_override = 1.0 if ok_b else 0.0
+                extra_meta["patch_ok"] = bool(ok_b)
+                extra_meta["patch_err"] = (err_s or "")[:1200]
+            elif self.validate_output is not None:
+                try:
+                    ok_v, err_v = self.validate_output(text)
+                    ok_b = bool(ok_v)
+                    err_s = str(err_v or "")
+                except Exception as e:
+                    ok_b = False
+                    err_s = f"{type(e).__name__}: {e}"
+                phy_override = 1.0 if ok_b else 0.0
+                extra_meta["output_ok"] = bool(ok_b)
+                extra_meta["output_err"] = (err_s or "")[:1200]
+            scores, breakdown = evo_scoring.score_all(
+                query=query,
+                script=text,
+                physics_score=phy_override,
+                alpha=alpha,
+                beta=beta,
+                domain=dom,
+            )
+            u = (float(scores.f_s), float(scores.f_f), float(scores.f_p or 0.0))
+            meta = {
+                "scores": {"f_s": scores.f_s, "f_f": scores.f_f, "f_p": scores.f_p},
+                "breakdown": {
+                    "simplicity": breakdown.simplicity,
+                    "fitness": breakdown.fitness,
+                    "physics": breakdown.physics,
+                },
+                **extra_meta,
+            }
+            return u, meta
+
+        if dom == "gaia_text" and (os.environ.get("CDEM_EVO_GAIA_SPECIAL") or "").strip().lower() in {"1", "true", "yes", "y", "on"}:
+            dyn0 = _merge_dynamic_prompt(
+                dynamic_sys_prompt,
+                "\n".join(
+                    [
+                        "优先正确性，其次合规性：",
+                        "- 如需外部信息/附件解析/计算，请先调用合适工具；工具可用时使用工具调用机制，否则用文本协议输出 TOOL ... 一行。",
+                        "- 最终答案必须严格一行：Final answer: <answer>",
+                        "- 对数字/时间/表格题，优先用计算或表格筛选验证，不要猜。",
+                    ]
+                ),
+            )
+            base_text, base_t, base_rc = self.base_agent.generate_code(query, verbose=verbose, dynamic_sys_prompt=dyn0)
+            retrieved_total = int(base_rc or 0)
+            best_text = base_text
+            best_meta = {}
+            u0, m0 = _score(base_text)
+            best_meta = {"focus": "gaia_first", **m0}
+            self.last_run_metrics = {
+                "evo_wrap_domain": dom,
+                "evo_wrap_iters": 1,
+                "evo_wrap_archive": 1,
+                "evo_wrap_best_scores": best_meta.get("scores"),
+                "evo_wrap_best_breakdown": best_meta.get("breakdown"),
+            }
+            return best_text, time.time() - t0, retrieved_total
+
+        fast = (os.environ.get("CDEM_EVO_WRAP_FAST") or "").strip().lower() in {"1", "true", "yes", "y", "on"}
+        if not (os.environ.get("CDEM_EVO_WRAP_FAST") or "").strip():
+            fast = dom == "swebench_patch"
+
+        if dom == "swebench_patch" and fast and max_iters_eff == 1:
+            dyn = _merge_dynamic_prompt(
+                dynamic_sys_prompt,
+                "\n".join(
+                    [
+                        "严格输出 unified diff 补丁：",
+                        "- 只输出补丁文本，不要解释，不要 Markdown 代码块。",
+                        "- 第一行必须以 diff --git a/... b/... 开头。",
+                        "- 补丁尽量小，只改最相关文件与最少行，避免无关格式化/重构。",
+                        "- 优先命中问题描述/报错/测试名中出现的文件路径与符号名。",
+                    ]
+                ),
+            )
+            txt, _, rc = self.base_agent.generate_code(query, verbose=verbose, dynamic_sys_prompt=dyn)
+            retrieved_total += int(rc or 0)
+            u, m = _score(txt)
+            best_text = txt
+            best_meta = {"focus": "one_shot", **m}
+            archive = [(best_text, u, best_meta)]
+            self.last_run_metrics = {
+                "evo_wrap_domain": dom,
+                "evo_wrap_iters": 1,
+                "evo_wrap_archive": 1,
+                "evo_wrap_best_scores": best_meta.get("scores"),
+                "evo_wrap_best_breakdown": best_meta.get("breakdown"),
+            }
+            return best_text, time.time() - t0, retrieved_total
+
+        for it in range(max_iters_eff):
+            candidates: List[Tuple[str, UtilityVector, Dict[str, Any]]] = []
+            base_text, _, base_retrieved = self.base_agent.generate_code(query, verbose=verbose, dynamic_sys_prompt=dynamic_sys_prompt)
+            retrieved_total += int(base_retrieved or 0)
+            u0, m0 = _score(base_text)
+            candidates.append((base_text, u0, {"focus": "base", **m0}))
+            if dom == "gaia_text" and float(u0[2]) >= 0.95:
+                best_text = base_text
+                best_meta = {"focus": "base", **m0}
+                archive, _ = _pareto_update(archive, candidates, max_size=self.max_archive)
+                break
+
+            patch_err_hint = ""
+            if dom == "swebench_patch":
+                patch_err_hint = str((candidates[-1][2].get("patch_err") or "")).strip()
+            output_err_hint = ""
+            if dom != "swebench_patch":
+                output_err_hint = str((candidates[-1][2].get("output_err") or "")).strip()
+
+            focus_prompts: List[Tuple[str, str]] = [
+                ("fitness", "优先提高拟合度：只做与问题描述直接相关的修改，尽量覆盖关键线索（报错信息/函数名/文件路径/测试名）。"),
+                ("simplicity", "优先提高简约性：输出尽量小且集中，避免无关的重构与大范围格式化。"),
+                ("physics", "优先提高合规性：严格遵守输出协议与平台约束；若有格式/校验错误，先修复错误再谈改进。"),
+            ]
+            if dom == "gaia_text":
+                focus_prompts = [
+                    ("physics", "优先提高合规性：只能输出 TOOL ... 或 Final answer: ... 一行；不要输出 JSON/代码块/多行文本。"),
+                    ("fitness", "优先提高正确性：对数字/时间/表格题，优先用 python_calculator 计算/筛选；需要网页信息再用 web_search/read_webpage。不要猜。"),
+                ]
+            elif dom == "swebench_patch":
+                err_tail = ("\n\n上一次补丁未通过校验，请修复后再输出完整补丁：\n" + patch_err_hint) if patch_err_hint else ""
+                focus_prompts = [
+                    ("physics", "优先提高合规性：只输出 unified diff，必须以 diff --git 开头；路径相对仓库根目录；不要输出解释或 Markdown。" + err_tail),
+                    ("fitness", "优先提高拟合度：补丁只修改最相关文件与最少行，直接修复问题描述。"),
+                ]
+                if not fast:
+                    focus_prompts.append(("simplicity", "优先提高简约性：避免无关改动与格式化，保持 diff 最小。"))
+            else:
+                if output_err_hint:
+                    focus_prompts = [
+                        (
+                            "physics",
+                            "优先提高合规性：若有格式/语法/测试错误，先修复错误再谈改进。\n\n上一次输出未通过校验，错误信息：\n"
+                            + output_err_hint,
+                        ),
+                        *[p for p in focus_prompts if p[0] != "physics"],
+                    ]
+
+            max_focus_raw = (os.environ.get("CDEM_EVO_WRAP_MAX_FOCUS") or "").strip()
+            if max_focus_raw:
+                try:
+                    max_focus = int(max_focus_raw)
+                    if max_focus <= 0:
+                        focus_prompts = []
+                    else:
+                        focus_prompts = focus_prompts[:max_focus]
+                except Exception:
+                    pass
+
+            for focus, extra in focus_prompts:
+                dyn = _merge_dynamic_prompt(dynamic_sys_prompt, extra)
+                txt, _, rc = self.base_agent.generate_code(query, verbose=False, dynamic_sys_prompt=dyn)
+                retrieved_total += int(rc or 0)
+                u, m = _score(txt)
+                candidates.append((txt, u, {"focus": focus, **m}))
+
+            archive, changed = _pareto_update(archive, candidates, max_size=self.max_archive)
+            if changed:
+                stall = 0
+            else:
+                stall += 1
+            best_text, _, best_meta = _select_best_for_domain(archive, domain=dom)
+            if stall >= self.stall_iters:
+                break
+
+        self.last_run_metrics = {
+            "evo_wrap_domain": dom,
+            "evo_wrap_iters": max_iters_eff,
+            "evo_wrap_archive": len(archive),
+            "evo_wrap_best_scores": best_meta.get("scores"),
+            "evo_wrap_best_breakdown": best_meta.get("breakdown"),
+        }
+        return best_text, time.time() - t0, retrieved_total
+
 
 def main():
     project_root = Path(__file__).resolve().parents[2]
@@ -483,17 +957,25 @@ def main():
     dataset_root = project_root / "dataset_split_results"
     default_dataset_split_json = dataset_root / "dataset_split.json"
     default_query_dataset_json = dataset_root / "case_queries_content.json"
+    default_excel_path = dataset_root / "case_20.xlsx"
     dataset_split_json = resolve_env_path("CDEM_DATASET_SPLIT_JSON", default_dataset_split_json)
     query_dataset_json = resolve_env_path("CDEM_QUERY_DATASET_JSON", default_query_dataset_json)
+    excel_path = resolve_env_path("CDEM_EVAL_EXCEL_PATH", default_excel_path)
 
     docs_root = project_root / "docs"
     default_test_data_dir = docs_root / "CDEM案例库及手册"
     test_data_dir = resolve_env_path("CDEM_CASE_DIR", default_test_data_dir)
 
     default_output_dir = Path(__file__).resolve().parent / "results/evaluation_results.evo_langgraph"
-    output_dir = resolve_env_path("CDEM_EVO_EVAL_OUTPUT_DIR", default_output_dir)
+    output_dir = (os.environ.get("CDEM_EVAL_OUTPUT_DIR") or "").strip()
+    if not output_dir:
+        output_dir = resolve_env_path("CDEM_EVO_EVAL_OUTPUT_DIR", default_output_dir)
+    else:
+        output_dir = resolve_env_path("CDEM_EVAL_OUTPUT_DIR", default_output_dir)
 
-    model_name = (os.environ.get("CDEM_LLM_MODEL") or "qwen2.5:14b").strip()
+    provider = (os.environ.get("CDEM_LLM_PROVIDER") or "bailian").strip().lower()
+    default_model = "llama3.1:latest" if provider in {"ollama", "local"} else "qwen3.5-flash"
+    model_name = (os.environ.get("CDEM_LLM_MODEL") or default_model).strip()
 
     if _HAS_AGENT_STACK:
         evaluator: Any = CDEMEvolutionaryAgentEvaluator(
@@ -511,6 +993,20 @@ def main():
             output_dir=output_dir,
             query_dataset_json=query_dataset_json,
         )
+
+    try:
+        excel_p = Path(excel_path)
+        if excel_p.exists():
+            print("\n" + "=" * 60)
+            print("检测到Excel评估文件，进入Excel评估模式")
+            print(f"Excel: {excel_p}")
+            print("=" * 60)
+            evaluator.evaluate_excel_file(str(excel_p), verbose=True)
+            print("\n✅ Excel评估完成！")
+            print(f"📁 结果保存在: {output_dir}")
+            return
+    except Exception as e:
+        print(f"⚠️ Excel评估模式初始化失败，将回退到原有评估流程: {e}")
 
     custom_query = (os.environ.get("CDEM_CUSTOM_QUERY") or "").strip()
     custom_case = (os.environ.get("CDEM_CUSTOM_CASE") or "").strip() or None

@@ -8,6 +8,7 @@ import sys
 import time
 import traceback
 import shutil
+import warnings
 from dataclasses import dataclass, asdict
 from datetime import datetime
 from pathlib import Path
@@ -26,6 +27,260 @@ def _ensure_physic_importable() -> None:
     langchain_root = here.parents[3]
     if str(langchain_root) not in sys.path:
         sys.path.insert(0, str(langchain_root))
+
+
+def _env_flag(key: str, default: bool = False) -> bool:
+    raw = (os.environ.get(key) or "").strip().lower()
+    if not raw:
+        return bool(default)
+    if raw in {"1", "true", "yes", "y", "on"}:
+        return True
+    if raw in {"0", "false", "no", "n", "off"}:
+        return False
+    return bool(default)
+
+
+def _build_gaia_preamble(agent_tool_names: List[str], *, force_text_protocol: bool = False) -> str:
+    tools = [t for t in agent_tool_names if t]
+    tools_str = ", ".join(tools) if tools else "(none)"
+    tool_calling_line = (
+        "Use the text protocol for tool usage (one line). Do NOT use tool-calling JSON.\n"
+        if force_text_protocol
+        else "Never write tool calls as JSON text; invoke tools via the tool-calling mechanism.\n"
+    )
+    text_protocol_intro = "" if force_text_protocol else "If tool calling is unavailable, use this text protocol instead (one line):\n"
+    output_rule = (
+        "".join(
+            [
+                "Output exactly ONE line.\n",
+                "If you need a tool, output ONLY the TOOL line (do NOT prefix it with 'Final answer:').\n",
+                "Otherwise, output:\n",
+                "Final answer: <answer>",
+            ]
+        )
+        if force_text_protocol
+        else "Output exactly ONE line, and ONLY the final answer, in this format:\nFinal answer: <answer>"
+    )
+    return "".join(
+        [
+            "You are an evaluation assistant for the GAIA benchmark.\n",
+            f"Available tools: {tools_str}.\n",
+            "Use the attachment preview/transcription/OCR as the primary source of truth.\n",
+            "Only use web_search/read_webpage if the question requires external information not present in the attachment preview.\n",
+            "Use python_calculator for arithmetic, counting, filtering, and simple parsing.\n",
+            "When using python_calculator, prefer a single Python expression.\n",
+            "If the attachment is CSV, you can assume a pandas DataFrame named df is available.\n",
+            "If the attachment is JSON/JSONLD, you can assume a Python object named attachment is available.\n",
+            "Do NOT output code, pseudocode, JSON tool-call blobs, or explanations.\n",
+            tool_calling_line,
+            text_protocol_intro,
+            "- TOOL web_search: <query>\n",
+            "- TOOL read_webpage: <url>\n",
+            "- TOOL python_calculator: <python expression>\n",
+            "When using the text protocol, output ONLY the TOOL line (do NOT prefix it with 'Final answer:').\n",
+            "If no tools are available, you must still answer (do NOT output TOOL).\n",
+            output_rule,
+        ]
+    )
+
+
+def _extract_text_tool_call(text: str) -> Tuple[str, str]:
+    t = (text or "").strip()
+    if not t:
+        return "", ""
+    t2 = re.sub(r"(?im)^\s*Final\s*answer\s*:\s*", "", t).strip()
+    t2 = re.sub(r"(?im)^\s*-\s*", "", t2).strip()
+    patterns = [
+        r"(?im)^\s*TOO[LL]\s+(web_search|read_webpage|python_calculator)\s*:\s*(.+?)\s*$",
+        r"(?im)^\s*TOO[LL]\s*:\s*(web_search|read_webpage|python_calculator)\s*:\s*(.+?)\s*$",
+        r"(?im)^\s*(web_search|read_webpage|python_calculator)\s*:\s*(.+?)\s*$",
+    ]
+    for p in patterns:
+        matches = re.findall(p, t2)
+        if matches:
+            m = matches[-1]
+            if len(m) == 2:
+                name, arg = m[0], m[1]
+            else:
+                name, arg = m[0], m[1]
+            return (str(name).strip(), str(arg).strip())
+    inner = re.findall(r"(?im)\bTOO[LL]\s+(web_search|read_webpage|python_calculator)\s*:\s*(.+?)\s*$", t2)
+    if inner:
+        name, arg = inner[-1]
+        return (str(name).strip(), str(arg).strip())
+    return "", ""
+
+
+def _web_search(query: str, max_results: int = 5) -> str:
+    q = (query or "").strip()
+    if not q:
+        return "(empty query)"
+    try:
+        from duckduckgo_search import DDGS
+
+        items = []
+        with DDGS() as ddgs:
+            for r in ddgs.text(q, max_results=max_results):
+                title = (r.get("title") or "").strip()
+                href = (r.get("href") or "").strip()
+                body = (r.get("body") or "").strip()
+                items.append(f"- {title}\n  {href}\n  {body}".strip())
+        return "\n".join(items[:max_results]) if items else "(no results)"
+    except Exception:
+        try:
+            import urllib.parse
+            import urllib.request
+
+            url = "https://html.duckduckgo.com/html/?q=" + urllib.parse.quote(q)
+            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                html = resp.read().decode("utf-8", errors="replace")
+            try:
+                from bs4 import BeautifulSoup
+
+                soup = BeautifulSoup(html, "html.parser")
+                out = []
+                for a in soup.select("a.result__a")[:max_results]:
+                    out.append(f"- {a.get_text(strip=True)}\n  {a.get('href')}")
+                return "\n".join(out) if out else "(no results)"
+            except Exception:
+                return _clip_text(html, 4000)
+        except Exception as e:
+            return f"web_search failed: {e}"
+
+
+def _read_webpage(url: str, max_chars: int = 8000) -> str:
+    u = (url or "").strip()
+    if not u:
+        return "(empty url)"
+    try:
+        import urllib.request
+
+        req = urllib.request.Request(u, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            html = resp.read().decode("utf-8", errors="replace")
+        try:
+            from bs4 import BeautifulSoup
+
+            soup = BeautifulSoup(html, "html.parser")
+            text = soup.get_text("\n", strip=True)
+            return _clip_text(text, max_chars)
+        except Exception:
+            text = re.sub(r"<[^>]+>", " ", html)
+            text = re.sub(r"\s+", " ", text).strip()
+            return _clip_text(text, max_chars)
+    except Exception as e:
+        return f"read_webpage failed: {e}"
+
+
+def _maybe_prefetch_web_context(question: str, max_chars: int = 6000) -> str:
+    if not _env_flag("GAIA_AUTO_PREFETCH_WEB", False):
+        return ""
+    q = (question or "").strip()
+    if not q:
+        return ""
+    urls = re.findall(r"https?://[^\s\)\]\}>,]+", q)
+    if urls:
+        u = str(urls[0]).strip()
+        return _read_webpage(u, max_chars=max_chars)
+    if "wikipedia" in q.lower():
+        sr = _web_search(q + " site:wikipedia.org", max_results=3)
+        m = re.search(r"https?://[^\s\)\]\}>,]+", sr)
+        if m:
+            return _read_webpage(m.group(0), max_chars=max_chars)
+    return ""
+
+
+def _python_calculator(expr: str, locals_extra: Optional[Dict[str, Any]] = None) -> str:
+    e = (expr or "").strip()
+    if not e:
+        return "(empty expression)"
+    if (len(e) >= 2) and ((e[0] == e[-1] == "\"") or (e[0] == e[-1] == "'")):
+        e = e[1:-1].strip()
+    if "\n" in e:
+        parts = [ln.strip() for ln in e.splitlines() if ln.strip()]
+        if parts:
+            e = parts[-1]
+    if ";" in e:
+        parts = [p.strip() for p in e.split(";") if p.strip()]
+        if parts:
+            e = parts[-1]
+    if "import " in e:
+        return "python_calculator failed: expression must be a single Python expression (no import)."
+    import math
+    import statistics
+    import re
+
+    safe_globals = {"__builtins__": {}}
+    safe_locals = {
+        "math": math,
+        "statistics": statistics,
+        "re": re,
+        "round": round,
+        "min": min,
+        "max": max,
+        "sum": sum,
+        "len": len,
+        "abs": abs,
+        "float": float,
+        "int": int,
+        "str": str,
+    }
+    if locals_extra:
+        safe_locals.update(locals_extra)
+    try:
+        val = eval(e, safe_globals, safe_locals)
+    except Exception as ex:
+        return f"python_calculator failed: {ex}"
+    return str(val)
+
+
+def _build_python_context_for_attachment(abs_attach: Optional[str], *, attachment_preview: Optional[str] = None) -> Dict[str, Any]:
+    ctx: Dict[str, Any] = {}
+    if not abs_attach:
+        return ctx
+    p = Path(str(abs_attach))
+    ext = p.suffix.lower()
+    ctx["attachment_path"] = str(p)
+    if attachment_preview:
+        ctx["attachment_text"] = str(attachment_preview)
+    if ext in {".csv"}:
+        try:
+            import pandas as pd
+
+            ctx["pd"] = pd
+            ctx["df"] = pd.read_csv(str(p))
+        except Exception:
+            pass
+    if ext in {".tsv"}:
+        try:
+            import pandas as pd
+
+            ctx["pd"] = pd
+            ctx["df"] = pd.read_csv(str(p), sep="\t")
+        except Exception:
+            pass
+    if ext in {".txt"}:
+        try:
+            t = p.read_text(encoding="utf-8", errors="replace")
+            ctx["attachment_text"] = t
+        except Exception:
+            pass
+    if ext in {".xlsx", ".xls"}:
+        try:
+            import pandas as pd
+
+            ctx["pd"] = pd
+            df = pd.read_excel(str(p))
+            ctx["df"] = df
+        except Exception:
+            pass
+    if ext in {".json", ".jsonld"}:
+        try:
+            ctx["attachment"] = json.loads(p.read_text(encoding="utf-8", errors="replace"))
+        except Exception:
+            pass
+    return ctx
 
 
 def _run_one_query_subprocess(
@@ -204,6 +459,7 @@ def _numeric_match(gold: str, pred: str, abs_tol: float = 1e-6, rel_tol: float =
 @dataclass
 class ScoredItem:
     item_id: str
+    level: Optional[int]
     question: str
     gold: str
     pred_raw: str
@@ -233,6 +489,13 @@ def score_answer(gold: str, pred_raw: str) -> Tuple[bool, str, str, float]:
     ng = _normalize_answer(gold_s)
     np = _normalize_answer(pred_final)
     sim = _similarity(ng, np)
+
+    if ng in {"yes", "no"} and np in {"true", "false"}:
+        np = "yes" if np == "true" else "no"
+        sim = _similarity(ng, np)
+    if ng in {"true", "false"} and np in {"yes", "no"}:
+        ng = "yes" if ng == "true" else "no"
+        sim = _similarity(ng, np)
 
     if ng and np and ng == np:
         return True, "exact", pred_final, sim
@@ -375,10 +638,10 @@ def _attachment_preview(abs_path: str, max_chars: int = 20000) -> str:
     if ext in {".xlsx", ".xlsm", ".xls"}:
         try:
             import pandas as pd
-            xls = pd.ExcelFile(str(p))
-            sheets = list(xls.sheet_names or [])
-            out = [f"Excel sheets: {sheets}"]
-            sheet0 = sheets[0] if sheets else None
+            with pd.ExcelFile(str(p)) as xls:
+                sheets = list(xls.sheet_names or [])
+                out = [f"Excel sheets: {sheets}"]
+                sheet0 = sheets[0] if sheets else None
             if sheet0:
                 df = pd.read_excel(str(p), sheet_name=sheet0, nrows=30)
                 out.append(f"\nSheet: {sheet0}")
@@ -389,7 +652,7 @@ def _attachment_preview(abs_path: str, max_chars: int = 20000) -> str:
                     nan_ratio = float(df.isna().sum().sum()) / float(df.size or 1)
                 except Exception:
                     nan_ratio = 0.0
-                needs_style = force_style_preview or (nan_ratio >= 0.85)
+                needs_style = force_style_preview or (nan_ratio >= 0.85) or bool(getattr(df, "empty", False)) or (len(getattr(df, "columns", [])) == 0)
                 if style_preview_enabled and needs_style:
                     try:
                         import openpyxl
@@ -414,51 +677,57 @@ def _attachment_preview(abs_path: str, max_chars: int = 20000) -> str:
                         max_cols = max(1, min(120, max_cols))
 
                         wb = openpyxl.load_workbook(str(p), data_only=True)
-                        ws = wb.active
-                        r_lim = min(int(getattr(ws, "max_row", 0) or 0), max_rows) or max_rows
-                        c_lim = min(int(getattr(ws, "max_column", 0) or 0), max_cols) or max_cols
+                        try:
+                            ws = wb.active
+                            r_lim = min(int(getattr(ws, "max_row", 0) or 0), max_rows) or max_rows
+                            c_lim = min(int(getattr(ws, "max_column", 0) or 0), max_cols) or max_cols
 
-                        palette: dict[str, str] = {}
-                        grid_lines: list[str] = []
-                        for r in range(1, r_lim + 1):
-                            row_tokens: list[str] = []
-                            any_nonempty = False
-                            for c in range(1, c_lim + 1):
-                                cell = ws.cell(row=r, column=c)
-                                v = cell.value
-                                if v is not None and str(v).strip() != "":
-                                    s = str(v).strip().replace("\n", " ").replace("\r", " ")
-                                    row_tokens.append(s[:6])
-                                    any_nonempty = True
-                                    continue
+                            palette: dict[str, str] = {}
+                            grid_lines: list[str] = []
+                            for r in range(1, r_lim + 1):
+                                row_tokens: list[str] = []
+                                any_nonempty = False
+                                for c in range(1, c_lim + 1):
+                                    cell = ws.cell(row=r, column=c)
+                                    v = cell.value
+                                    if v is not None and str(v).strip() != "":
+                                        s = str(v).strip().replace("\n", " ").replace("\r", " ")
+                                        row_tokens.append(s[:6])
+                                        any_nonempty = True
+                                        continue
 
-                                rgb = ""
-                                try:
-                                    fg = getattr(getattr(cell, "fill", None), "fgColor", None)
-                                    if fg is not None and getattr(fg, "type", None) == "rgb":
-                                        rgb = _norm_rgb(getattr(fg, "rgb", "") or "")
-                                except Exception:
                                     rgb = ""
+                                    try:
+                                        fg = getattr(getattr(cell, "fill", None), "fgColor", None)
+                                        if fg is not None and getattr(fg, "type", None) == "rgb":
+                                            rgb = _norm_rgb(getattr(fg, "rgb", "") or "")
+                                    except Exception:
+                                        rgb = ""
 
-                                if rgb and rgb not in {"FFFFFF", "000000"}:
-                                    if rgb not in palette:
-                                        palette[rgb] = _label_for(len(palette))
-                                    row_tokens.append(palette[rgb])
-                                    any_nonempty = True
-                                else:
-                                    row_tokens.append(".")
+                                    if rgb and rgb not in {"FFFFFF", "000000"}:
+                                        if rgb not in palette:
+                                            palette[rgb] = _label_for(len(palette))
+                                        row_tokens.append(palette[rgb])
+                                        any_nonempty = True
+                                    else:
+                                        row_tokens.append(".")
 
-                            if any_nonempty and any(t != "." for t in row_tokens):
-                                grid_lines.append(" ".join(row_tokens).rstrip())
+                                if any_nonempty and any(t != "." for t in row_tokens):
+                                    grid_lines.append(" ".join(row_tokens).rstrip())
 
-                        legend_lines = []
-                        if palette:
-                            legend_lines.append("Legend (fill colors):")
-                            for rgb, lab in list(palette.items())[:80]:
-                                legend_lines.append(f"{lab}={rgb}")
+                            legend_lines = []
+                            if palette:
+                                legend_lines.append("Legend (fill colors):")
+                                for rgb, lab in list(palette.items())[:80]:
+                                    legend_lines.append(f"{lab}={rgb}")
 
-                        style_txt = "Excel style preview (openpyxl fills):\n" + ("\n".join(grid_lines) if grid_lines else "(no styled cells detected)") + ("\n\n" + "\n".join(legend_lines) if legend_lines else "")
-                        out.append("\n" + style_txt)
+                            style_txt = "Excel style preview (openpyxl fills):\n" + ("\n".join(grid_lines) if grid_lines else "(no styled cells detected)") + ("\n\n" + "\n".join(legend_lines) if legend_lines else "")
+                            out.append("\n" + style_txt)
+                        finally:
+                            try:
+                                wb.close()
+                            except Exception:
+                                pass
                     except Exception:
                         pass
             return _clip_text("\n".join(out), max_chars)
@@ -906,6 +1175,7 @@ def evaluate_gaia(
     dataset_path: str,
     model_name: str,
     output_dir: str,
+    backend: str = "cdem",
     limit: Optional[int] = None,
     offset: int = 0,
     shuffle: bool = False,
@@ -922,6 +1192,8 @@ def evaluate_gaia(
     timeout_s: Optional[float] = None,
     gaia_preamble: bool = True,
     preamble_text: Optional[str] = None,
+    format_retry: bool = True,
+    format_retry_rounds: int = 1,
 ) -> Dict[str, Any]:
     ds_path = Path(dataset_path)
     items = _load_json_any(ds_path)
@@ -962,28 +1234,63 @@ def evaluate_gaia(
 
     evaluator = None
     agent_tool_names: List[str] = []
+    force_text_protocol = False
     if not dry_run:
         _ensure_physic_importable()
-        from physic.tools.agents.agent import CDEMAgentEvaluator
+        backend_s = (backend or "").strip().lower() or "cdem"
+        force_text_protocol = backend_s in {"evo", "evolutionary"} or backend_s.startswith("metagpt")
+        if backend_s in {"metagpt", "metagpt_evo"}:
+            from physic.tools.agents.metagpt_evaluator import MetaGPTEvaluator
 
-        defaults = _default_paths()
-        evaluator = CDEMAgentEvaluator(
-            vector_db_path=defaults["vector_db_path"],
-            vector_db_collection=defaults["vector_db_collection"],
-            test_data_dir=str(out_dir),
-            output_dir=str(out_dir),
-            model_name=model_name,
-            enable_preprocessing=False,
-            query_dataset_json=None,
-        )
-        try:
-            tools_obj = getattr(getattr(evaluator, "agent_module", None), "tools", None) or []
-            for t in tools_obj:
-                name = getattr(t, "name", None)
-                if name:
-                    agent_tool_names.append(str(name))
-        except Exception:
+            use_evo = backend_s == "metagpt_evo" or _as_bool(os.environ.get("METAGPT_USE_EVO"), default=False)
+            evaluator = MetaGPTEvaluator(model_name=model_name, use_evo=use_evo)
             agent_tool_names = []
+        elif backend_s in {"evo", "evolutionary"}:
+            from physic.tools.agents.agent import CDEMAgentEvaluator
+            from physic.tools.agents.evolutionary_single_agent_langgraph import EvolutionaryWrapperAgentConstructionModule
+
+            defaults = _default_paths()
+            evaluator = CDEMAgentEvaluator(
+                vector_db_path=defaults["vector_db_path"],
+                vector_db_collection=defaults["vector_db_collection"],
+                test_data_dir=str(out_dir),
+                output_dir=str(out_dir),
+                model_name=model_name,
+                enable_preprocessing=False,
+                query_dataset_json=None,
+            )
+            try:
+                tools_obj = getattr(getattr(evaluator, "agent_module", None), "tools", None) or []
+                for t in tools_obj:
+                    name = getattr(t, "name", None)
+                    if name:
+                        agent_tool_names.append(str(name))
+            except Exception:
+                agent_tool_names = []
+            wrapper = EvolutionaryWrapperAgentConstructionModule(base_agent=evaluator.agent_module, domain="gaia_text")
+            evaluator.agent_module = wrapper
+            evaluator.eval_module.agent_module = wrapper
+        else:
+            from physic.tools.agents.agent import CDEMAgentEvaluator
+
+            defaults = _default_paths()
+            evaluator = CDEMAgentEvaluator(
+                vector_db_path=defaults["vector_db_path"],
+                vector_db_collection=defaults["vector_db_collection"],
+                test_data_dir=str(out_dir),
+                output_dir=str(out_dir),
+                model_name=model_name,
+                enable_preprocessing=False,
+                query_dataset_json=None,
+            )
+            try:
+                tools_obj = getattr(getattr(evaluator, "agent_module", None), "tools", None) or []
+                for t in tools_obj:
+                    name = getattr(t, "name", None)
+                    if name:
+                        agent_tool_names.append(str(name))
+            except Exception:
+                agent_tool_names = []
 
         has_file_tools = any(x in {"read_local_file", "list_local_dir"} for x in agent_tool_names)
         if (not bool(inline_attachment)) and (not has_file_tools):
@@ -1004,32 +1311,37 @@ def evaluate_gaia(
     dataset_dir = ds_path.resolve().parent
     gaia_preamble_text = (preamble_text or os.environ.get("GAIA_PROMPT_PREAMBLE") or "").strip()
     if gaia_preamble and not gaia_preamble_text:
-        gaia_preamble_text = (
-            "You are an evaluation assistant for the GAIA benchmark.\n"
-            "You are equipped with powerful tools including web_search, read_webpage, and python_calculator.\n"
-            "You MUST use these tools to search the internet, read specific web pages, or perform calculations to find the correct answer.\n"
-            "If the question includes 'Attachment path:' and an 'Attachment preview:' is provided, use that preview as the file contents.\n"
-            "Do NOT output code, pseudocode, explanations, or multiple lines as your final answer.\n"
-            "Even if the question says 'using Python' or names a library, use the python_calculator tool to do the computation and only output the final result.\n"
-            "Respect formatting requirements in the question (e.g., commas, ordering, no whitespace, rounding).\n"
-            "Output exactly ONE line in this format at the very end of your response when you have the final answer:\n"
-            "Final answer: <answer>"
-        )
+        gaia_preamble_text = _build_gaia_preamble(agent_tool_names, force_text_protocol=force_text_protocol)
 
     with open(pred_path, "w", encoding="utf-8") as f, open(submission_path, "w", encoding="utf-8") as sf:
         for idx, item in enumerate(items, 1):
             item_id = str(_pick_first(item, i_keys) or f"I{idx:06d}")
             question_raw = str(_pick_first(item, q_keys) or "").strip()
+            try:
+                lvl_val = int(item.get("Level")) if item.get("Level") is not None else None
+            except Exception:
+                lvl_val = None
             abs_attach = _get_attachment_abs_path(item=item, repo_root=repo_root, dataset_dir=dataset_dir)
             question = (question_raw or "").strip()
             if gaia_preamble and gaia_preamble_text:
                 question = gaia_preamble_text + "\n\n" + question
+            preview: str = ""
             if abs_attach:
                 question += "\n\n" + f"Attachment path: {abs_attach}"
                 if inline_attachment:
-                    preview = _attachment_preview(abs_attach, max_chars=int(inline_max_chars))
+                    eff_max_chars = int(inline_max_chars)
+                    if lvl_val == 3:
+                        try:
+                            eff_max_chars = max(eff_max_chars, int(os.environ.get("GAIA_LEVEL3_INLINE_MAX_CHARS", "60000")))
+                        except Exception:
+                            eff_max_chars = max(eff_max_chars, 60000)
+                    preview = _attachment_preview(abs_attach, max_chars=int(eff_max_chars)) or ""
                     if preview:
                         question += "\n\nAttachment preview:\n" + preview
+            else:
+                prefetch = _maybe_prefetch_web_context(question_raw)
+                if prefetch:
+                    question += "\n\nPrefetched webpage context:\n" + prefetch
             gold = str(_pick_first(item, a_keys) or "").strip()
             if not question:
                 continue
@@ -1076,11 +1388,152 @@ def evaluate_gaia(
                     pred_raw = ""
                     gen_meta = {"error": str(e)}
 
+            if evaluator is not None:
+                seen_tool_calls: set = set()
+                max_tool_steps = 6
+                if lvl_val == 3:
+                    try:
+                        max_tool_steps = max(max_tool_steps, int(os.environ.get("GAIA_LEVEL3_MAX_TOOL_STEPS", "10")))
+                    except Exception:
+                        max_tool_steps = max(max_tool_steps, 10)
+
+                if lvl_val == 3 and abs_attach:
+                    tn0, _ = _extract_text_tool_call(pred_raw)
+                    if not tn0:
+                        try:
+                            nudge = (
+                                "This is a Level 3 GAIA question and includes an attachment.\n"
+                                "Before answering, you MUST use python_calculator to parse/extract/compute from the attachment preview.\n"
+                                "Output ONLY one line in the text protocol:\n"
+                                "TOOL python_calculator: <one Python expression>\n\n"
+                                f"{question}\n"
+                            )
+                            out_n = evaluator.run_custom_query(nudge, case_filename=None, verbose=False)
+                            pred_raw_n = str(out_n.get("generated_code") or "").strip()
+                            if pred_raw_n:
+                                pred_raw = pred_raw_n
+                                gen_meta = dict(gen_meta)
+                                gen_meta["gaia_level3_tool_nudge"] = True
+                        except Exception:
+                            pass
+
+                for _ in range(int(max_tool_steps)):
+                    tool_name, tool_arg = _extract_text_tool_call(pred_raw)
+                    if not tool_name:
+                        break
+                    sig = (tool_name, tool_arg)
+                    if sig in seen_tool_calls:
+                        break
+                    seen_tool_calls.add(sig)
+                    try:
+                        if tool_name == "web_search":
+                            tool_out = _web_search(tool_arg)
+                        elif tool_name == "read_webpage":
+                            tool_out = _read_webpage(tool_arg)
+                        elif tool_name == "python_calculator":
+                            ctx = _build_python_context_for_attachment(abs_attach, attachment_preview=preview)
+                            tool_out = _python_calculator(tool_arg, locals_extra=ctx)
+                        else:
+                            break
+                        if tool_name == "web_search":
+                            try:
+                                urls = re.findall(r"https?://\\S+", str(tool_out))
+                            except Exception:
+                                urls = []
+                            if urls:
+                                top_url = urls[0].rstrip(").,;\"'")
+                                try:
+                                    page = _read_webpage(top_url)
+                                    tool_out = (str(tool_out).rstrip() + "\n\nAuto-read top result:\n" + str(page).strip()).strip()
+                                except Exception:
+                                    pass
+                        if tool_name == "python_calculator" and str(tool_out).startswith("python_calculator failed:"):
+                            fix_followup = (
+                                "Your python_calculator expression failed.\n\n"
+                                f"Error: {tool_out}\n\n"
+                                "Output ONLY one line in the text protocol with a corrected single Python expression:\n"
+                                "TOOL python_calculator: <python expression>\n\n"
+                                "Notes:\n"
+                                "- If a DataFrame is available, use df.\n"
+                                "- If a JSON object is available, use attachment.\n"
+                                "- You can use attachment_text (string) for regex extraction.\n\n"
+                                f"{question}\n"
+                            )
+                            out_fix = evaluator.run_custom_query(fix_followup, case_filename=None, verbose=False)
+                            pred_raw = str(out_fix.get("generated_code") or "").strip()
+                            gen_meta = dict(gen_meta)
+                            gen_meta["text_tool_protocol"] = True
+                            gen_meta["python_calculator_fixup"] = True
+                            continue
+                        followup = (
+                            "You requested a tool. Here is the tool result.\n\n"
+                            f"Tool: {tool_name}\n"
+                            f"Input: {tool_arg}\n"
+                            "Output:\n"
+                            f"{tool_out}\n\n"
+                            "Now answer the GAIA question.\n"
+                            "Output exactly ONE line:\n"
+                            "Final answer: <answer>\n\n"
+                            f"{question}\n"
+                        )
+                        out_t = evaluator.run_custom_query(followup, case_filename=None, verbose=False)
+                        pred_raw = str(out_t.get("generated_code") or "").strip()
+                        gen_meta = dict(gen_meta)
+                        gen_meta["text_tool_protocol"] = True
+                    except Exception:
+                        break
+
+            if evaluator is not None and bool(format_retry) and int(format_retry_rounds or 0) > 0:
+                pred_final_probe = _extract_final_answer(pred_raw)
+
+                def _bad_final(ans: str, raw: str) -> bool:
+                    a = (ans or "").strip()
+                    r = (raw or "").strip()
+                    if not a:
+                        return True
+                    if a.startswith("{") and a.endswith("}"):
+                        return True
+                    if re.search(r"(?i)\bTOO[LL]\b\s+(web_search|read_webpage|python_calculator)\s*:", a):
+                        return True
+                    if "资料不足" in a or "insufficient" in a.lower():
+                        return True
+                    if "```" in r:
+                        return True
+                    if "\"name\"" in r and ("python_calculator" in r or "web_search" in r or "read_webpage" in r):
+                        return True
+                    if ("{" in a) or ("}" in a):
+                        return True
+                    return False
+
+                if _bad_final(pred_final_probe, pred_raw):
+                    for _ in range(max(1, int(format_retry_rounds))):
+                        try:
+                            fix_prompt = (
+                                "Rewrite the final answer only.\n"
+                                "Output exactly ONE line:\n"
+                                "Final answer: <answer>\n"
+                                "Do NOT output code, JSON, or any extra text.\n\n"
+                                "GAIA question (with attachment preview):\n"
+                                f"{question}\n\n"
+                                "Previous response:\n"
+                                f"{pred_raw}\n"
+                            )
+                            out2 = evaluator.run_custom_query(fix_prompt, case_filename=None, verbose=False)
+                            pred_raw2 = str(out2.get("generated_code") or "").strip()
+                            if pred_raw2:
+                                pred_raw = pred_raw2
+                                gen_meta = dict(gen_meta)
+                                gen_meta["format_retry"] = True
+                                break
+                        except Exception:
+                            break
+
             is_ok, match_type, pred_final, sim = score_answer(gold=gold, pred_raw=pred_raw)
             if is_ok:
                 correct += 1
             scored_item = ScoredItem(
                 item_id=item_id,
+                level=lvl_val,
                 question=question,
                 gold=gold,
                 pred_raw=pred_raw,
@@ -1114,14 +1567,41 @@ def evaluate_gaia(
     for s in scored:
         by_type[s.match_type] = by_type.get(s.match_type, 0) + 1
 
+    by_level: Dict[str, Dict[str, float]] = {}
+    by_level_named: Dict[str, Dict[str, float]] = {}
+    lvl_counts: Dict[int, int] = {}
+    lvl_correct: Dict[int, int] = {}
+    for s in scored:
+        try:
+            lvl = int(s.level) if s.level is not None else -1
+        except Exception:
+            lvl = -1
+        if lvl in {1, 2, 3}:
+            lvl_counts[lvl] = lvl_counts.get(lvl, 0) + 1
+            if bool(s.correct):
+                lvl_correct[lvl] = lvl_correct.get(lvl, 0) + 1
+    for lvl in (1, 2, 3):
+        total_l = int(lvl_counts.get(lvl) or 0)
+        correct_l = int(lvl_correct.get(lvl) or 0)
+        rec = {
+            "total": total_l,
+            "correct": correct_l,
+            "accuracy": float(round((correct_l / max(total_l, 1)), 6)) if total_l > 0 else 0.0,
+        }
+        by_level[str(lvl)] = rec
+        by_level_named[f"level{lvl}"] = rec
+
     summary = {
         "ok": True,
         "dataset": str(ds_path),
         "model": model_name,
+        "backend": str(backend or "cdem"),
         "dry_run": bool(dry_run),
         "total": int(len(scored)),
         "correct": int(correct),
         "accuracy": float(round(accuracy, 6)),
+        "by_level": by_level,
+        "by_level_named": by_level_named,
         "match_type_counts": by_type,
         "output_predictions_jsonl": str(pred_path),
         "output_submission_jsonl": str(submission_path),
@@ -1155,6 +1635,7 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--dataset", type=str, default=os.environ.get("GAIA_DATASET_PATH") or "", help="GAIA 数据集文件路径（.json/.jsonl/.parquet）")
     ap.add_argument("--model", type=str, default=(os.environ.get("CDEM_LLM_MODEL") or "qwen3.5-flash"), help="模型名")
+    ap.add_argument("--backend", type=str, default=(os.environ.get("GAIA_BACKEND") or "cdem"), help="cdem/metagpt")
     ap.add_argument("--output_dir", type=str, default=(_default_paths()["output_dir"]), help="输出目录")
     ap.add_argument("--limit", type=int, default=None)
     ap.add_argument("--offset", type=int, default=0)
@@ -1177,6 +1658,8 @@ def main() -> None:
     ap.add_argument("--gaia_preamble_text", type=str, default="", help="自定义 GAIA 前导指令（覆盖默认/环境变量 GAIA_PROMPT_PREAMBLE）")
     ap.add_argument("--gaia_preamble_file", type=str, default="", help="从文件读取 GAIA 前导指令（优先级高于 --gaia_preamble_text 与环境变量）")
     ap.add_argument("--no_force_task_type", action="store_true", help="不强制将 CDEM_TASK_TYPE 设为 qa（默认 GAIA 评测会强制，以避免误走脚本生成分支）")
+    ap.add_argument("--no_format_retry", action="store_true", help="不做格式化二次重试（默认开启：当输出为代码/JSON/资料不足/无Final时会再追问一次只输出Final answer）")
+    ap.add_argument("--format_retry_rounds", type=int, default=1, help="格式化重试轮数（默认 1）")
     ap.add_argument("--download_hf", action="store_true", help="从 HuggingFace 下载 GAIA（需要 HF_TOKEN 且已在网页同意条款）")
     ap.add_argument("--hf_dir", type=str, default=str(Path(__file__).resolve().parent / "data" / "GAIA"), help="下载目录（--download_hf 生效）")
     ap.add_argument("--subset", type=str, default="2023_all", help="2023_all/2023_level1/2023_level2/2023_level3（--download_hf 生效）")
@@ -1194,12 +1677,22 @@ def main() -> None:
     ap.add_argument("--self_test", action="store_true")
     args = ap.parse_args()
 
+    if _env_flag("GAIA_SUPPRESS_WARNINGS", True):
+        warnings.filterwarnings("ignore", category=ResourceWarning)
+        warnings.filterwarnings("ignore", category=DeprecationWarning, message=r".*swigvarlink.*")
+
     if args.self_test:
         raise SystemExit(_run_self_test())
 
     if not bool(args.no_force_gaia_mode):
         os.environ["GAIA_MODE"] = "1"
     gaia_mode = (os.environ.get("GAIA_MODE") or "").strip() in {"1", "true", "on", "yes"}
+
+    if gaia_mode and (not _env_flag("GAIA_KEEP_CUSTOM_SYSTEM_PROMPT", False)):
+        os.environ["CDEM_SYSTEM_PROMPT_MODE"] = "generic"
+
+    if gaia_mode and (not bool(args.disable_tools)):
+        os.environ["CDEM_ENABLE_TOOLS"] = "1"
 
     dataset_path = (args.dataset or "").strip()
     if args.download_hf or not dataset_path:
@@ -1239,6 +1732,7 @@ def main() -> None:
         dataset_path=dataset_path,
         model_name=args.model,
         output_dir=args.output_dir,
+        backend=str(args.backend),
         limit=args.limit,
         offset=args.offset,
         shuffle=bool(args.shuffle),
@@ -1259,6 +1753,8 @@ def main() -> None:
             if str(args.gaia_preamble_file or "").strip()
             else (str(args.gaia_preamble_text or "").strip() or None)
         ),
+        format_retry=(not bool(args.no_format_retry)),
+        format_retry_rounds=int(args.format_retry_rounds),
     )
     print(json.dumps(summary, ensure_ascii=False, indent=2))
 

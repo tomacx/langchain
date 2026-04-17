@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
-from evo_scoring import ObjectiveScores, ScoreBreakdown, dominates, score_all, weighted_score
+from evo_scoring import Domain, ObjectiveScores, ScoreBreakdown, dominates, score_all, weighted_score
 from evo_simulation import PhysicsSimulator, SimulationFeedback, physical_score_from_feedback
 
 
@@ -60,6 +60,9 @@ class GameConfig:
     target_f_s: float = 0.75
     target_f_f: float = 0.75
     target_f_p: float = 0.70
+    stall_iters: int = 2
+    variants_per_focus: int = 1
+    max_archive: int = 24
 
 
 @dataclass(frozen=True)
@@ -80,6 +83,16 @@ class OptimizationResult:
 
 
 def _as_focus_list(physics_available: bool) -> List[str]:
+    raw = (os.environ.get("CDEM_EVO_FOCI") or "").strip().lower()
+    if raw:
+        parts = [p.strip() for p in re.split(r"[,\s]+", raw) if p.strip()]
+        valid = {"physics", "fitness", "simplicity"}
+        forced: List[str] = []
+        for p in parts:
+            if p in valid and p not in forced:
+                forced.append(p)
+        if forced:
+            return forced
     if physics_available:
         return ["physics", "fitness", "simplicity"]
     return ["fitness", "simplicity"]
@@ -152,6 +165,111 @@ def _feedback_text(scores: ObjectiveScores, breakdown: ScoreBreakdown, focus: st
     return "\n".join(lines)
 
 
+def _archive_key(scores: ObjectiveScores) -> Tuple[int, int, int]:
+    return (
+        int(round(scores.f_s * 1000)),
+        int(round(scores.f_f * 1000)),
+        int(round((float(scores.f_p) if scores.f_p is not None else 0.0) * 1000)),
+    )
+
+
+def _balanced_product(scores: ObjectiveScores) -> float:
+    fp = float(scores.f_p) if scores.f_p is not None else 0.0
+    return float((scores.f_s + 1e-6) * (scores.f_f + 1e-6) * (fp + 1e-6))
+
+
+def _archive_update(
+    archive: List[Tuple[str, ObjectiveScores, ScoreBreakdown, Optional[SimulationFeedback]]],
+    incoming: Sequence[Tuple[str, ObjectiveScores, ScoreBreakdown, Optional[SimulationFeedback]]],
+    *,
+    max_size: int,
+) -> Tuple[List[Tuple[str, ObjectiveScores, ScoreBreakdown, Optional[SimulationFeedback]]], bool]:
+    items = list(archive)
+    changed = False
+    for cand in incoming:
+        s_new = cand[1]
+        dominated_by_existing = any(dominates(s_old, s_new) for _, s_old, _, _ in items)
+        if dominated_by_existing:
+            continue
+        kept: List[Tuple[str, ObjectiveScores, ScoreBreakdown, Optional[SimulationFeedback]]] = []
+        removed_any = False
+        for it in items:
+            if dominates(s_new, it[1]):
+                removed_any = True
+                continue
+            kept.append(it)
+        items = kept
+        key_new = _archive_key(s_new)
+        existing_keys = {_archive_key(x[1]) for x in items}
+        if key_new in existing_keys:
+            for i, it in enumerate(items):
+                if _archive_key(it[1]) == key_new and _balanced_product(s_new) > _balanced_product(it[1]):
+                    items[i] = cand
+                    changed = True
+                    break
+            continue
+        items.append(cand)
+        changed = True
+        if removed_any:
+            changed = True
+
+    front = _pareto_front(items)
+    if len(front) != len(items):
+        items = front
+        changed = True
+
+    if max_size > 0 and len(items) > max_size:
+        items = sorted(items, key=lambda x: _balanced_product(x[1]), reverse=True)[:max_size]
+        changed = True
+    return items, bool(changed)
+
+
+def _crowding_distance(
+    items: Sequence[Tuple[str, ObjectiveScores, ScoreBreakdown, Optional[SimulationFeedback]]],
+) -> Dict[int, float]:
+    if not items:
+        return {}
+    n = len(items)
+    dist = {i: 0.0 for i in range(n)}
+    dims = [
+        ("f_s", lambda s: float(s.f_s)),
+        ("f_f", lambda s: float(s.f_f)),
+        ("f_p", lambda s: float(s.f_p) if s.f_p is not None else 0.0),
+    ]
+    for _, getter in dims:
+        order = sorted(range(n), key=lambda i: getter(items[i][1]))
+        lo = getter(items[order[0]][1])
+        hi = getter(items[order[-1]][1])
+        dist[order[0]] = float("inf")
+        dist[order[-1]] = float("inf")
+        denom = hi - lo
+        if denom <= 1e-12:
+            continue
+        for k in range(1, n - 1):
+            prev_v = getter(items[order[k - 1]][1])
+            next_v = getter(items[order[k + 1]][1])
+            dist[order[k]] += (next_v - prev_v) / denom
+    return dist
+
+
+def _select_knee(
+    archive: Sequence[Tuple[str, ObjectiveScores, ScoreBreakdown, Optional[SimulationFeedback]]],
+    cfg: GameConfig,
+) -> Tuple[str, ObjectiveScores, ScoreBreakdown, Optional[SimulationFeedback]]:
+    if not archive:
+        raise ValueError("empty archive")
+    crowd = _crowding_distance(archive)
+
+    def key_fn(i: int) -> Tuple[float, float, float]:
+        s = archive[i][1]
+        fp = float(s.f_p) if s.f_p is not None else 0.0
+        min_dim = min(float(s.f_s), float(s.f_f), fp)
+        return (min_dim, _balanced_product(s), float(crowd.get(i, 0.0)))
+
+    best_idx = max(range(len(archive)), key=key_fn)
+    return archive[best_idx]
+
+
 class MultiObjectiveGameOptimizer:
     def __init__(
         self,
@@ -160,6 +278,7 @@ class MultiObjectiveGameOptimizer:
         simulator: Optional[PhysicsSimulator] = None,
         config: Optional[GameConfig] = None,
         system_prompt: Optional[str] = None,
+        domain: Domain = "cdem_js",
     ):
         self.llm = llm
         self.simulator = simulator
@@ -170,8 +289,12 @@ class MultiObjectiveGameOptimizer:
             w_s=float(os.getenv("CDEM_EVO_W_S", "0.2")),
             w_f=float(os.getenv("CDEM_EVO_W_F", "0.2")),
             w_p=float(os.getenv("CDEM_EVO_W_P", "0.6")),
+            stall_iters=int(os.getenv("CDEM_EVO_STALL_ITERS", "2")),
+            variants_per_focus=max(1, int(os.getenv("CDEM_EVO_VARIANTS", "1"))),
+            max_archive=max(1, int(os.getenv("CDEM_EVO_MAX_ARCHIVE", "24"))),
         )
         self.system_prompt = system_prompt or load_agent_system_prompt()
+        self.domain = domain
 
     def _simulate(self, *, task: str, script: str) -> Tuple[Optional[float], Optional[SimulationFeedback]]:
         if not self.simulator:
@@ -251,10 +374,19 @@ class MultiObjectiveGameOptimizer:
         history: List[IterationRecord] = []
         current = self._initial_script(task=task, tool_context=tool_context)
         prev_scores: Optional[ObjectiveScores] = None
+        archive: List[Tuple[str, ObjectiveScores, ScoreBreakdown, Optional[SimulationFeedback]]] = []
+        stall = 0
 
         for t in range(self.cfg.max_iters):
             phy_score, sim_fb = self._simulate(task=task, script=current)
-            scores, breakdown = score_all(query=task, script=current, physics_score=phy_score, alpha=self.cfg.alpha, beta=self.cfg.beta)
+            scores, breakdown = score_all(
+                query=task,
+                script=current,
+                physics_score=phy_score,
+                alpha=self.cfg.alpha,
+                beta=self.cfg.beta,
+                domain=self.domain,
+            )
             history.append(IterationRecord(t=t, focus="evaluate", scores=scores, breakdown=breakdown, simulation_feedback=sim_fb))
 
             if _meets_targets(scores, self.cfg) or _converged(prev_scores, scores, self.cfg):
@@ -266,23 +398,48 @@ class MultiObjectiveGameOptimizer:
             candidates: List[Tuple[str, ObjectiveScores, ScoreBreakdown, Optional[SimulationFeedback]]] = []
             candidates.append((current, scores, breakdown, sim_fb))
             for focus in focuses:
-                proposal = self._update_script(
-                    task=task,
-                    current_script=current,
-                    scores=scores,
-                    breakdown=breakdown,
-                    focus=focus,
-                    tool_context=tool_context,
-                )
-                phy_score_p, sim_fb_p = self._simulate(task=task, script=proposal)
-                s_p, b_p = score_all(query=task, script=proposal, physics_score=phy_score_p, alpha=self.cfg.alpha, beta=self.cfg.beta)
-                history.append(IterationRecord(t=t, focus=focus, scores=s_p, breakdown=b_p, simulation_feedback=sim_fb_p))
-                candidates.append((proposal, s_p, b_p, sim_fb_p))
+                for k in range(max(1, int(self.cfg.variants_per_focus))):
+                    proposal = self._update_script(
+                        task=task,
+                        current_script=current,
+                        scores=scores,
+                        breakdown=breakdown,
+                        focus=focus,
+                        tool_context=tool_context,
+                    )
+                    phy_score_p, sim_fb_p = self._simulate(task=task, script=proposal)
+                    s_p, b_p = score_all(
+                        query=task,
+                        script=proposal,
+                        physics_score=phy_score_p,
+                        alpha=self.cfg.alpha,
+                        beta=self.cfg.beta,
+                        domain=self.domain,
+                    )
+                    focus_tag = focus if k == 0 else f"{focus}_{k+1}"
+                    history.append(IterationRecord(t=t, focus=focus_tag, scores=s_p, breakdown=b_p, simulation_feedback=sim_fb_p))
+                    candidates.append((proposal, s_p, b_p, sim_fb_p))
 
-            current, sel_scores, sel_breakdown, sel_fb = _select_best(candidates, self.cfg)
+            archive, changed = _archive_update(archive, candidates, max_size=int(self.cfg.max_archive))
+            if changed:
+                stall = 0
+            else:
+                stall += 1
+
+            selected = _select_knee(archive, self.cfg) if archive else _select_best(candidates, self.cfg)
+            current = selected[0]
             prev_scores = scores
+            if stall >= max(1, int(self.cfg.stall_iters)):
+                return OptimizationResult(script=current, scores=selected[1], breakdown=selected[2], history=history)
 
         phy_score, sim_fb = self._simulate(task=task, script=current)
-        scores, breakdown = score_all(query=task, script=current, physics_score=phy_score, alpha=self.cfg.alpha, beta=self.cfg.beta)
+        scores, breakdown = score_all(
+            query=task,
+            script=current,
+            physics_score=phy_score,
+            alpha=self.cfg.alpha,
+            beta=self.cfg.beta,
+            domain=self.domain,
+        )
         history.append(IterationRecord(t=self.cfg.max_iters, focus="final", scores=scores, breakdown=breakdown, simulation_feedback=sim_fb))
         return OptimizationResult(script=current, scores=scores, breakdown=breakdown, history=history)

@@ -1,11 +1,41 @@
 ---
 name: "generate-cdem-script"
-description: "Generates CDEM software simulation scripts. Invoke when the user asks to write, generate, or modify CDEM/CDYNA JavaScript simulation scripts based on physical or geometrical requirements."
+description: "Generates CDEM/CDyna JavaScript simulation scripts with physics sanity checks. Invoke when the user asks to write/generate/modify CDEM scripts or when reviewing suspicious physics (gravity, quasi-static vs dynamic, fracture)."
 ---
 
 # Generate CDEM Script
 
 This skill encapsulates the workflow for generating CDEM software simulation scripts using a multi-agent retrieval-augmented generation (RAG) architecture. It standardizes the inputs, outputs, and parameters required for successful CDEM script generation.
+
+## 0. Physics Guardrails (Default Behavior)
+
+Apply these guardrails by default to improve physical consistency, unless the user explicitly requests otherwise.
+
+### 0.1 Regime Inference
+
+Infer the intended regime from the user description:
+
+- **Quasi-static / displacement-controlled**: “准静态/静力/极其缓慢/恒定位移/位移加载/拉伸/张拉/观察裂纹演化”
+- **Dynamic / transient**: “碰撞/冲击/爆炸/传播/掉落/自由坠落/地震波/大变形/动态接触”
+- **Thermo-mechanical**: “热-力耦合/温度骤降/热传导/热应力/热裂隙”
+
+### 0.2 Guardrails by Scenario
+
+**A) Quasi-static displacement-controlled fracture/tension**
+
+- Default gravity to **0** unless the user explicitly mentions gravity/self-weight.
+- Avoid “helpfully” increasing loading rate to speed up results.
+- Prefer minimal, localized boundary bands for top/bottom constraints (thin coordinate ranges).
+
+**B) Dynamic collision/fall/impact**
+
+- Use non-zero gravity only when gravity-driven motion is part of the scenario (fall/sliding).
+- Ensure contact settings allow contact evolution under large motion (avoid freezing contacts when motion is large).
+- Use tighter output intervals to capture transient peaks.
+
+**C) Thermo-mechanical cracking**
+
+- Enable thermal settings only when requested and keep thermal BC/IC explicit (avoid inventing temperature fields).
 
 ## 1. Input Schema
 
@@ -67,6 +97,13 @@ generated_code, gen_time, retrieved_count = agent.generate_code(
 2. Extract parameters: `dimensions="2D"`, `boundary_conditions="bottom fixed"`, `forces="gravity downward"`.
 3. Call `AgentConstructionModule.generate_code()`.
 4. Output the resulting `script_file` along with the `dependency_list` and `validation_report`.
+
+**User Request**: "圆盘准静态拉伸破裂，顶部极其缓慢向上位移，底部固定。"
+
+**Agent Action**:
+1. Infer regime as quasi-static displacement-controlled.
+2. Default gravity to 0 (since user did not request gravity).
+3. Generate a script with stable quasi-static controls and appropriate boundary bands.
 
 ## 6. Test Cases
 
