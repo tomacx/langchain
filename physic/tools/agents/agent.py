@@ -58,12 +58,59 @@ try:
     from langchain_openai import ChatOpenAI
 except Exception:
     ChatOpenAI = None
+try:
+    from langchain_anthropic import ChatAnthropic
+except Exception:
+    ChatAnthropic = None
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 from langchain.agents import create_agent
 from langchain_core.callbacks import StreamingStdOutCallbackHandler
 
 HAS_CUSTOM_PROMPT = False
 agent_system = None
+
+
+def _build_claude_llm(model_name: str, streaming: bool = False, callbacks: Optional[List[Any]] = None):
+    api_key = (
+        os.environ.get("CDEM_CLAUDE_API_KEY")
+        or os.environ.get("ANTHROPIC_API_KEY")
+        or ""
+    ).strip()
+    if not api_key:
+        return None
+
+    use_native_anthropic = _boot_env_flag("CDEM_CLAUDE_USE_ANTHROPIC", True)
+    anthropic_base_url = (
+        os.environ.get("CDEM_ANTHROPIC_BASE_URL")
+        or os.environ.get("ANTHROPIC_BASE_URL")
+        or ""
+    ).strip()
+    if use_native_anthropic and ChatAnthropic is not None:
+        kwargs: Dict[str, Any] = {
+            "model": model_name,
+            "api_key": api_key,
+            "streaming": bool(streaming),
+        }
+        if callbacks:
+            kwargs["callbacks"] = callbacks
+        if anthropic_base_url:
+            kwargs["base_url"] = anthropic_base_url
+        return ChatAnthropic(**kwargs)
+
+    if ChatOpenAI is None:
+        return None
+    base_url = (os.environ.get("CDEM_CLAUDE_API_URL") or "https://api.jiekou.ai/openai").strip()
+    if not base_url:
+        return None
+    kwargs_openai: Dict[str, Any] = {
+        "model_name": model_name,
+        "api_key": api_key,
+        "base_url": base_url,
+        "streaming": bool(streaming),
+    }
+    if callbacks:
+        kwargs_openai["callbacks"] = callbacks
+    return ChatOpenAI(**kwargs_openai)
 
 prompt_path = Path(__file__).resolve().parents[1] / "prompt" / "agent_system.py"
 if prompt_path.exists():
@@ -762,12 +809,8 @@ class ToolConstructionModule:
         if ChatOpenAI is None:
             return None
         if self.provider in {"claude", "anthropic"}:
-            api_key = (os.environ.get("CDEM_CLAUDE_API_KEY") or "").strip()
-            base_url = (os.environ.get("CDEM_CLAUDE_API_URL") or "https://api.jiekou.ai/openai").strip()
             model_name = (os.environ.get("CDEM_CLAUDE_MODEL") or self.model_name).strip()
-            if not api_key or not base_url:
-                return None
-            return ChatOpenAI(model_name=model_name, api_key=api_key, base_url=base_url, temperature=0.0, streaming=False)
+            return _build_claude_llm(model_name=model_name, streaming=False, callbacks=None)
         api_key = (
             os.environ.get("CDEM_BAILIAN_API_KEY")
             or os.environ.get("DASHSCOPE_API_KEY")
@@ -1580,23 +1623,14 @@ class AgentConstructionModule:
                 callbacks=callbacks,
             )
         elif provider in {"claude", "anthropic"}:
-            if ChatOpenAI is None:
-                raise ImportError("未安装 langchain-openai：请先安装后再使用 Claude（CDEM_LLM_PROVIDER=claude）。")
-            api_key = (os.environ.get("CDEM_CLAUDE_API_KEY") or "").strip()
-            base_url = (os.environ.get("CDEM_CLAUDE_API_URL") or "https://api.jiekou.ai/openai").strip()
             model_name = (os.environ.get("CDEM_CLAUDE_MODEL") or self.model_name).strip()
-            if not api_key:
-                raise ValueError("缺少 Claude API Key：请设置环境变量 CDEM_CLAUDE_API_KEY。")
-            if not base_url:
-                raise ValueError("缺少 Claude API URL：请设置环境变量 CDEM_CLAUDE_API_URL。")
-            self.llm = ChatOpenAI(
-                model_name=model_name,
-                api_key=api_key,
-                base_url=base_url,
-                temperature=0.0,
-                streaming=streaming_enabled,
-                callbacks=callbacks,
-            )
+            self.llm = _build_claude_llm(model_name=model_name, streaming=streaming_enabled, callbacks=callbacks)
+            if self.llm is None:
+                raise ValueError(
+                    "Claude 初始化失败：请设置 CDEM_CLAUDE_API_KEY（或 ANTHROPIC_API_KEY）；"
+                    "若使用官方 Anthropic 通道，请安装 langchain-anthropic；"
+                    "若使用 OpenAI 兼容通道，请设置 CDEM_CLAUDE_API_URL。"
+                )
         else:
             if ChatOpenAI is None:
                 raise ImportError("未安装 langchain-openai：请先安装后再使用百炼/千问（CDEM_LLM_PROVIDER=bailian）。")
